@@ -1,0 +1,587 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Seliweb_Database {
+
+    const DB_VERSION     = '1.2';
+    const DB_VERSION_KEY = 'seliweb_db_version';
+
+    public static function install() {
+        $installed = get_option( self::DB_VERSION_KEY, '0' );
+        if ( version_compare( $installed, self::DB_VERSION, '<' ) ) {
+            self::create_tables();
+            update_option( self::DB_VERSION_KEY, self::DB_VERSION );
+        }
+    }
+
+    private static function create_tables() {
+        global $wpdb;
+        $charset = $wpdb->get_charset_collate();
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_parametres (
+            id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            cle         VARCHAR(100) NOT NULL,
+            valeur      TEXT,
+            PRIMARY KEY (id),
+            UNIQUE KEY cle (cle)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_categories (
+            id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            nom         VARCHAR(150) NOT NULL,
+            slug        VARCHAR(150) NOT NULL,
+            modifiable  TINYINT(1)   NOT NULL DEFAULT 1,
+            supprimable TINYINT(1)   NOT NULL DEFAULT 1,
+            PRIMARY KEY (id),
+            UNIQUE KEY slug (slug)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_rubriques (
+            id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            categorie_id INT UNSIGNED NOT NULL,
+            nom          VARCHAR(150) NOT NULL,
+            PRIMARY KEY (id),
+            KEY categorie_id (categorie_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_statuts (
+            id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            nom         VARCHAR(100) NOT NULL,
+            slug        VARCHAR(100) NOT NULL,
+            modifiable  TINYINT(1)   NOT NULL DEFAULT 1,
+            supprimable TINYINT(1)   NOT NULL DEFAULT 1,
+            PRIMARY KEY (id),
+            UNIQUE KEY slug (slug)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_monnaies (
+            id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            nom         VARCHAR(100) NOT NULL,
+            symbole     VARCHAR(20),
+            est_defaut  TINYINT(1)   NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY nom (nom)
+        ) $charset;";
+
+        // est_defaut : 1 = ce groupe est attribué automatiquement aux nouveaux inscrits
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_groupes (
+            id                   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            nom                  VARCHAR(150) NOT NULL,
+            est_defaut           TINYINT(1)   NOT NULL DEFAULT 0,
+            limite_annonces      INT UNSIGNED DEFAULT NULL,
+            contact_mail_cache   TINYINT(1)   NOT NULL DEFAULT 0,
+            contact_mail_visible TINYINT(1)   NOT NULL DEFAULT 0,
+            contact_tel          TINYINT(1)   NOT NULL DEFAULT 0,
+            contact_adresse      TINYINT(1)   NOT NULL DEFAULT 0,
+            PRIMARY KEY (id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_groupes_monnaies (
+            groupe_id  INT UNSIGNED NOT NULL,
+            monnaie_id INT UNSIGNED NOT NULL,
+            PRIMARY KEY (groupe_id, monnaie_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_inscriptions (
+            id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wp_user_id    BIGINT UNSIGNED NOT NULL,
+            civilite      ENUM('Mr','Mme') DEFAULT NULL,
+            nom           VARCHAR(100),
+            prenom        VARCHAR(100),
+            organisme     VARCHAR(200),
+            tel_portable  VARCHAR(30),
+            tel_fixe      VARCHAR(30),
+            adresse1      VARCHAR(255),
+            adresse2      VARCHAR(255),
+            ville         VARCHAR(100),
+            code_postal   VARCHAR(10),
+            PRIMARY KEY (id),
+            UNIQUE KEY wp_user_id (wp_user_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_membres (
+            id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wp_user_id     BIGINT UNSIGNED NOT NULL,
+            groupe_id      INT UNSIGNED DEFAULT NULL,
+            notif_annonces TINYINT(1)   NOT NULL DEFAULT 1,
+            civilite       ENUM('Mr','Mme') DEFAULT NULL,
+            nom            VARCHAR(100),
+            prenom         VARCHAR(100),
+            organisme      VARCHAR(200),
+            tel_portable   VARCHAR(30),
+            tel_fixe       VARCHAR(30),
+            adresse1       VARCHAR(255),
+            adresse2       VARCHAR(255),
+            ville          VARCHAR(100),
+            code_postal    VARCHAR(10),
+            PRIMARY KEY (id),
+            UNIQUE KEY wp_user_id (wp_user_id),
+            KEY groupe_id (groupe_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_annonces (
+            id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            membre_id       INT UNSIGNED NOT NULL,
+            categorie_id    INT UNSIGNED NOT NULL,
+            rubrique_id     INT UNSIGNED DEFAULT NULL,
+            type_annonce    ENUM('offre','demande') DEFAULT NULL,
+            titre           VARCHAR(255) NOT NULL,
+            texte           TEXT,
+            statut_id       INT UNSIGNED DEFAULT NULL,
+            date_creation   DATETIME     NOT NULL,
+            date_expiration DATE         DEFAULT NULL,
+            est_don         TINYINT(1)   NOT NULL DEFAULT 0,
+            photo1          VARCHAR(255) DEFAULT NULL,
+            photo2          VARCHAR(255) DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY membre_id    (membre_id),
+            KEY categorie_id (categorie_id),
+            KEY statut_id    (statut_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_annonces_prix (
+            id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            annonce_id    INT UNSIGNED NOT NULL,
+            monnaie_id    INT UNSIGNED NOT NULL,
+            prix          VARCHAR(20),
+            coordination  ENUM('ET','OU') DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY annonce_id (annonce_id)
+        ) $charset;";
+
+        foreach ( $sql as $query ) {
+            dbDelta( $query );
+        }
+
+        // Migration v1.0 → v1.1 : ajout colonne est_defaut si absente
+        self::maybe_add_column(
+            $wpdb->prefix . 'seliweb_groupes',
+            'est_defaut',
+            'TINYINT(1) NOT NULL DEFAULT 0 AFTER nom'
+        );
+        self::maybe_add_column(
+            $wpdb->prefix . 'seliweb_annonces_prix',
+            'coordination',
+            "ENUM('ET','OU') DEFAULT NULL AFTER prix"
+        );
+        // Créer la table inscriptions si absente (migration v1.2)
+        self::maybe_create_inscriptions();
+
+        self::insert_defaults();
+    }
+
+    /**
+     * Ajoute une colonne si elle n'existe pas déjà (migration safe)
+     */
+    private static function maybe_add_column( $table, $column, $definition ) {
+        global $wpdb;
+        $cols = $wpdb->get_col( "DESCRIBE `$table`", 0 );
+        if ( ! in_array( $column, $cols, true ) ) {
+            $wpdb->query( "ALTER TABLE `$table` ADD COLUMN `$column` $definition" );
+        }
+    }
+
+    private static function insert_defaults() {
+        global $wpdb;
+
+        // Catégories — INSERT IGNORE fonctionne grâce à UNIQUE KEY slug
+        $categories = array(
+            array( 'nom' => 'Annonces',      'slug' => 'annonces',    'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Objets (prêt)', 'slug' => 'objets-pret', 'modifiable' => 1, 'supprimable' => 1 ),
+            array( 'nom' => 'Compétences',   'slug' => 'competences', 'modifiable' => 1, 'supprimable' => 1 ),
+        );
+        foreach ( $categories as $cat ) {
+            $wpdb->query( $wpdb->prepare(
+                "INSERT IGNORE INTO {$wpdb->prefix}seliweb_categories (nom,slug,modifiable,supprimable) VALUES (%s,%s,%d,%d)",
+                $cat['nom'], $cat['slug'], $cat['modifiable'], $cat['supprimable']
+            ) );
+        }
+
+        // Rubriques par défaut — injectées seulement si la table est vide
+        $tr = $wpdb->prefix . 'seliweb_rubriques';
+        $nb_rubriques = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tr" );
+        if ( $nb_rubriques === 0 ) {
+            // Récupérer les IDs des catégories par slug
+            $tc      = $wpdb->prefix . 'seliweb_categories';
+            $cat_ids = array();
+            foreach ( array('annonces','objets-pret','competences') as $slug ) {
+                $id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tc WHERE slug=%s LIMIT 1", $slug ) );
+                if ( $id ) $cat_ids[$slug] = (int)$id;
+            }
+
+            $rubriques_defaut = array(
+                'annonces' => array(
+                    'Aide à domicile', 'Aide administrative', 'Animaux', 'Autres',
+                    'Bricolage - Mécanique', 'Informatique - Téléphonie', 'Jardinage',
+                    'Loisirs - Musique', 'Maison - cuisine - nourriture', 'Objets divers',
+                    'Prêts outillage et autres objets', 'Santé - Bien-être',
+                    'Scolaire - Langues', 'Transports - Covoiturage',
+                    'Travaux manuels - couture', 'Culture - activités culturelles',
+                    'Beauté - Coiffure', 'Hébergement', 'Sorties',
+                    'Garde d\'enfants - Baby sitting',
+                ),
+                'objets-pret' => array(
+                    'Matériel électrique', 'Auto-Vélo', 'Sport',
+                ),
+                'competences' => array(
+                    'Tapisserie', 'Electricité', 'Peinture', 'Plomberie', 'Carrelage',
+                    'Placoplâtre', 'Menuiserie', 'Maçonnerie', 'Vitrerie', 'Serrurerie',
+                    'Etanchéïté', 'Jardinage', 'Cuisine', 'Couture', 'Autre',
+                    'Langues', 'Massage - Santé - Bien être',
+                ),
+            );
+
+            foreach ( $rubriques_defaut as $slug => $liste ) {
+                if ( ! isset( $cat_ids[$slug] ) ) continue;
+                foreach ( $liste as $nom ) {
+                    $wpdb->insert( $tr, array(
+                        'categorie_id' => $cat_ids[$slug],
+                        'nom'          => $nom,
+                    ) );
+                }
+            }
+        }
+
+        // Statuts — INSERT IGNORE fonctionne grâce à UNIQUE KEY slug
+        $statuts = array(
+            array( 'nom' => 'Urgent',  'slug' => 'urgent',  'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Répondu', 'slug' => 'repondu', 'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Expiré',  'slug' => 'expire',  'modifiable' => 0, 'supprimable' => 0 ),
+        );
+        foreach ( $statuts as $st ) {
+            $wpdb->query( $wpdb->prepare(
+                "INSERT IGNORE INTO {$wpdb->prefix}seliweb_statuts (nom,slug,modifiable,supprimable) VALUES (%s,%s,%d,%d)",
+                $st['nom'], $st['slug'], $st['modifiable'], $st['supprimable']
+            ) );
+        }
+
+        // Monnaies — vérification explicite par nom pour éviter les doublons
+        // (UNIQUE KEY nom ajouté en v1.2, migration des index via maybe_add_unique)
+        $monnaies = array(
+            array( 'nom' => 'Euro', 'symbole' => '€',   'est_defaut' => 1 ),
+            array( 'nom' => 'Sel',  'symbole' => 'SEL', 'est_defaut' => 0 ),
+            array( 'nom' => 'June', 'symbole' => 'Ğ',   'est_defaut' => 0 ),
+        );
+        foreach ( $monnaies as $mon ) {
+            $existe = $wpdb->get_var( $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}seliweb_monnaies WHERE nom=%s LIMIT 1",
+                $mon['nom']
+            ) );
+            if ( ! $existe ) {
+                $wpdb->insert( "{$wpdb->prefix}seliweb_monnaies", array(
+                    'nom'        => $mon['nom'],
+                    'symbole'    => $mon['symbole'],
+                    'est_defaut' => $mon['est_defaut'],
+                ) );
+            }
+        }
+    }
+
+    public static function get_installed_version() {
+        return get_option( self::DB_VERSION_KEY, '0' );
+    }
+
+    // ================================================================
+    // Création automatique des pages front-end et du menu
+    // Appelée à l'activation du plugin (register_activation_hook)
+    // ================================================================
+    public static function create_pages_and_menu() {
+
+        // ---- Pages à créer ----
+        $pages = array(
+            array(
+                'title'     => __( 'Annonces', 'seliweb' ),
+                'shortcode' => 'seliweb_annonces',
+                'slug'      => 'annonces-sel',
+            ),
+            array(
+                'title'     => __( 'Connexion', 'seliweb' ),
+                'shortcode' => 'seliweb_login',
+                'slug'      => 'connexion-sel',
+            ),
+            array(
+                'title'     => __( "S'inscrire", 'seliweb' ),
+                'shortcode' => 'seliweb_inscription',
+                'slug'      => 'inscription-sel',
+            ),
+            array(
+                'title'     => __( 'Mon compte', 'seliweb' ),
+                'shortcode' => 'seliweb_mon_compte',
+                'slug'      => 'mon-compte-sel',
+            ),
+        );
+
+        $page_ids = array();
+        foreach ( $pages as $page ) {
+            // Ne créer la page que si elle n'existe pas déjà
+            $existing = get_page_by_path( $page['slug'] );
+            if ( $existing ) {
+                $page_ids[ $page['shortcode'] ] = $existing->ID;
+                continue;
+            }
+            $id = wp_insert_post( array(
+                'post_title'   => $page['title'],
+                'post_content' => '[' . $page['shortcode'] . ']',
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+                'post_name'    => $page['slug'],
+            ) );
+            if ( ! is_wp_error($id) ) {
+                $page_ids[ $page['shortcode'] ] = $id;
+            }
+        }
+
+        // Sauvegarder les IDs pour usage ultérieur
+        update_option( 'seliweb_page_ids', $page_ids );
+
+        // ---- Menu "Seliweb Navigation" ----
+        $menu_name = __( 'Seliweb Navigation', 'seliweb' );
+        $menu_id   = wp_create_nav_menu( $menu_name );
+
+        if ( ! is_wp_error( $menu_id ) ) {
+            // Ordre des éléments du menu
+            $menu_items = array(
+                'seliweb_annonces'    => __( 'Annonces', 'seliweb' ),
+                'seliweb_login'       => __( 'Connexion', 'seliweb' ),
+                'seliweb_inscription' => __( "S'inscrire", 'seliweb' ),
+                'seliweb_mon_compte'  => __( 'Mon compte', 'seliweb' ),
+            );
+            $order = 1;
+            foreach ( $menu_items as $shortcode => $label ) {
+                if ( isset( $page_ids[ $shortcode ] ) ) {
+                    wp_update_nav_menu_item( $menu_id, 0, array(
+                        'menu-item-title'     => $label,
+                        'menu-item-object'    => 'page',
+                        'menu-item-object-id' => $page_ids[ $shortcode ],
+                        'menu-item-type'      => 'post_type',
+                        'menu-item-status'    => 'publish',
+                        'menu-item-position'  => $order++,
+                    ) );
+                }
+            }
+
+            // Assigner le menu à l'emplacement "primary" du thème actif si disponible
+            $locations = get_theme_mod( 'nav_menu_locations' );
+            if ( isset( $locations['primary'] ) && empty( $locations['primary'] ) ) {
+                $locations['primary'] = $menu_id;
+                set_theme_mod( 'nav_menu_locations', $locations );
+            }
+
+            update_option( 'seliweb_menu_id', $menu_id );
+        }
+    }
+
+    // ================================================================
+    // Suppression des pages et du menu à la désactivation
+    // ================================================================
+    public static function delete_pages_and_menu() {
+        $page_ids = get_option( 'seliweb_page_ids', array() );
+        foreach ( $page_ids as $id ) {
+            wp_delete_post( $id, true );
+        }
+        delete_option( 'seliweb_page_ids' );
+
+        $menu_id = get_option( 'seliweb_menu_id' );
+        if ( $menu_id ) {
+            wp_delete_nav_menu( $menu_id );
+            delete_option( 'seliweb_menu_id' );
+        }
+    }
+
+    /**
+     * Force l'ajout de la colonne coordination si absente.
+     * Appelée sur admin_init pour s'assurer de l'exécution même
+     * si DB_VERSION n'a pas changé.
+     */
+    public static function insert_defaults_rubriques() {
+        global $wpdb;
+        $tr = $wpdb->prefix . 'seliweb_rubriques';
+        $nb = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tr" );
+        if ( $nb > 0 ) return; // Ne pas écraser si déjà remplies
+
+        $tc      = $wpdb->prefix . 'seliweb_categories';
+        $cat_ids = array();
+        foreach ( array('annonces','objets-pret','competences') as $slug ) {
+            $id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tc WHERE slug=%s LIMIT 1", $slug ) );
+            if ( $id ) $cat_ids[$slug] = (int)$id;
+        }
+
+        $rubriques_defaut = array(
+            'annonces' => array(
+                'Aide à domicile', 'Aide administrative', 'Animaux', 'Autres',
+                'Bricolage - Mécanique', 'Informatique - Téléphonie', 'Jardinage',
+                'Loisirs - Musique', 'Maison - cuisine - nourriture', 'Objets divers',
+                'Prêts outillage et autres objets', 'Santé - Bien-être',
+                'Scolaire - Langues', 'Transports - Covoiturage',
+                'Travaux manuels - couture', 'Culture - activités culturelles',
+                'Beauté - Coiffure', 'Hébergement', 'Sorties',
+                'Garde d\'enfants - Baby sitting',
+            ),
+            'objets-pret' => array(
+                'Matériel électrique', 'Auto-Vélo', 'Sport',
+            ),
+            'competences' => array(
+                'Tapisserie', 'Electricité', 'Peinture', 'Plomberie', 'Carrelage',
+                'Placoplâtre', 'Menuiserie', 'Maçonnerie', 'Vitrerie', 'Serrurerie',
+                'Etanchéïté', 'Jardinage', 'Cuisine', 'Couture', 'Autre',
+                'Langues', 'Massage - Santé - Bien être',
+            ),
+        );
+
+        foreach ( $rubriques_defaut as $slug => $liste ) {
+            if ( ! isset( $cat_ids[$slug] ) ) continue;
+            foreach ( $liste as $nom ) {
+                $wpdb->insert( $tr, array(
+                    'categorie_id' => $cat_ids[$slug],
+                    'nom'          => $nom,
+                ) );
+            }
+        }
+    }
+
+    public static function maybe_create_inscriptions() {
+        global $wpdb;
+        $table   = $wpdb->prefix . 'seliweb_inscriptions';
+        $charset = $wpdb->get_charset_collate();
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        $sql = "CREATE TABLE $table (
+            id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wp_user_id    BIGINT UNSIGNED NOT NULL,
+            civilite      ENUM('Mr','Mme') DEFAULT NULL,
+            nom           VARCHAR(100),
+            prenom        VARCHAR(100),
+            organisme     VARCHAR(200),
+            tel_portable  VARCHAR(30),
+            tel_fixe      VARCHAR(30),
+            adresse1      VARCHAR(255),
+            adresse2      VARCHAR(255),
+            ville         VARCHAR(100),
+            code_postal   VARCHAR(10),
+            PRIMARY KEY (id),
+            UNIQUE KEY wp_user_id (wp_user_id)
+        ) $charset;";
+        dbDelta( $sql );
+    }
+
+    public static function maybe_migrate_coordination() {
+        global $wpdb;
+
+        // 1. Colonne coordination sur seliweb_annonces_prix
+        $table = $wpdb->prefix . 'seliweb_annonces_prix';
+        $exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = %s AND table_name = %s",
+            DB_NAME, $table
+        ) );
+        if ( $exists ) {
+            $cols = $wpdb->get_col( "DESCRIBE `$table`", 0 );
+            if ( ! in_array( 'coordination', $cols, true ) ) {
+                $wpdb->query( "ALTER TABLE `$table` ADD COLUMN `coordination` ENUM('ET','OU') DEFAULT NULL AFTER `prix`" );
+            }
+        }
+
+        // 1a. Injecter les rubriques par défaut si la table est vide
+        self::insert_defaults_rubriques();
+
+        // 1b. Mettre à jour modifiable/supprimable des catégories Objets et Compétences
+        $tc = $wpdb->prefix . 'seliweb_categories';
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE `$tc` SET modifiable=1, supprimable=1 WHERE slug IN (%s, %s)",
+            'objets-pret', 'competences'
+        ) );
+
+        // 1c. Migration table monnaies : remplacer modifiable/supprimable par est_defaut
+        $tmon = $wpdb->prefix . 'seliweb_monnaies';
+        $cols_mon = $wpdb->get_col( "DESCRIBE `$tmon`", 0 );
+        // Ajouter est_defaut si absente
+        if ( ! in_array( 'est_defaut', $cols_mon, true ) ) {
+            $wpdb->query( "ALTER TABLE `$tmon` ADD COLUMN `est_defaut` TINYINT(1) NOT NULL DEFAULT 0 AFTER symbole" );
+            // Marquer Euro comme défaut par défaut
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE `$tmon` SET est_defaut=1 WHERE nom=%s LIMIT 1", 'Euro'
+            ) );
+        }
+        // Supprimer anciennes colonnes si elles existent encore
+        if ( in_array( 'modifiable', $cols_mon, true ) ) {
+            $wpdb->query( "ALTER TABLE `$tmon` DROP COLUMN `modifiable`" );
+        }
+        if ( in_array( 'supprimable', $cols_mon, true ) ) {
+            $wpdb->query( "ALTER TABLE `$tmon` DROP COLUMN `supprimable`" );
+        }
+        // Ajouter UNIQUE KEY nom si absente
+        $index_mon = $wpdb->get_var(
+            "SELECT COUNT(*) FROM information_schema.statistics
+             WHERE table_schema=DATABASE() AND table_name='$tmon' AND index_name='nom'"
+        );
+        if ( ! $index_mon ) {
+            $wpdb->query( "DELETE m1 FROM `$tmon` m1 INNER JOIN `$tmon` m2 WHERE m1.id > m2.id AND m1.nom = m2.nom" );
+            $wpdb->query( "ALTER TABLE `$tmon` ADD UNIQUE KEY nom (nom)" );
+        }
+
+        // 2. Nouvelles colonnes sur seliweb_membres (migration champs profil)
+        $tm = $wpdb->prefix . 'seliweb_membres';
+        $tm_exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",
+            DB_NAME, $tm
+        ) );
+        if ( $tm_exists ) {
+            $cols = $wpdb->get_col( "DESCRIBE `$tm`", 0 );
+            $new_cols = array(
+                'civilite'     => "ENUM('Mr','Mme') DEFAULT NULL AFTER notif_annonces",
+                'nom'          => "VARCHAR(100) DEFAULT NULL AFTER civilite",
+                'prenom'       => "VARCHAR(100) DEFAULT NULL AFTER nom",
+                'organisme'    => "VARCHAR(200) DEFAULT NULL AFTER prenom",
+                'tel_portable' => "VARCHAR(30)  DEFAULT NULL AFTER organisme",
+                'tel_fixe'     => "VARCHAR(30)  DEFAULT NULL AFTER tel_portable",
+                'adresse1'     => "VARCHAR(255) DEFAULT NULL AFTER tel_fixe",
+                'adresse2'     => "VARCHAR(255) DEFAULT NULL AFTER adresse1",
+                'code_postal'  => "VARCHAR(10)  DEFAULT NULL AFTER ville",
+            );
+            foreach ( $new_cols as $col => $def ) {
+                if ( ! in_array( $col, $cols, true ) ) {
+                    $wpdb->query( "ALTER TABLE `$tm` ADD COLUMN `$col` $def" );
+                }
+            }
+            // Migrer l'ancienne colonne 'telephone' -> 'tel_portable' si elle existe
+            if ( in_array( 'telephone', $cols, true ) && ! in_array( 'tel_portable', $cols, true ) ) {
+                $wpdb->query( "ALTER TABLE `$tm` CHANGE `telephone` `tel_portable` VARCHAR(30) DEFAULT NULL" );
+            }
+            // Migrer l'ancienne colonne 'adresse' -> 'adresse1' si elle existe
+            if ( in_array( 'adresse', $cols, true ) && ! in_array( 'adresse1', $cols, true ) ) {
+                $wpdb->query( "ALTER TABLE `$tm` CHANGE `adresse` `adresse1` VARCHAR(255) DEFAULT NULL" );
+            }
+        }
+
+        // 3. UNIQUE KEY nom sur seliweb_monnaies (évite les doublons à la réactivation)
+        $tm = $wpdb->prefix . 'seliweb_monnaies';
+        $tm_exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = %s AND table_name = %s",
+            DB_NAME, $tm
+        ) );
+        if ( $tm_exists ) {
+            $index = $wpdb->get_var(
+                "SELECT COUNT(*) FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = '$tm'
+                   AND index_name = 'nom'"
+            );
+            if ( ! $index ) {
+                // Supprimer les doublons éventuels avant d'ajouter la contrainte
+                $wpdb->query(
+                    "DELETE m1 FROM `$tm` m1
+                     INNER JOIN `$tm` m2
+                     WHERE m1.id > m2.id AND m1.nom = m2.nom"
+                );
+                $wpdb->query( "ALTER TABLE `$tm` ADD UNIQUE KEY nom (nom)" );
+            }
+        }
+    }
+
+}
+
+add_action( 'plugins_loaded', array( 'Seliweb_Database', 'install' ) );
+add_action( 'admin_init',     array( 'Seliweb_Database', 'maybe_migrate_coordination' ) );

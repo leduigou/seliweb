@@ -1,0 +1,61 @@
+/* =============================================================
+   Seliweb — Admin CSS
+   ============================================================= */
+
+/* Compteurs du tableau de bord */
+.seliweb-dashboard-cards {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+/* Formulaires */
+.seliweb-prix-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.seliweb-prix-row input[type="text"] {
+    width: 120px;
+}
+
+/* Tables */
+.wp-list-table .column-actions {
+    width: 140px;
+}
+
+/* Onglets paramètres — espacement sous les nav-tabs */
+.tab-content {
+    margin-top: 20px;
+}
+
+/* Étiquette "Par défaut" / "Protégée" */
+.wp-list-table em {
+    color: #888;
+    font-size: 12px;
+}
+
+/* Lien supprimer */
+.wp-list-table a[style*="b32d2e"] {
+    text-decoration: none;
+}
+.wp-list-table a[style*="b32d2e"]:hover {
+    text-decoration: underline;
+}
+
+/* Aperçu photo dans le formulaire annonce */
+.form-table img {
+    display: block;
+    max-height: 80px;
+    margin-top: 6px;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+}
+
+/* Notices */
+.seliweb-notice-ok {
+    border-left-color: #1d9e75;
+}
