@@ -393,7 +393,7 @@ function seliweb_paginate_url( $base, $num ) {
 
             <div class="seliweb-annonce-meta" style="margin-bottom:12px;">
                 <span class="seliweb-tag"><?php echo esc_html( $detail->cat_nom ); ?></span>
-                <?php if ( $detail->cat_slug === 'annonces' && $detail->type_annonce ) : ?>
+                <?php if ( isset( $detail->cat_slug ) && $detail->cat_slug === 'annonces' && $detail->type_annonce ) : ?>
                     <span class="seliweb-tag seliweb-tag-type">
                         <?php echo esc_html( ucfirst( $detail->type_annonce ) ); ?>
                     </span>
