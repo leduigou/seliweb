@@ -113,80 +113,65 @@ function seliweb_paginate_url( $base, $num ) {
         </div>
     </form>
 
-    <!-- ===== BARRE DE PAGINATION (haut) ===== -->
+    <!-- ===== BARRE PRINCIPALE (info + toggle + prev/next) ===== -->
     <?php if ( $total > 0 ) : ?>
+    <div class="seliweb-barre-principale">
         <div class="seliweb-pagination-info">
             <?php printf(
                 esc_html( _n( '%d annonce trouvée', '%d annonces trouvées', $total, 'seliweb' ) ),
                 $total
             ); ?>
             &nbsp;&mdash;&nbsp;
-            <?php printf(
-                esc_html__( 'Page %1$d sur %2$d', 'seliweb' ),
-                $page_courante, $nb_pages
-            ); ?>
+            <?php printf( esc_html__( 'Page %1$d sur %2$d', 'seliweb' ), $page_courante, $nb_pages ); ?>
         </div>
-    <?php endif; ?>
-
-    <?php if ( $nb_pages > 1 ) : ?>
-    <nav class="seliweb-pagination">
-
-        <?php if ( $page_courante > 1 ) : ?>
-            <a href="<?php echo esc_url( seliweb_paginate_url( $page_url, $page_courante - 1 ) ); ?>"
-               class="seliweb-page-btn seliweb-page-prev">
-               &laquo; <?php esc_html_e( 'Précédente', 'seliweb' ); ?>
-            </a>
-        <?php else : ?>
-            <span class="seliweb-page-btn seliweb-page-prev seliweb-page-disabled">
-                &laquo; <?php esc_html_e( 'Précédente', 'seliweb' ); ?>
-            </span>
-        <?php endif; ?>
-
-        <div class="seliweb-page-numbers">
-            <?php
-            // Affiche toujours : première, dernière, courante ±2, et "…" entre les sauts
-            $shown = array();
-            for ( $i = 1; $i <= $nb_pages; $i++ ) {
-                if ( $i === 1 || $i === $nb_pages
-                     || ( $i >= $page_courante - 2 && $i <= $page_courante + 2 ) ) {
-                    $shown[] = $i;
-                }
-            }
-            $prev_shown = null;
-            foreach ( $shown as $n ) :
-                if ( $prev_shown !== null && $n > $prev_shown + 1 ) :
-                    echo '<span class="seliweb-page-ellipsis">&hellip;</span>';
-                endif;
-                if ( $n === $page_courante ) : ?>
-                    <span class="seliweb-page-num seliweb-page-current"><?php echo $n; ?></span>
+        <div class="seliweb-barre-controls">
+            <div class="seliweb-vue-toggle">
+                <button type="button" id="seliweb-vue-liste" class="seliweb-vue-btn" title="<?php esc_attr_e( 'Vue liste', 'seliweb' ); ?>">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="1" width="16" height="2" rx="1"/><rect x="0" y="7" width="16" height="2" rx="1"/><rect x="0" y="13" width="16" height="2" rx="1"/></svg>
+                    <?php esc_html_e( 'Liste', 'seliweb' ); ?>
+                </button>
+                <button type="button" id="seliweb-vue-grille" class="seliweb-vue-btn" title="<?php esc_attr_e( 'Vue colonnes', 'seliweb' ); ?>">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="7" height="7" rx="1"/><rect x="9" y="0" width="7" height="7" rx="1"/><rect x="0" y="9" width="7" height="7" rx="1"/><rect x="9" y="9" width="7" height="7" rx="1"/></svg>
+                    <?php esc_html_e( 'Colonnes', 'seliweb' ); ?>
+                </button>
+            </div>
+            <nav class="seliweb-prevnext">
+                <?php if ( $page_courante > 1 ) : ?>
+                    <a href="<?php echo esc_url( seliweb_paginate_url( $page_url, $page_courante - 1 ) ); ?>"
+                       class="seliweb-page-btn seliweb-page-prev">
+                       &laquo; <?php esc_html_e( 'Préc.', 'seliweb' ); ?>
+                    </a>
                 <?php else : ?>
-                    <a href="<?php echo esc_url( seliweb_paginate_url( $page_url, $n ) ); ?>"
-                       class="seliweb-page-num"><?php echo $n; ?></a>
-                <?php endif;
-                $prev_shown = $n;
-            endforeach;
-            ?>
+                    <span class="seliweb-page-btn seliweb-page-disabled">&laquo; <?php esc_html_e( 'Préc.', 'seliweb' ); ?></span>
+                <?php endif; ?>
+                <?php if ( $page_courante < $nb_pages ) : ?>
+                    <a href="<?php echo esc_url( seliweb_paginate_url( $page_url, $page_courante + 1 ) ); ?>"
+                       class="seliweb-page-btn seliweb-page-next">
+                       <?php esc_html_e( 'Suiv.', 'seliweb' ); ?> &raquo;
+                    </a>
+                <?php else : ?>
+                    <span class="seliweb-page-btn seliweb-page-disabled"><?php esc_html_e( 'Suiv.', 'seliweb' ); ?> &raquo;</span>
+                <?php endif; ?>
+            </nav>
         </div>
-
-        <?php if ( $page_courante < $nb_pages ) : ?>
-            <a href="<?php echo esc_url( seliweb_paginate_url( $page_url, $page_courante + 1 ) ); ?>"
-               class="seliweb-page-btn seliweb-page-next">
-               <?php esc_html_e( 'Suivante', 'seliweb' ); ?> &raquo;
-            </a>
-        <?php else : ?>
-            <span class="seliweb-page-btn seliweb-page-next seliweb-page-disabled">
-                <?php esc_html_e( 'Suivante', 'seliweb' ); ?> &raquo;
-            </span>
-        <?php endif; ?>
-
-    </nav>
+    </div>
     <?php endif; ?>
+
+    <?php
+    // Calcul de $shown pour la pagination basse
+    $shown = array();
+    for ( $i = 1; $i <= $nb_pages; $i++ ) {
+        if ( $i === 1 || $i === $nb_pages || ( $i >= $page_courante - 2 && $i <= $page_courante + 2 ) ) {
+            $shown[] = $i;
+        }
+    }
+    ?>
 
     <!-- ===== LISTE DES ANNONCES ===== -->
     <?php if ( empty( $annonces ) ) : ?>
         <p class="seliweb-empty"><?php esc_html_e( 'Aucune annonce trouvée.', 'seliweb' ); ?></p>
     <?php else : ?>
-        <div class="seliweb-annonces-liste">
+        <div class="seliweb-annonces-liste" id="seliweb-annonces-liste">
         <?php foreach ( $annonces as $annonce ) :
             $prix       = Seliweb_Annonces::get_prix( $annonce->id );
             $is_urgent  = ( $annonce->statut_slug === 'urgent' );
@@ -496,6 +481,34 @@ function seliweb_paginate_url( $base, $num ) {
 </div>
 
 <script>
+(function() {
+    var KEY   = 'seliweb_vue';
+    var liste  = document.getElementById('seliweb-annonces-liste');
+    var btnL   = document.getElementById('seliweb-vue-liste');
+    var btnG   = document.getElementById('seliweb-vue-grille');
+    if (!liste || !btnL || !btnG) return;
+
+    function applyVue(vue) {
+        if (vue === 'grille') {
+            liste.classList.add('seliweb-annonces-grille');
+            btnG.classList.add('seliweb-vue-btn-actif');
+            btnL.classList.remove('seliweb-vue-btn-actif');
+        } else {
+            liste.classList.remove('seliweb-annonces-grille');
+            btnL.classList.add('seliweb-vue-btn-actif');
+            btnG.classList.remove('seliweb-vue-btn-actif');
+        }
+        try { localStorage.setItem(KEY, vue); } catch(e) {}
+    }
+
+    var pref = 'liste';
+    try { pref = localStorage.getItem(KEY) || 'liste'; } catch(e) {}
+    applyVue(pref);
+
+    btnL.addEventListener('click', function() { applyVue('liste'); });
+    btnG.addEventListener('click', function() { applyVue('grille'); });
+})();
+
 function seliweb_pub_rubriques(cat_id) {
     var opts = document.querySelectorAll('#sel_rubrique option[data-categorie]');
     opts.forEach(function(o) {

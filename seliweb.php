@@ -50,6 +50,8 @@ class Seliweb {
         add_shortcode( 'seliweb_login',          array( $this, 'shortcode_login' ) );
         add_shortcode( 'seliweb_inscription',    array( $this, 'shortcode_inscription' ) );
 
+        add_action( 'wp', array( $this, 'maybe_add_annonces_body_class' ) );
+
         // WP-Cron : vérification quotidienne des annonces expirées
         add_action( 'seliweb_cron_expire', array( $this, 'cron_expire_annonces' ) );
         if ( ! wp_next_scheduled( 'seliweb_cron_expire' ) ) {
@@ -511,6 +513,16 @@ class Seliweb {
         return ob_get_clean();
     }
 
+
+    public function maybe_add_annonces_body_class() {
+        global $post;
+        if ( $post && has_shortcode( $post->post_content, 'seliweb_annonces' ) ) {
+            add_filter( 'body_class', function( $classes ) {
+                $classes[] = 'seliweb-annonces-page';
+                return $classes;
+            } );
+        }
+    }
 
     // ----------------------------------------------------------------
     // Shortcode [seliweb_annonces]

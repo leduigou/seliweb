@@ -61,11 +61,89 @@
     color: #333;
 }
 
+/* ----- Barre principale (info + toggle + prev/next) ----- */
+.seliweb-barre-principale {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 8px;
+}
+
+.seliweb-barre-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.seliweb-vue-toggle {
+    display: flex;
+    gap: 4px;
+}
+
+.seliweb-vue-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+    color: #555;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.seliweb-vue-btn:hover {
+    background: #f0f5ff;
+    border-color: #2271b1;
+    color: #2271b1;
+}
+
+.seliweb-vue-btn-actif {
+    background: #2271b1;
+    border-color: #2271b1;
+    color: #fff;
+}
+
+.seliweb-vue-btn-actif:hover {
+    background: #135e96;
+    color: #fff;
+}
+
+.seliweb-prevnext {
+    display: flex;
+    gap: 4px;
+}
+
 /* ----- Liste des annonces ----- */
 .seliweb-annonces-liste {
     display: flex;
     flex-direction: column;
     gap: 16px;
+}
+
+/* ----- Vue grille (colonnes) ----- */
+.seliweb-annonces-grille {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.seliweb-annonces-grille .seliweb-annonce-card {
+    flex-direction: column;
+}
+
+.seliweb-annonces-grille .seliweb-annonce-photo {
+    width: 100%;
+    height: 150px;
+}
+
+.seliweb-annonces-grille .seliweb-annonce-infos {
+    flex: none;
 }
 
 .seliweb-annonce-card {
@@ -287,6 +365,30 @@
     display: block;
 }
 
+/* ----- Page des annonces : titre, wrappers et espacement haut ----- */
+.seliweb-annonces-page .entry-title,
+.seliweb-annonces-page .page-title,
+.seliweb-annonces-page h1.wp-block-post-title,
+.seliweb-annonces-page .swv-content > h1 {
+    display: none !important;
+}
+
+/* Supprimer le padding/border du wrapper de page pour coller au menu */
+.seliweb-annonces-page .swv-single-wrap {
+    padding: 0;
+}
+
+.seliweb-annonces-page .swv-content {
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 0;
+}
+
+.seliweb-annonces-page .seliweb-wrap {
+    padding-top: 0;
+}
+
 /* ----- Responsive ----- */
 @media (max-width: 600px) {
     .seliweb-annonce-card {
@@ -316,7 +418,6 @@
 .seliweb-pagination-info {
     font-size: 13px;
     color: #666;
-    margin: 12px 0 8px;
 }
 
 .seliweb-pagination {
