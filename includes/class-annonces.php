@@ -17,12 +17,40 @@ class Seliweb_Annonces {
         self::check_expired();
 
         echo '<div class="wrap">';
-        echo '<h1>' . esc_html__( 'Annonces', 'seliweb' );
+        echo '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:4px;">';
+        echo '<h1 style="margin:0;">' . esc_html__( 'Annonces', 'seliweb' );
         if ( $action === 'list' ) {
             echo ' <a href="' . esc_url( admin_url( 'admin.php?page=seliweb_annonces&action=new' ) ) . '" class="page-title-action">'
                . esc_html__( 'Ajouter une annonce', 'seliweb' ) . '</a>';
         }
         echo '</h1>';
+
+        if ( $action === 'list' ) {
+            global $wpdb;
+            $tm = $wpdb->prefix . 'seliweb_membres';
+            $membres_filtre = $wpdb->get_results(
+                "SELECT m.id, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id ORDER BY u.display_name"
+            );
+            $membre_id_filtre = isset( $_GET['membre_id'] ) ? intval( $_GET['membre_id'] ) : 0;
+
+            echo '<div style="display:flex; align-items:center; gap:8px;">';
+            echo '<span style="font-size:23px; font-weight:400; line-height:1.4;">' . esc_html__( 'Membre', 'seliweb' ) . '</span>';
+            echo '<form method="get" style="margin:0;">';
+            echo '<input type="hidden" name="page" value="seliweb_annonces">';
+            if ( ! empty( $_GET['orderby'] ) ) echo '<input type="hidden" name="orderby" value="' . esc_attr( sanitize_key( $_GET['orderby'] ) ) . '">';
+            if ( ! empty( $_GET['order'] ) )   echo '<input type="hidden" name="order"   value="' . esc_attr( sanitize_key( $_GET['order'] ) ) . '">';
+            echo '<select name="membre_id" onchange="this.form.submit()">';
+            echo '<option value="0">' . esc_html__( 'Tous les membres', 'seliweb' ) . '</option>';
+            foreach ( $membres_filtre as $m ) {
+                printf( '<option value="%d"%s>%s</option>',
+                    intval( $m->id ),
+                    $m->id == $membre_id_filtre ? ' selected' : '',
+                    esc_html( $m->display_name )
+                );
+            }
+            echo '</select></form></div>';
+        }
+        echo '</div>';
 
         // Notices d'erreur affichées dans le formulaire
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_rubrique' ) {
@@ -276,6 +304,35 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_rubrique' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Vous devez choisir une rubrique.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' )    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
 
+        // Tri par colonne
+        $allowed_orderby = [
+            'id'         => 'a.id',
+            'categorie'  => 'c.nom',
+            'rubrique'   => 'r.nom',
+            'membre'     => 'u.display_name',
+            'statut'     => 's.nom',
+            'expiration' => 'a.date_expiration',
+        ];
+        $orderby_key = isset( $_GET['orderby'] ) ? sanitize_key( $_GET['orderby'] ) : '';
+        $order_dir   = ( isset( $_GET['order'] ) && strtolower( $_GET['order'] ) === 'desc' ) ? 'DESC' : 'ASC';
+        if ( isset( $allowed_orderby[ $orderby_key ] ) ) {
+            $order_sql = $allowed_orderby[ $orderby_key ];
+        } else {
+            $order_sql = 'a.date_creation';
+            $order_dir = 'DESC';
+        }
+
+        // Filtre par membre
+        $membre_id_filtre = isset( $_GET['membre_id'] ) ? intval( $_GET['membre_id'] ) : 0;
+        $where = $membre_id_filtre > 0 ? $wpdb->prepare( 'WHERE a.membre_id = %d', $membre_id_filtre ) : '';
+
+        // Pagination
+        $per_page    = 40;
+        $total       = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $ta a $where" );
+        $total_pages = max( 1, (int) ceil( $total / $per_page ) );
+        $page        = isset( $_GET['paged'] ) ? max( 1, min( $total_pages, intval( $_GET['paged'] ) ) ) : 1;
+        $offset      = ( $page - 1 ) * $per_page;
+
         $items = $wpdb->get_results(
             "SELECT a.*, c.nom AS cat_nom, r.nom AS rub_nom, s.nom AS statut_nom, u.display_name AS membre_nom
              FROM $ta a
@@ -284,18 +341,65 @@ class Seliweb_Annonces {
              LEFT JOIN $ts s ON s.id=a.statut_id
              LEFT JOIN $tm m ON m.id=a.membre_id
              LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id
-             ORDER BY a.date_creation DESC"
+             $where
+             ORDER BY $order_sql $order_dir
+             LIMIT $per_page OFFSET $offset"
         );
+
+        // Construit l'URL de base en préservant filtre membre + tri
+        $base_params = [ 'page' => 'seliweb_annonces' ];
+        if ( $membre_id_filtre ) $base_params['membre_id'] = $membre_id_filtre;
+        if ( $orderby_key )      $base_params['orderby']   = $orderby_key;
+        if ( $orderby_key )      $base_params['order']     = strtolower( $order_dir );
+        $base_url = admin_url( 'admin.php?' . http_build_query( $base_params ) );
+
+        // URL d'une page (préserve filtre + tri, repart à la page demandée)
+        $page_url = function( $p ) use ( $base_params ) {
+            $params = $base_params;
+            $params['paged'] = $p;
+            return esc_url( admin_url( 'admin.php?' . http_build_query( $params ) ) );
+        };
+
+        // URL de tri (repart toujours à la page 1)
+        $col_url = function( $col ) use ( $base_url, $orderby_key, $order_dir ) {
+            $new_dir = ( $orderby_key === $col && $order_dir === 'ASC' ) ? 'desc' : 'asc';
+            return esc_url( $base_url . '&orderby=' . $col . '&order=' . $new_dir );
+        };
+        $col_arrow = function( $col ) use ( $orderby_key, $order_dir ) {
+            if ( $orderby_key !== $col ) return ' <span style="color:#bbb; font-size:10px;">&#8597;</span>';
+            return $order_dir === 'ASC'
+                ? ' <span style="font-size:10px;">&#8593;</span>'
+                : ' <span style="font-size:10px;">&#8595;</span>';
+        };
+
+        // Barre de pagination
+        $pagination = function() use ( $page, $total_pages, $page_url ) {
+            echo '<div style="display:flex; align-items:center; gap:10px; margin:12px 0 4px;">';
+            echo '<strong style="font-size:13px;">' . sprintf( esc_html__( 'Page %d / %d', 'seliweb' ), $page, $total_pages ) . '</strong>';
+            if ( $page > 1 ) {
+                echo '<a href="' . $page_url( $page - 1 ) . '" class="button button-secondary">&#8592; ' . esc_html__( 'Précédent', 'seliweb' ) . '</a>';
+            } else {
+                echo '<button class="button button-secondary" disabled>&#8592; ' . esc_html__( 'Précédent', 'seliweb' ) . '</button>';
+            }
+            if ( $page < $total_pages ) {
+                echo '<a href="' . $page_url( $page + 1 ) . '" class="button button-secondary">' . esc_html__( 'Suivant', 'seliweb' ) . ' &#8594;</a>';
+            } else {
+                echo '<button class="button button-secondary" disabled>' . esc_html__( 'Suivant', 'seliweb' ) . ' &#8594;</button>';
+            }
+            echo '</div>';
+        };
+
+        $pagination();
         ?>
-        <table class="wp-list-table widefat fixed striped" style="margin-top:16px;">
+        <table class="wp-list-table widefat fixed striped">
             <thead><tr>
-                <th style="width:40px;">ID</th>
+                <th style="width:40px;"><a href="<?php echo $col_url( 'id' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;">ID<?php echo $col_arrow( 'id' ); ?></a></th>
                 <th><?php esc_html_e( 'Titre', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Statut', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Expiration', 'seliweb' ); ?></th>
+                <th><a href="<?php echo $col_url( 'categorie' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Catégorie', 'seliweb' ); ?><?php echo $col_arrow( 'categorie' ); ?></a></th>
+                <th><a href="<?php echo $col_url( 'rubrique' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Rubrique', 'seliweb' ); ?><?php echo $col_arrow( 'rubrique' ); ?></a></th>
+                <th><a href="<?php echo $col_url( 'membre' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Membre', 'seliweb' ); ?><?php echo $col_arrow( 'membre' ); ?></a></th>
+                <th><a href="<?php echo $col_url( 'statut' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Statut', 'seliweb' ); ?><?php echo $col_arrow( 'statut' ); ?></a></th>
+                <th><a href="<?php echo $col_url( 'expiration' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Expiration', 'seliweb' ); ?><?php echo $col_arrow( 'expiration' ); ?></a></th>
                 <th style="width:120px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
@@ -324,6 +428,7 @@ class Seliweb_Annonces {
             </tbody>
         </table>
         <?php
+        $pagination();
     }
 
     // ----------------------------------------------------------------
