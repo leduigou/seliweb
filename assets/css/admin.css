@@ -55,6 +55,37 @@
     border: 1px solid #ddd;
 }
 
+/* Overlay enregistrement en cours */
+.seliweb-saving-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255,255,255,.75);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.seliweb-saving-box {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 28px 40px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,.12);
+    font-weight: 600;
+    color: #333;
+}
+.seliweb-saving-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #e0e0e0;
+    border-top-color: #1d6a4a;
+    border-radius: 50%;
+    animation: seliweb-spin .7s linear infinite;
+    margin: 0 auto 14px;
+}
+@keyframes seliweb-spin { to { transform: rotate(360deg); } }
+
 /* Notices */
 .seliweb-notice-ok {
     border-left-color: #1d9e75;
