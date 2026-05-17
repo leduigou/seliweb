@@ -34,6 +34,22 @@
     });
 
     /* ---------------------------------------------------------
+       Formulaire annonce : overlay "Enregistrement en cours"
+       --------------------------------------------------------- */
+    var $formAdmin = $('#seliweb-admin-form-annonce');
+    if ($formAdmin.length) {
+        var $overlay = $('<div class="seliweb-saving-overlay" style="display:none;" aria-live="assertive">'
+            + '<div class="seliweb-saving-box">'
+            + '<div class="seliweb-saving-spinner"></div>'
+            + 'Enregistrement en cours…'
+            + '</div></div>');
+        $('body').append($overlay);
+        $formAdmin.on('submit', function () {
+            $overlay.show();
+        });
+    }
+
+    /* ---------------------------------------------------------
        Membres : feedback visuel lors du changement de groupe
        --------------------------------------------------------- */
     $(document).on('change', 'select[name="groupe_id"]', function () {
