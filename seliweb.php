@@ -45,12 +45,9 @@ class Seliweb {
         add_filter( 'login_redirect',        array( $this, 'redirect_apres_connexion' ), 10, 3 );
         add_action( 'wp_logout',             array( $this, 'redirect_apres_deconnexion' ) );
 
-        add_shortcode( 'seliweb_annonces',       array( $this, 'shortcode_annonces' ) );
         add_shortcode( 'seliweb_mon_compte',     array( $this, 'shortcode_mon_compte' ) );
         add_shortcode( 'seliweb_login',          array( $this, 'shortcode_login' ) );
         add_shortcode( 'seliweb_inscription',    array( $this, 'shortcode_inscription' ) );
-
-        add_action( 'wp', array( $this, 'maybe_add_annonces_body_class' ) );
 
         // WP-Cron : vérification quotidienne des annonces expirées
         add_action( 'seliweb_cron_expire', array( $this, 'cron_expire_annonces' ) );
@@ -572,52 +569,9 @@ class Seliweb {
     }
 
 
-    public function maybe_add_annonces_body_class() {
-        global $post;
-        if ( $post && has_shortcode( $post->post_content, 'seliweb_annonces' ) ) {
-            add_filter( 'body_class', function( $classes ) {
-                $classes[] = 'seliweb-annonces-page';
-                return $classes;
-            } );
-        }
-    }
-
     // ----------------------------------------------------------------
-    // Shortcode [seliweb_annonces]
+    // Shortcode [seliweb_annonces] — supprimé, affichage délégué au thème
     // ----------------------------------------------------------------
-    public function shortcode_annonces( $atts ) {
-        if ( is_admin() || ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE ) ) {
-            return '<p><em>Annonces Seliweb</em></p>';
-        }
-        // Ne s'exécuter que sur la page qui contient réellement ce shortcode
-        global $post;
-        if ( $post && ! has_shortcode( $post->post_content, 'seliweb_annonces' ) ) {
-            return '';
-        }
-
-        $atts = shortcode_atts( array(
-            'categorie_id' => 0,
-            'rubrique_id'  => 0,
-            'type_annonce' => '',
-            'ville'        => '',
-            'limite'       => 12,
-        ), $atts, 'seliweb_annonces' );
-
-        // Utiliser get_query_var (enregistré via filter query_vars)
-        // pour que WP ne supprime pas ces paramètres
-        $filters = array(
-            'categorie_id' => get_query_var('categorie_id') ?: intval($atts['categorie_id']),
-            'rubrique_id'  => get_query_var('rubrique_id')  ?: intval($atts['rubrique_id']),
-            'type_annonce' => get_query_var('type_annonce') ?: sanitize_key($atts['type_annonce']),
-            'ville'        => get_query_var('ville')        ?: sanitize_text_field($atts['ville']),
-            'limite'       => intval($atts['limite']),
-        );
-
-        Seliweb_Annonces::check_expired();
-        ob_start();
-        include SELIWEB_DIR . 'templates/public-annonces.php';
-        return ob_get_clean();
-    }
 
     // ----------------------------------------------------------------
     // Shortcode [seliweb_mon_compte]
@@ -1017,6 +971,17 @@ add_action( 'plugins_loaded', function() {
 // Flush rewrite rules à l'activation et désactivation
 register_activation_hook( __FILE__, function() {
     flush_rewrite_rules();
+} );
+
+// Migration unique : assigner le template de page aux installations existantes
+add_action( 'admin_init', function() {
+    if ( get_option( 'seliweb_migrated_annonces_template' ) ) return;
+    $page_ids = get_option( 'seliweb_page_ids', array() );
+    $pid = isset( $page_ids['seliweb_annonces'] ) ? intval( $page_ids['seliweb_annonces'] ) : 0;
+    if ( $pid > 0 ) {
+        update_post_meta( $pid, '_wp_page_template', 'template-annonces.php' );
+    }
+    update_option( 'seliweb_migrated_annonces_template', '1' );
 } );
 
 new Seliweb();

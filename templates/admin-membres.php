@@ -395,7 +395,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             </tr>
             <tr>
                 <th><?php esc_html_e('Code postal','seliweb'); ?> *</th>
-                <td><input type="text" name="code_postal" class="small-text" maxlength="10" value="<?php echo esc_attr($_POST['code_postal']??''); ?>" required></td>
+                <td><input type="text" name="code_postal" class="regular-text" maxlength="10" value="<?php echo esc_attr($_POST['code_postal']??''); ?>" required></td>
             </tr>
 
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Compte','seliweb'); ?></th></tr>
@@ -582,7 +582,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             </tr>
             <tr>
                 <th><?php esc_html_e('Code postal','seliweb'); ?></th>
-                <td><input type="text" name="code_postal" class="small-text" maxlength="10" value="<?php echo esc_attr($m_edit->code_postal??''); ?>"></td>
+                <td><input type="text" name="code_postal" class="regular-text" maxlength="10" value="<?php echo esc_attr($m_edit->code_postal??''); ?>"></td>
             </tr>
 
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Compte','seliweb'); ?></th></tr>

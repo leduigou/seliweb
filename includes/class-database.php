@@ -357,24 +357,29 @@ class Seliweb_Database {
         // ---- Pages à créer ----
         $pages = array(
             array(
-                'title'     => __( 'Annonces', 'seliweb' ),
-                'shortcode' => 'seliweb_annonces',
-                'slug'      => 'annonces-sel',
+                'title'    => __( 'Annonces', 'seliweb' ),
+                'key'      => 'seliweb_annonces',
+                'slug'     => 'annonces-sel',
+                'content'  => '',
+                'template' => 'template-annonces.php',
             ),
             array(
-                'title'     => __( 'Connexion', 'seliweb' ),
-                'shortcode' => 'seliweb_login',
-                'slug'      => 'connexion-sel',
+                'title'   => __( 'Connexion', 'seliweb' ),
+                'key'     => 'seliweb_login',
+                'slug'    => 'connexion-sel',
+                'content' => '[seliweb_login]',
             ),
             array(
-                'title'     => __( "S'inscrire", 'seliweb' ),
-                'shortcode' => 'seliweb_inscription',
-                'slug'      => 'inscription-sel',
+                'title'   => __( "S'inscrire", 'seliweb' ),
+                'key'     => 'seliweb_inscription',
+                'slug'    => 'inscription-sel',
+                'content' => '[seliweb_inscription]',
             ),
             array(
-                'title'     => __( 'Mon compte', 'seliweb' ),
-                'shortcode' => 'seliweb_mon_compte',
-                'slug'      => 'mon-compte-sel',
+                'title'   => __( 'Mon compte', 'seliweb' ),
+                'key'     => 'seliweb_mon_compte',
+                'slug'    => 'mon-compte-sel',
+                'content' => '[seliweb_mon_compte]',
             ),
         );
 
@@ -383,18 +388,24 @@ class Seliweb_Database {
             // Ne créer la page que si elle n'existe pas déjà
             $existing = get_page_by_path( $page['slug'] );
             if ( $existing ) {
-                $page_ids[ $page['shortcode'] ] = $existing->ID;
+                $page_ids[ $page['key'] ] = $existing->ID;
+                if ( ! empty( $page['template'] ) ) {
+                    update_post_meta( $existing->ID, '_wp_page_template', $page['template'] );
+                }
                 continue;
             }
             $id = wp_insert_post( array(
                 'post_title'   => $page['title'],
-                'post_content' => '[' . $page['shortcode'] . ']',
+                'post_content' => $page['content'],
                 'post_status'  => 'publish',
                 'post_type'    => 'page',
                 'post_name'    => $page['slug'],
             ) );
-            if ( ! is_wp_error($id) ) {
-                $page_ids[ $page['shortcode'] ] = $id;
+            if ( ! is_wp_error( $id ) ) {
+                $page_ids[ $page['key'] ] = $id;
+                if ( ! empty( $page['template'] ) ) {
+                    update_post_meta( $id, '_wp_page_template', $page['template'] );
+                }
             }
         }
 
