@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.5.2
+ * Version: 0.6.5
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.5.2' );
+define( 'SELIWEB_VERSION', '0.6.5' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 
@@ -45,12 +45,9 @@ class Seliweb {
         add_filter( 'login_redirect',        array( $this, 'redirect_apres_connexion' ), 10, 3 );
         add_action( 'wp_logout',             array( $this, 'redirect_apres_deconnexion' ) );
 
-        add_shortcode( 'seliweb_annonces',       array( $this, 'shortcode_annonces' ) );
         add_shortcode( 'seliweb_mon_compte',     array( $this, 'shortcode_mon_compte' ) );
         add_shortcode( 'seliweb_login',          array( $this, 'shortcode_login' ) );
         add_shortcode( 'seliweb_inscription',    array( $this, 'shortcode_inscription' ) );
-
-        add_action( 'wp', array( $this, 'maybe_add_annonces_body_class' ) );
 
         // WP-Cron : vérification quotidienne des annonces expirées
         add_action( 'seliweb_cron_expire', array( $this, 'cron_expire_annonces' ) );
@@ -94,7 +91,6 @@ class Seliweb {
         add_menu_page( __('Seliweb','seliweb'), __('Seliweb','seliweb'), 'manage_options', 'seliweb', array($this,'display_dashboard'), 'dashicons-networking', 2 );
         add_submenu_page( 'seliweb', __('Tableau de bord','seliweb'), __('Tableau de bord','seliweb'), 'manage_options', 'seliweb',            array($this,'display_dashboard') );
         add_submenu_page( 'seliweb', __('Paramètres','seliweb'),      __('Paramètres','seliweb'),      'manage_options', 'seliweb_parametres', array('Seliweb_Parametres','display') );
-        add_submenu_page( 'seliweb', __('Groupes','seliweb'),         __('Groupes','seliweb'),         'manage_options', 'seliweb_groupes',    array('Seliweb_Groupes','display') );
         add_submenu_page( 'seliweb', __('Annonces','seliweb'),        __('Annonces','seliweb'),        'manage_options', 'seliweb_annonces',   array('Seliweb_Annonces','display') );
         add_submenu_page( 'seliweb', __('Membres','seliweb'),         __('Membres','seliweb'),         'manage_options', 'seliweb_membres',    array($this,'display_membres') );
         add_submenu_page( 'seliweb', __('Cotisations','seliweb'),     __('Cotisations','seliweb'),     'manage_options', 'seliweb_cotisations',array($this,'display_cotisations') );
@@ -302,6 +298,9 @@ class Seliweb {
                 $user_id = wp_create_user( $user_login, wp_generate_password(), $email );
 
                 if ( ! is_wp_error( $user_id ) ) {
+                    // Masquer la barre d'outils WP sur le front-end
+                    update_user_meta( $user_id, 'show_admin_bar_front', 'false' );
+
                     // Mettre à jour le profil WP
                     wp_update_user( array(
                         'ID'           => $user_id,
@@ -332,40 +331,54 @@ class Seliweb {
                         )
                     );
 
+                    // Données complémentaires dans wp_usermeta
+                    update_user_meta( $user_id, 'seliweb_organisme', $organisme );
+
                     // Créer/rattacher le membre (crée la ligne dans seliweb_membres)
                     $this->rattacher_groupe_defaut( $user_id );
 
-                    // Mettre à jour toutes les données du profil
+                    // Préférences de confidentialité et notifications (issues du formulaire d'inscription)
+                    $notif_ins    = isset( $_POST['notif_annonces'] )    ? 1 : 0;
+                    $show_email   = isset( $_POST['show_email'] )        ? 1 : 0;
+                    $show_tel_p   = isset( $_POST['show_tel_portable'] ) ? 1 : 0;
+                    $show_tel_f   = isset( $_POST['show_tel_fixe'] )     ? 1 : 0;
+                    $show_adr     = isset( $_POST['show_adresse'] )      ? 1 : 0;
+
+                    // Mettre à jour les données SEL du membre
                     $tm = $wpdb->prefix . 'seliweb_membres';
                     $wpdb->update( $tm, array(
-                        'civilite'     => $civilite,
-                        'nom'          => $nom,
-                        'prenom'       => $prenom,
-                        'organisme'    => $organisme,
-                        'tel_portable' => $tel_port,
-                        'tel_fixe'     => $tel_fixe,
-                        'adresse1'     => $adresse1,
-                        'adresse2'     => $adresse2,
-                        'ville'        => $ville,
-                        'code_postal'  => $cp,
+                        'civilite'          => $civilite,
+                        'tel_portable'      => $tel_port,
+                        'tel_fixe'          => $tel_fixe,
+                        'adresse1'          => $adresse1,
+                        'adresse2'          => $adresse2,
+                        'ville'             => $ville,
+                        'code_postal'       => $cp,
+                        'notif_annonces'    => $notif_ins,
+                        'show_email'        => $show_email,
+                        'show_tel_portable' => $show_tel_p,
+                        'show_tel_fixe'     => $show_tel_f,
+                        'show_adresse'      => $show_adr,
                     ), array( 'wp_user_id' => $user_id ) );
 
                     // Sécurité : si la ligne n'existait pas encore (pas de groupe par défaut),
                     // on insère directement avec toutes les données
                     if ( $wpdb->rows_affected === 0 ) {
                         $wpdb->insert( $tm, array(
-                            'wp_user_id'   => $user_id,
-                            'groupe_id'    => null,
-                            'civilite'     => $civilite,
-                            'nom'          => $nom,
-                            'prenom'       => $prenom,
-                            'organisme'    => $organisme,
-                            'tel_portable' => $tel_port,
-                            'tel_fixe'     => $tel_fixe,
-                            'adresse1'     => $adresse1,
-                            'adresse2'     => $adresse2,
-                            'ville'        => $ville,
-                            'code_postal'  => $cp,
+                            'wp_user_id'        => $user_id,
+                            'groupe_id'         => null,
+                            'civilite'          => $civilite,
+                            'tel_portable'      => $tel_port,
+                            'tel_fixe'          => $tel_fixe,
+                            'adresse1'          => $adresse1,
+                            'adresse2'          => $adresse2,
+                            'ville'             => $ville,
+                            'code_postal'       => $cp,
+                            'notif_annonces'    => $notif_ins,
+                            'show_email'        => $show_email,
+                            'show_tel_portable' => $show_tel_p,
+                            'show_tel_fixe'     => $show_tel_f,
+                            'show_adresse'      => $show_adr,
                         ) );
                     }
 
@@ -485,6 +498,48 @@ class Seliweb {
                                 <td><input type="text" name="code_postal" maxlength="10" value="<?php echo esc_attr($_POST['code_postal']??''); ?>" required></td>
                             </tr>
                             <tr>
+                                <td colspan="2" style="padding-top:14px;border-top:1px solid #e0e0e0;font-weight:600;color:#1d6a4a;font-size:13px;text-transform:uppercase;letter-spacing:.04em;text-align:left;white-space:normal;width:auto;">
+                                    <?php esc_html_e('Notifications','seliweb'); ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="padding:4px 0;text-align:left;white-space:normal;width:auto;">
+                                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                                        <input type="checkbox" name="notif_annonces" value="1" <?php checked(true); ?>>
+                                        <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
+                                    </label>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="padding-top:14px;border-top:1px solid #e0e0e0;font-weight:600;color:#1d6a4a;font-size:13px;text-transform:uppercase;letter-spacing:.04em;text-align:left;white-space:normal;width:auto;">
+                                    <?php esc_html_e('Confidentialité','seliweb'); ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="padding:4px 0;text-align:left;white-space:normal;width:auto;">
+                                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                                        <input type="checkbox" name="show_email" value="1" <?php checked(true); ?> style="margin-top:2px;">
+                                        <span><?php esc_html_e('Autoriser à montrer mon e-mail','seliweb'); ?>
+                                            <span class="sel-ins-hint"><?php esc_html_e('Si la case est décochée, vous recevrez quand même les mails qui vous sont destinés.','seliweb'); ?></span>
+                                        </span>
+                                    </label>
+                                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                                        <input type="checkbox" name="show_tel_portable" value="1" <?php checked(true); ?>>
+                                        <?php esc_html_e('Autoriser à montrer mon tél. portable','seliweb'); ?>
+                                    </label>
+                                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                                        <input type="checkbox" name="show_tel_fixe" value="1" <?php checked(true); ?>>
+                                        <?php esc_html_e('Autoriser à montrer mon tél. fixe','seliweb'); ?>
+                                    </label>
+                                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                                        <input type="checkbox" name="show_adresse" value="1" <?php checked(true); ?> style="margin-top:2px;">
+                                        <span><?php esc_html_e('Autoriser à montrer mon organisme','seliweb'); ?>
+                                            <span class="sel-ins-hint"><?php esc_html_e('Si la case est décochée, l\'organisme ne sera pas affiché.','seliweb'); ?></span>
+                                        </span>
+                                    </label>
+                                </td>
+                            </tr>
+                            <tr>
                                 <td></td>
                                 <td>
                                     <p style="font-size:.82rem;color:#888;margin:8px 0 14px;">
@@ -514,52 +569,9 @@ class Seliweb {
     }
 
 
-    public function maybe_add_annonces_body_class() {
-        global $post;
-        if ( $post && has_shortcode( $post->post_content, 'seliweb_annonces' ) ) {
-            add_filter( 'body_class', function( $classes ) {
-                $classes[] = 'seliweb-annonces-page';
-                return $classes;
-            } );
-        }
-    }
-
     // ----------------------------------------------------------------
-    // Shortcode [seliweb_annonces]
+    // Shortcode [seliweb_annonces] — supprimé, affichage délégué au thème
     // ----------------------------------------------------------------
-    public function shortcode_annonces( $atts ) {
-        if ( is_admin() || ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE ) ) {
-            return '<p><em>Annonces Seliweb</em></p>';
-        }
-        // Ne s'exécuter que sur la page qui contient réellement ce shortcode
-        global $post;
-        if ( $post && ! has_shortcode( $post->post_content, 'seliweb_annonces' ) ) {
-            return '';
-        }
-
-        $atts = shortcode_atts( array(
-            'categorie_id' => 0,
-            'rubrique_id'  => 0,
-            'type_annonce' => '',
-            'ville'        => '',
-            'limite'       => 10,
-        ), $atts, 'seliweb_annonces' );
-
-        // Utiliser get_query_var (enregistré via filter query_vars)
-        // pour que WP ne supprime pas ces paramètres
-        $filters = array(
-            'categorie_id' => get_query_var('categorie_id') ?: intval($atts['categorie_id']),
-            'rubrique_id'  => get_query_var('rubrique_id')  ?: intval($atts['rubrique_id']),
-            'type_annonce' => get_query_var('type_annonce') ?: sanitize_key($atts['type_annonce']),
-            'ville'        => get_query_var('ville')        ?: sanitize_text_field($atts['ville']),
-            'limite'       => intval($atts['limite']),
-        );
-
-        Seliweb_Annonces::check_expired();
-        ob_start();
-        include SELIWEB_DIR . 'templates/public-annonces.php';
-        return ob_get_clean();
-    }
 
     // ----------------------------------------------------------------
     // Shortcode [seliweb_mon_compte]
@@ -689,7 +701,7 @@ class Seliweb {
                 }
             }
 
-            // Mettre à jour display_name si nom/prénom renseignés
+            // Mettre à jour les champs WP : nom, prénom, display_name, organisme
             if ( $nom && $prenom ) {
                 wp_update_user( array(
                     'ID'           => $wp_user_id,
@@ -698,6 +710,7 @@ class Seliweb {
                     'display_name' => $prenom . ' ' . $nom,
                 ) );
             }
+            update_user_meta( $wp_user_id, 'seliweb_organisme', $organisme );
 
             // Mettre à jour le mot de passe si renseigné
             // On utilise wp_update_user() et non wp_set_password() qui déconnecte l'utilisateur
@@ -705,13 +718,9 @@ class Seliweb {
                 wp_update_user( array( 'ID' => $wp_user_id, 'user_pass' => $new_pwd ) );
             }
 
-            // Mettre à jour seliweb_membres
-            // Mettre à jour seliweb_membres avec tous les champs
+            // Mettre à jour seliweb_membres (champs SEL uniquement)
             $data_membre = array(
                 'civilite'       => $civilite,
-                'nom'            => $nom,
-                'prenom'         => $prenom,
-                'organisme'      => $organisme,
                 'tel_portable'   => $tel_port,
                 'tel_fixe'       => $tel_fixe,
                 'adresse1'       => $adresse1,
@@ -754,7 +763,41 @@ class Seliweb {
                 $wpdb->insert( $ti, $data_ins );
             }
 
+            // Photo de profil
+            if ( ! empty( $_FILES['seliweb_photo']['name'] ) && $_FILES['seliweb_photo']['error'] === UPLOAD_ERR_OK ) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                require_once ABSPATH . 'wp-admin/includes/media.php';
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+                $att_id = media_handle_upload( 'seliweb_photo', 0 );
+                if ( ! is_wp_error( $att_id ) ) {
+                    $old_id = (int) get_user_meta( $wp_user_id, 'seliweb_photo_id', true );
+                    if ( $old_id ) wp_delete_attachment( $old_id, true );
+                    update_user_meta( $wp_user_id, 'seliweb_photo_id', $att_id );
+                }
+            }
+            if ( isset( $_POST['delete_photo'] ) && (int) $_POST['delete_photo'] === 1 ) {
+                $old_id = (int) get_user_meta( $wp_user_id, 'seliweb_photo_id', true );
+                if ( $old_id ) wp_delete_attachment( $old_id, true );
+                delete_user_meta( $wp_user_id, 'seliweb_photo_id' );
+            }
+
             wp_safe_redirect( add_query_arg( array('sel_action'=>'profil','sel_saved_profil'=>'1'), get_permalink() ) );
+            exit;
+        }
+
+        // --- Préférences membre ---
+        if ( isset( $_POST['seliweb_nonce_prefs'] )
+             && wp_verify_nonce( $_POST['seliweb_nonce_prefs'], 'seliweb_prefs_' . $wp_user_id ) ) {
+
+            $wpdb->update( $tm, array(
+                'notif_annonces'   => isset( $_POST['notif_annonces'] )   ? 1 : 0,
+                'show_email'       => isset( $_POST['show_email'] )       ? 1 : 0,
+                'show_tel_portable'=> isset( $_POST['show_tel_portable'] ) ? 1 : 0,
+                'show_tel_fixe'    => isset( $_POST['show_tel_fixe'] )    ? 1 : 0,
+                'show_adresse'     => isset( $_POST['show_adresse'] )     ? 1 : 0,
+            ), array( 'wp_user_id' => $wp_user_id ) );
+
+            wp_safe_redirect( add_query_arg( array( 'sel_action' => 'prefs', 'sel_saved_prefs' => '1' ), get_permalink() ) );
             exit;
         }
 
@@ -860,23 +903,17 @@ class Seliweb {
             }
 
             $wpdb->delete($tap, array('annonce_id'=>$id_post));
-            // Filtrer les monnaies autorisées par le groupe avant la sauvegarde
+            // Filtrer les lignes de prix aux monnaies autorisées par le groupe
             $post_filtré = $_POST;
             if ($membre->groupe_id && !empty($monnaies_ok)) {
-                $montants_raw = (array)($post_filtré['prix_montant'] ?? array());
-                $monnaies_raw = (array)($post_filtré['prix_monnaie'] ?? array());
-                $coords_raw   = (array)($post_filtré['prix_coordination'] ?? array());
-                $m_ok = array(); $mo_ok = array(); $c_ok = array();
-                foreach ($monnaies_raw as $i => $mid) {
-                    if (in_array(intval($mid), array_map('intval', $monnaies_ok))) {
-                        $m_ok[]  = $montants_raw[$i] ?? '';
-                        $mo_ok[] = $mid;
-                        $c_ok[]  = $coords_raw[$i] ?? 'OU';
+                $monnaies_ok_int = array_map('intval', $monnaies_ok);
+                $prix_ok = array();
+                foreach ( (array)($post_filtré['prix'] ?? array()) as $line ) {
+                    if (in_array(intval($line['monnaie_id'] ?? 0), $monnaies_ok_int)) {
+                        $prix_ok[] = $line;
                     }
                 }
-                $post_filtré['prix_montant']     = $m_ok;
-                $post_filtré['prix_monnaie']     = $mo_ok;
-                $post_filtré['prix_coordination'] = $c_ok;
+                $post_filtré['prix'] = $prix_ok;
             }
             Seliweb_Annonces::save_prix_from_post($id_post, $post_filtré);
 
@@ -934,6 +971,17 @@ add_action( 'plugins_loaded', function() {
 // Flush rewrite rules à l'activation et désactivation
 register_activation_hook( __FILE__, function() {
     flush_rewrite_rules();
+} );
+
+// Migration unique : assigner le template de page aux installations existantes
+add_action( 'admin_init', function() {
+    if ( get_option( 'seliweb_migrated_annonces_template' ) ) return;
+    $page_ids = get_option( 'seliweb_page_ids', array() );
+    $pid = isset( $page_ids['seliweb_annonces'] ) ? intval( $page_ids['seliweb_annonces'] ) : 0;
+    if ( $pid > 0 ) {
+        update_post_meta( $pid, '_wp_page_template', 'template-annonces.php' );
+    }
+    update_option( 'seliweb_migrated_annonces_template', '1' );
 } );
 
 new Seliweb();

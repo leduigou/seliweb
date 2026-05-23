@@ -103,20 +103,23 @@ class Seliweb_Database {
         ) $charset;";
 
         $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_membres (
-            id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
-            wp_user_id     BIGINT UNSIGNED NOT NULL,
-            groupe_id      INT UNSIGNED DEFAULT NULL,
-            notif_annonces TINYINT(1)   NOT NULL DEFAULT 1,
-            civilite       ENUM('Mr','Mme') DEFAULT NULL,
-            nom            VARCHAR(100),
-            prenom         VARCHAR(100),
-            organisme      VARCHAR(200),
-            tel_portable   VARCHAR(30),
-            tel_fixe       VARCHAR(30),
-            adresse1       VARCHAR(255),
-            adresse2       VARCHAR(255),
-            ville          VARCHAR(100),
-            code_postal    VARCHAR(10),
+            id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wp_user_id       BIGINT UNSIGNED NOT NULL,
+            groupe_id        INT UNSIGNED DEFAULT NULL,
+            notif_annonces   TINYINT(1)   NOT NULL DEFAULT 1,
+            civilite         ENUM('Mr','Mme') DEFAULT NULL,
+            tel_portable     VARCHAR(30),
+            tel_fixe         VARCHAR(30),
+            adresse1         VARCHAR(255),
+            adresse2         VARCHAR(255),
+            ville            VARCHAR(100),
+            code_postal      VARCHAR(10),
+            show_email       TINYINT(1)   NOT NULL DEFAULT 1,
+            show_tel_portable TINYINT(1)  NOT NULL DEFAULT 1,
+            show_tel_fixe    TINYINT(1)   NOT NULL DEFAULT 1,
+            show_adresse     TINYINT(1)   NOT NULL DEFAULT 1,
+            numero_sel       INT UNSIGNED DEFAULT NULL,
+            decouvert_max    INT UNSIGNED DEFAULT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY wp_user_id (wp_user_id),
             KEY groupe_id (groupe_id)
@@ -170,6 +173,25 @@ class Seliweb_Database {
         // Créer la table inscriptions si absente (migration v1.2)
         self::maybe_create_inscriptions();
 
+        // Migration v0.6 : nom/prenom/organisme déplacés vers wp_usermeta
+        self::maybe_migrate_membres_v06();
+
+        // Migration v0.6 : ajout colonnes préférences de confidentialité
+        $tm = $wpdb->prefix . 'seliweb_membres';
+        self::maybe_add_column( $tm, 'show_email',        'TINYINT(1) NOT NULL DEFAULT 1 AFTER code_postal' );
+        self::maybe_add_column( $tm, 'show_tel_portable', 'TINYINT(1) NOT NULL DEFAULT 1 AFTER show_email' );
+        self::maybe_add_column( $tm, 'show_tel_fixe',     'TINYINT(1) NOT NULL DEFAULT 1 AFTER show_tel_portable' );
+        self::maybe_add_column( $tm, 'show_adresse',      'TINYINT(1) NOT NULL DEFAULT 1 AFTER show_tel_fixe' );
+
+        // Migration v0.6 : colonnes module SEL
+        self::maybe_add_column( $tm, 'numero_sel',    'INT UNSIGNED DEFAULT NULL AFTER show_adresse' );
+        self::maybe_add_column( $tm, 'decouvert_max', 'INT UNSIGNED DEFAULT NULL AFTER numero_sel' );
+        // Migration: decouvert_max de DECIMAL à INT UNSIGNED
+        $col_info = $wpdb->get_row( "SHOW COLUMNS FROM `$tm` LIKE 'decouvert_max'" );
+        if ( $col_info && strpos( strtolower( $col_info->Type ), 'decimal' ) !== false ) {
+            $wpdb->query( "ALTER TABLE `$tm` MODIFY COLUMN `decouvert_max` INT UNSIGNED DEFAULT NULL" );
+        }
+
         self::insert_defaults();
     }
 
@@ -182,6 +204,48 @@ class Seliweb_Database {
         if ( ! in_array( $column, $cols, true ) ) {
             $wpdb->query( "ALTER TABLE `$table` ADD COLUMN `$column` $definition" );
         }
+    }
+
+    /**
+     * Supprime une colonne si elle existe encore (migration safe)
+     */
+    private static function maybe_drop_column( $table, $column ) {
+        global $wpdb;
+        $cols = $wpdb->get_col( "DESCRIBE `$table`", 0 );
+        if ( in_array( $column, $cols, true ) ) {
+            $wpdb->query( "ALTER TABLE `$table` DROP COLUMN `$column`" );
+        }
+    }
+
+    /**
+     * Migration v0.6 : déplace nom/prenom/organisme de seliweb_membres vers wp_usermeta.
+     * Ne s'exécute que si la colonne nom existe encore.
+     */
+    private static function maybe_migrate_membres_v06() {
+        global $wpdb;
+        $tm   = $wpdb->prefix . 'seliweb_membres';
+        $cols = $wpdb->get_col( "DESCRIBE `$tm`", 0 );
+
+        if ( ! in_array( 'nom', $cols, true ) ) {
+            return; // Déjà migré
+        }
+
+        $membres = $wpdb->get_results( "SELECT wp_user_id, nom, prenom, organisme FROM `$tm`" );
+        foreach ( $membres as $m ) {
+            if ( $m->prenom )    update_user_meta( $m->wp_user_id, 'first_name',          $m->prenom );
+            if ( $m->nom )       update_user_meta( $m->wp_user_id, 'last_name',           $m->nom );
+            if ( $m->organisme ) update_user_meta( $m->wp_user_id, 'seliweb_organisme',   $m->organisme );
+            if ( $m->nom && $m->prenom ) {
+                wp_update_user( array(
+                    'ID'           => $m->wp_user_id,
+                    'display_name' => $m->prenom . ' ' . $m->nom,
+                ) );
+            }
+        }
+
+        self::maybe_drop_column( $tm, 'nom' );
+        self::maybe_drop_column( $tm, 'prenom' );
+        self::maybe_drop_column( $tm, 'organisme' );
     }
 
     private static function insert_defaults() {
@@ -293,24 +357,29 @@ class Seliweb_Database {
         // ---- Pages à créer ----
         $pages = array(
             array(
-                'title'     => __( 'Annonces', 'seliweb' ),
-                'shortcode' => 'seliweb_annonces',
-                'slug'      => 'annonces-sel',
+                'title'    => __( 'Annonces', 'seliweb' ),
+                'key'      => 'seliweb_annonces',
+                'slug'     => 'annonces-sel',
+                'content'  => '',
+                'template' => 'template-annonces.php',
             ),
             array(
-                'title'     => __( 'Connexion', 'seliweb' ),
-                'shortcode' => 'seliweb_login',
-                'slug'      => 'connexion-sel',
+                'title'   => __( 'Connexion', 'seliweb' ),
+                'key'     => 'seliweb_login',
+                'slug'    => 'connexion-sel',
+                'content' => '[seliweb_login]',
             ),
             array(
-                'title'     => __( "S'inscrire", 'seliweb' ),
-                'shortcode' => 'seliweb_inscription',
-                'slug'      => 'inscription-sel',
+                'title'   => __( "S'inscrire", 'seliweb' ),
+                'key'     => 'seliweb_inscription',
+                'slug'    => 'inscription-sel',
+                'content' => '[seliweb_inscription]',
             ),
             array(
-                'title'     => __( 'Mon compte', 'seliweb' ),
-                'shortcode' => 'seliweb_mon_compte',
-                'slug'      => 'mon-compte-sel',
+                'title'   => __( 'Mon compte', 'seliweb' ),
+                'key'     => 'seliweb_mon_compte',
+                'slug'    => 'mon-compte-sel',
+                'content' => '[seliweb_mon_compte]',
             ),
         );
 
@@ -319,18 +388,24 @@ class Seliweb_Database {
             // Ne créer la page que si elle n'existe pas déjà
             $existing = get_page_by_path( $page['slug'] );
             if ( $existing ) {
-                $page_ids[ $page['shortcode'] ] = $existing->ID;
+                $page_ids[ $page['key'] ] = $existing->ID;
+                if ( ! empty( $page['template'] ) ) {
+                    update_post_meta( $existing->ID, '_wp_page_template', $page['template'] );
+                }
                 continue;
             }
             $id = wp_insert_post( array(
                 'post_title'   => $page['title'],
-                'post_content' => '[' . $page['shortcode'] . ']',
+                'post_content' => $page['content'],
                 'post_status'  => 'publish',
                 'post_type'    => 'page',
                 'post_name'    => $page['slug'],
             ) );
-            if ( ! is_wp_error($id) ) {
-                $page_ids[ $page['shortcode'] ] = $id;
+            if ( ! is_wp_error( $id ) ) {
+                $page_ids[ $page['key'] ] = $id;
+                if ( ! empty( $page['template'] ) ) {
+                    update_post_meta( $id, '_wp_page_template', $page['template'] );
+                }
             }
         }
 

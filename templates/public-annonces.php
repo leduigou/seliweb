@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // $filters injecté par le shortcode
 $filters      = isset( $filters ) ? $filters : array();
-$par_page     = isset( $filters['limite'] ) && $filters['limite'] > 0 ? intval( $filters['limite'] ) : 10;
+$par_page     = isset( $filters['limite'] ) && $filters['limite'] > 0 ? intval( $filters['limite'] ) : 12;
 $page_courante = isset( $_GET['sel_page'] ) && $_GET['sel_page'] ? max( 1, intval( $_GET['sel_page'] ) ) : 1;
 $offset        = ( $page_courante - 1 ) * $par_page;
 
@@ -234,8 +234,8 @@ function seliweb_paginate_url( $base, $num ) {
                             <span class="seliweb-don"><?php esc_html_e( 'Don', 'seliweb' ); ?></span>
                         <?php elseif ( ! empty( $prix ) ) : ?>
                             <?php foreach ( $prix as $idx_p => $p ) : ?>
-                                <?php if ( $idx_p > 0 && $p->coordination ) : ?>
-                                    <span class="seliweb-prix-coord"><?php echo esc_html($p->coordination); ?></span>
+                                <?php if ( $idx_p > 0 ) : ?>
+                                    <span class="seliweb-prix-coord"><?php echo esc_html( $p->coordination ?: 'OU' ); ?></span>
                                 <?php endif; ?>
                                 <span class="seliweb-prix-item">
                                     <?php echo esc_html( $p->prix . ' ' . ( $p->symbole ?: $p->nom ) ); ?>
@@ -306,7 +306,8 @@ function seliweb_paginate_url( $base, $num ) {
         $tc2  = $wpdb->prefix . 'seliweb_categories';
         $tr2  = $wpdb->prefix . 'seliweb_rubriques';
         $ts   = $wpdb->prefix . 'seliweb_statuts';
-        $tm_m = $wpdb->prefix . 'seliweb_membres';
+        $tm_m  = $wpdb->prefix . 'seliweb_membres';
+        $tp_sel = $wpdb->prefix . 'seliweb_parametres';
 
         $detail = $wpdb->get_row( $wpdb->prepare(
             "SELECT a.* FROM $ta a WHERE a.id = %d",
@@ -328,14 +329,33 @@ function seliweb_paginate_url( $base, $num ) {
                 intval( $detail->statut_id )
             ) );
             $membre = $wpdb->get_row( $wpdb->prepare(
-                "SELECT telephone, adresse, ville FROM $tm_m WHERE id = %d",
+                "SELECT tel_portable, tel_fixe, adresse1, adresse2, ville, code_postal,
+                        show_email, show_tel_portable, show_tel_fixe, show_adresse,
+                        groupe_id, numero_sel, wp_user_id
+                 FROM $tm_m WHERE id = %d",
                 intval( $detail->membre_id )
             ) );
             if ( $membre ) {
-                $detail->telephone = $membre->telephone;
-                $detail->adresse = $membre->adresse;
-                $detail->ville = $membre->ville;
+                $detail->tel_portable      = $membre->tel_portable;
+                $detail->tel_fixe          = $membre->tel_fixe;
+                $detail->adresse1          = $membre->adresse1;
+                $detail->adresse2          = $membre->adresse2;
+                $detail->ville             = $membre->ville;
+                $detail->code_postal       = $membre->code_postal;
+                $detail->show_email        = (int) $membre->show_email;
+                $detail->show_tel_portable = (int) $membre->show_tel_portable;
+                $detail->show_tel_fixe     = (int) $membre->show_tel_fixe;
+                $detail->show_adresse      = (int) $membre->show_adresse;
+                $detail->groupe_id         = (int) $membre->groupe_id;
+                $detail->numero_sel        = $membre->numero_sel;
+                $uid = (int) $membre->wp_user_id;
+                $detail->prenom    = get_user_meta( $uid, 'first_name',        true );
+                $detail->nom       = get_user_meta( $uid, 'last_name',         true );
+                $detail->organisme = get_user_meta( $uid, 'seliweb_organisme', true );
             }
+            $sel_actif        = (bool) $wpdb->get_var( "SELECT valeur FROM $tp_sel WHERE cle='sel_actif' LIMIT 1" );
+            $sel_gid          = (int)  $wpdb->get_var( "SELECT valeur FROM $tp_sel WHERE cle='sel_groupe_id' LIMIT 1" );
+            $is_sel_annonceur = $membre && $sel_actif && $sel_gid > 0 && isset( $detail->groupe_id ) && $detail->groupe_id === $sel_gid;
             $detail->user_email = $wpdb->get_var( $wpdb->prepare(
                 "SELECT user_email FROM {$wpdb->users} WHERE ID = (SELECT wp_user_id FROM $tm_m WHERE id = %d)",
                 intval( $detail->membre_id )
@@ -397,8 +417,8 @@ function seliweb_paginate_url( $base, $num ) {
             <?php if ( ! empty( $prix_detail ) && ! $detail->est_don ) : ?>
             <div class="seliweb-prix" style="margin-bottom:16px;">
                 <?php foreach ( $prix_detail as $idx_pd => $p ) : ?>
-                    <?php if ( $idx_pd > 0 && $p->coordination ) : ?>
-                        <span class="seliweb-prix-coord"><?php echo esc_html($p->coordination); ?></span>
+                    <?php if ( $idx_pd > 0 ) : ?>
+                        <span class="seliweb-prix-coord"><?php echo esc_html( $p->coordination ?: 'OU' ); ?></span>
                     <?php endif; ?>
                     <span class="seliweb-prix-item">
                         <?php echo esc_html( $p->prix . ' ' . ( $p->symbole ?: $p->nom ) ); ?>
@@ -411,6 +431,12 @@ function seliweb_paginate_url( $base, $num ) {
 
             <div class="seliweb-detail-contact">
                 <h4><?php esc_html_e( 'Contacter l\'annonceur', 'seliweb' ); ?></h4>
+
+                <?php if ( $membre && ( $detail->code_postal || $detail->ville ) ) : ?>
+                    <p><?php esc_html_e( 'Localisation :', 'seliweb' ); ?>
+                        <?php echo esc_html( trim( $detail->code_postal . ' ' . $detail->ville ) ); ?>
+                    </p>
+                <?php endif; ?>
 
                 <?php if ( ! is_user_logged_in() ) : ?>
                     <p><em>
@@ -425,12 +451,11 @@ function seliweb_paginate_url( $base, $num ) {
 
                 <?php else : ?>
 
-                    <?php if ( $groupe_visiteur->contact_mail_cache ) : ?>
-                        <?php if ( isset( $_GET['seliweb_message_envoye'] ) ) : ?>
-                            <div class="seliweb-notice seliweb-notice-ok">
-                                <?php esc_html_e( 'Message envoyé !', 'seliweb' ); ?>
-                            </div>
-                        <?php else : ?>
+                    <?php if ( isset( $_GET['seliweb_message_envoye'] ) ) : ?>
+                        <div class="seliweb-notice seliweb-notice-ok">
+                            <?php esc_html_e( 'Message envoyé !', 'seliweb' ); ?>
+                        </div>
+                    <?php else : ?>
                         <form method="post" action="<?php echo esc_url( $page_url ); ?>"
                               class="seliweb-form-contact">
                             <?php wp_nonce_field( 'seliweb_contact_' . $annonce_id, 'seliweb_contact_nonce' ); ?>
@@ -442,10 +467,33 @@ function seliweb_paginate_url( $base, $num ) {
                                 <?php esc_html_e( 'Envoyer un message', 'seliweb' ); ?>
                             </button>
                         </form>
-                        <?php endif; ?>
                     <?php endif; ?>
 
-                    <?php if ( $groupe_visiteur->contact_mail_visible && $detail->user_email ) : ?>
+                    <?php if ( $is_sel_annonceur ) : ?>
+
+                        <?php if ( $detail->prenom || $detail->nom ) : ?>
+                            <p><?php esc_html_e( 'Annonceur :', 'seliweb' ); ?>
+                                <?php echo esc_html( trim( $detail->prenom . ' ' . $detail->nom ) ); ?>
+                            </p>
+                        <?php endif; ?>
+
+                        <?php if ( $detail->numero_sel ) : ?>
+                            <p><?php esc_html_e( 'N° adhérent :', 'seliweb' ); ?>
+                                <?php echo esc_html( $detail->numero_sel ); ?>
+                            </p>
+                        <?php endif; ?>
+
+                    <?php else : ?>
+
+                        <?php if ( ! empty( $detail->show_adresse ) && ! empty( $detail->organisme ) ) : ?>
+                            <p><?php esc_html_e( 'Organisme :', 'seliweb' ); ?>
+                                <?php echo esc_html( $detail->organisme ); ?>
+                            </p>
+                        <?php endif; ?>
+
+                    <?php endif; ?>
+
+                    <?php if ( ! empty( $detail->show_email ) && $detail->user_email ) : ?>
                         <p><?php esc_html_e( 'Email :', 'seliweb' ); ?>
                             <a href="mailto:<?php echo esc_attr( $detail->user_email ); ?>">
                                 <?php echo esc_html( $detail->user_email ); ?>
@@ -453,16 +501,15 @@ function seliweb_paginate_url( $base, $num ) {
                         </p>
                     <?php endif; ?>
 
-                    <?php if ( $groupe_visiteur->contact_tel && $detail->telephone ) : ?>
-                        <p><?php esc_html_e( 'Téléphone :', 'seliweb' ); ?>
-                            <?php echo esc_html( $detail->telephone ); ?>
+                    <?php if ( ! empty( $detail->show_tel_portable ) && ! empty( $detail->tel_portable ) ) : ?>
+                        <p><?php esc_html_e( 'Tél. portable :', 'seliweb' ); ?>
+                            <?php echo esc_html( $detail->tel_portable ); ?>
                         </p>
                     <?php endif; ?>
 
-                    <?php if ( $groupe_visiteur->contact_adresse && $detail->adresse ) : ?>
-                        <p><?php esc_html_e( 'Adresse :', 'seliweb' ); ?>
-                            <?php echo esc_html( $detail->adresse );
-                                  echo $detail->ville ? ' — ' . esc_html( $detail->ville ) : ''; ?>
+                    <?php if ( ! empty( $detail->show_tel_fixe ) && ! empty( $detail->tel_fixe ) ) : ?>
+                        <p><?php esc_html_e( 'Tél. fixe :', 'seliweb' ); ?>
+                            <?php echo esc_html( $detail->tel_fixe ); ?>
                         </p>
                     <?php endif; ?>
 
@@ -474,7 +521,7 @@ function seliweb_paginate_url( $base, $num ) {
             <p class="seliweb-empty">
                 <?php esc_html_e( 'Annonce introuvable ou expirée.', 'seliweb' ); ?>
             </p>
-            <p>Debug: detail=<?php echo $detail ? 'oui' : 'non'; ?>, statut_slug=<?php echo esc_html($detail->statut_slug ?? 'null'); ?>, detail_ok=<?php echo $detail_ok ? 'oui' : 'non'; ?></p>
+
         <?php endif; ?>
     <?php endif; ?>
 

@@ -217,25 +217,22 @@ class Seliweb_Annonces {
     }
 
     // ----------------------------------------------------------------
-    // Sauvegarde des prix (tableaux parallèles prix_montant[] / prix_monnaie[])
+    // Sauvegarde des prix — structure groupée prix[N][montant|monnaie_id|coordination]
     // ----------------------------------------------------------------
     public static function save_prix_from_post( $annonce_id, $post ) {
         global $wpdb;
         $tap = $wpdb->prefix . 'seliweb_annonces_prix';
-        if ( empty( $post['prix_montant'] ) ) return;
+        if ( empty( $post['prix'] ) ) return;
 
         // Vérifier si la colonne coordination existe (migration progressive)
         $cols      = $wpdb->get_col( "DESCRIBE $tap", 0 );
         $has_coord = in_array( 'coordination', $cols, true );
 
-        $montants      = (array) $post['prix_montant'];
-        $monnaies      = (array) ( $post['prix_monnaie']     ?? array() );
-        $coordinations = (array) ( $post['prix_coordination'] ?? array() );
-        $used          = array();
-        $first         = true;
-        foreach ( $montants as $i => $montant ) {
-            $montant    = sanitize_text_field( wp_unslash( $montant ) );
-            $monnaie_id = intval( $monnaies[ $i ] ?? 0 );
+        $used  = array();
+        $first = true;
+        foreach ( (array) $post['prix'] as $line ) {
+            $montant    = sanitize_text_field( wp_unslash( $line['montant'] ?? '' ) );
+            $monnaie_id = intval( $line['monnaie_id'] ?? 0 );
             if ( $montant === '' || $monnaie_id === 0 ) continue;
             if ( in_array( $monnaie_id, $used ) ) continue;
             $used[] = $monnaie_id;
@@ -246,10 +243,9 @@ class Seliweb_Annonces {
                 'prix'       => $montant,
             );
 
-            // N'ajouter coordination que si la colonne existe
             if ( $has_coord && ! $first ) {
-                $coord_raw    = strtoupper( sanitize_text_field( $coordinations[ $i ] ?? 'OU' ) );
-                $row['coordination'] = in_array( $coord_raw, array('ET','OU') ) ? $coord_raw : 'OU';
+                $coord_raw           = strtoupper( sanitize_text_field( $line['coordination'] ?? 'OU' ) );
+                $row['coordination'] = in_array( $coord_raw, array( 'ET', 'OU' ) ) ? $coord_raw : 'OU';
             }
 
             $wpdb->insert( $tap, $row );
@@ -496,7 +492,7 @@ class Seliweb_Annonces {
         // Lignes de prix à afficher : existantes ou 1 ligne vide
         $prix_lignes = ! empty( $prix_map ) ? $prix_map : array( '' => '' );
         ?>
-        <form method="post" enctype="multipart/form-data" style="max-width:750px;">
+        <form id="seliweb-admin-form-annonce" method="post" enctype="multipart/form-data" style="max-width:750px;">
             <?php wp_nonce_field( 'seliweb_annonces', 'seliweb_nonce' ); ?>
             <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_annonce' : 'add_annonce'; ?>">
             <?php if ( $item ) : ?><input type="hidden" name="id" value="<?php echo intval( $item->id ); ?>"><?php endif; ?>
@@ -616,8 +612,6 @@ class Seliweb_Annonces {
                     <td>
                         <div id="adm_prix_container">
                             <?php
-                            $adm_is_first = true;
-                            // Récupérer les coordinations existantes
                             $coord_map = array();
                             if ( $id ) {
                                 foreach ( $wpdb->get_results( $wpdb->prepare(
@@ -626,21 +620,24 @@ class Seliweb_Annonces {
                                     $coord_map[ $pc->monnaie_id ] = $pc->coordination;
                                 }
                             }
+                            $adm_n = 0;
                             foreach ( $prix_lignes as $mon_id => $montant ) :
                                 $coord_val = $coord_map[ $mon_id ] ?? 'OU';
                             ?>
                             <div class="seliweb-prix-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                                <!-- Sélecteur ET/OU : masqué sur la 1ère ligne, visible sur les suivantes -->
-                                <select name="prix_coordination[]"
-                                        style="<?php echo $adm_is_first ? 'visibility:hidden;width:60px;' : 'width:60px;'; ?>">
-                                    <option value="OU" <?php selected($coord_val,'OU'); ?>>OU</option>
-                                    <option value="ET" <?php selected($coord_val,'ET'); ?>>ET</option>
-                                </select>
-                                <input type="text" name="prix_montant[]"
+                                <?php if ( $adm_n === 0 ) : ?>
+                                    <span style="display:inline-block;width:60px;"></span>
+                                <?php else : ?>
+                                    <select name="prix[<?php echo $adm_n; ?>][coordination]" style="width:60px;">
+                                        <option value="OU" <?php selected($coord_val,'OU'); ?>>OU</option>
+                                        <option value="ET" <?php selected($coord_val,'ET'); ?>>ET</option>
+                                    </select>
+                                <?php endif; ?>
+                                <input type="text" name="prix[<?php echo $adm_n; ?>][montant]"
                                        value="<?php echo esc_attr( $montant ); ?>"
                                        maxlength="10" style="width:100px;"
                                        placeholder="<?php esc_attr_e( 'Montant', 'seliweb' ); ?>">
-                                <select name="prix_monnaie[]" class="adm-prix-select">
+                                <select name="prix[<?php echo $adm_n; ?>][monnaie_id]" class="adm-prix-select">
                                     <option value=""><?php esc_html_e( '— Monnaie —', 'seliweb' ); ?></option>
                                     <?php foreach ( $monnaies as $mon ) : ?>
                                         <option value="<?php echo intval( $mon->id ); ?>"
@@ -652,7 +649,7 @@ class Seliweb_Annonces {
                                 <button type="button" class="button" onclick="this.closest('.seliweb-prix-row').remove()"
                                         title="<?php esc_attr_e( 'Supprimer', 'seliweb' ); ?>">✕</button>
                             </div>
-                            <?php $adm_is_first = false; endforeach; ?>
+                            <?php $adm_n++; endforeach; ?>
                         </div>
                         <button type="button" class="button" onclick="selAdmAddPrix()">
                             <?php esc_html_e( '+ Ajouter une monnaie', 'seliweb' ); ?>
@@ -698,6 +695,7 @@ class Seliweb_Annonces {
         var selAdmMonnaies = <?php echo wp_json_encode( array_map( function($m) {
             return array( 'id' => $m->id, 'label' => $m->nom . ( $m->symbole ? ' (' . $m->symbole . ')' : '' ) );
         }, $monnaies ) ); ?>;
+        var prixAdmNextIdx = <?php echo count( $prix_lignes ); ?>;
 
         // Données par membre : monnaies autorisées, limite, nb annonces
         var selAdmMembresData = <?php echo wp_json_encode($membres_data); ?>;
@@ -706,11 +704,15 @@ class Seliweb_Annonces {
         var selAdmMonnaiesById = {};
         selAdmMonnaies.forEach(function(m){ selAdmMonnaiesById[m.id] = m; });
 
+        // Monnaies actuellement autorisées (filtrées selon le groupe du membre sélectionné)
+        var selAdmMonnaiesFiltrees = selAdmMonnaies.slice();
+
         function selAdmChangeMembre(membreId) {
             var info = document.getElementById('adm_membre_info');
             if (!membreId || !selAdmMembresData[membreId]) {
                 info.textContent = '';
-                selAdmResetPrix(selAdmMonnaies); // toutes monnaies si pas de membre
+                selAdmMonnaiesFiltrees = selAdmMonnaies;
+            selAdmResetPrix(selAdmMonnaies); // toutes monnaies si pas de membre
                 return;
             }
             var d = selAdmMembresData[membreId];
@@ -730,6 +732,7 @@ class Seliweb_Annonces {
             var monnaiesAutorisees = d.monnaies.length > 0
                 ? selAdmMonnaies.filter(function(m){ return d.monnaies.indexOf(String(m.id)) !== -1 || d.monnaies.indexOf(m.id) !== -1; })
                 : selAdmMonnaies;
+            selAdmMonnaiesFiltrees = monnaiesAutorisees;
             selAdmResetPrix(monnaiesAutorisees);
         }
 
@@ -784,22 +787,22 @@ class Seliweb_Annonces {
         }
         function selAdmAddPrix() {
             var usedIds = selAdmUsedIds();
-            var available = selAdmMonnaies.filter(function(m){ return usedIds.indexOf(String(m.id)) === -1; });
+            var available = selAdmMonnaiesFiltrees.filter(function(m){ return usedIds.indexOf(String(m.id)) === -1; });
             if (available.length === 0) {
                 alert(<?php echo wp_json_encode( __( 'Toutes les monnaies sont déjà utilisées.', 'seliweb' ) ); ?>);
                 return;
             }
+            var idx = prixAdmNextIdx++;
             var opts = '<option value=""><?php esc_attr_e('— Monnaie —','seliweb'); ?></option>';
-            selAdmMonnaies.forEach(function(m){ opts += '<option value="'+m.id+'">'+m.label+'</option>'; });
+            selAdmMonnaiesFiltrees.forEach(function(m){ opts += '<option value="'+m.id+'">'+m.label+'</option>'; });
             var row = document.createElement('div');
             row.className = 'seliweb-prix-row';
             row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
-            row.innerHTML = '<select name="prix_coordination[]" style="width:60px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
-                          + '<input type="text" name="prix_montant[]" maxlength="10" style="width:100px;" placeholder="Montant">'
-                          + '<select name="prix_monnaie[]" class="adm-prix-select">'+opts+'</select>'
+            row.innerHTML = '<select name="prix['+idx+'][coordination]" style="width:60px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
+                          + '<input type="text" name="prix['+idx+'][montant]" maxlength="10" style="width:100px;" placeholder="Montant">'
+                          + '<select name="prix['+idx+'][monnaie_id]" class="adm-prix-select">'+opts+'</select>'
                           + '<button type="button" class="button" onclick="this.closest(\'.seliweb-prix-row\').remove()">✕</button>';
             document.getElementById('adm_prix_container').appendChild(row);
-            // Vérif doublon
             row.querySelector('.adm-prix-select').addEventListener('change', function(){
                 var used = selAdmUsedIds();
                 var dups = used.filter(function(id,i){ return used.indexOf(id) !== i; });
@@ -856,10 +859,15 @@ class Seliweb_Annonces {
 
     public static function get_prix( $annonce_id ) {
         global $wpdb;
+        $annonce_id = intval( $annonce_id );
+        if ( $annonce_id <= 0 ) return array();
 
-        // Vérifier si la colonne coordination existe (migration progressive)
-        $cols = $wpdb->get_col( "DESCRIBE {$wpdb->prefix}seliweb_annonces_prix", 0 );
-        $has_coord = in_array( 'coordination', $cols, true );
+        // Vérifier si la colonne coordination existe (migration progressive) — mis en cache statique
+        static $has_coord = null;
+        if ( $has_coord === null ) {
+            $cols      = $wpdb->get_col( "DESCRIBE {$wpdb->prefix}seliweb_annonces_prix", 0 );
+            $has_coord = in_array( 'coordination', $cols, true );
+        }
 
         $select = $has_coord
             ? "SELECT p.prix, p.coordination, m.nom, m.symbole"

@@ -37,6 +37,19 @@ if ( ! $membre ) {
     $membre = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tm WHERE wp_user_id=%d", $wp_user_id ) );
 }
 
+// Données WP du membre (nom, prénom, organisme gérés par WordPress)
+$_wp_user_data     = get_userdata( $wp_user_id );
+$membre_prenom     = $_wp_user_data ? (string) $_wp_user_data->first_name : '';
+$membre_nom        = $_wp_user_data ? (string) $_wp_user_data->last_name  : '';
+$membre_organisme  = (string) get_user_meta( $wp_user_id, 'seliweb_organisme', true );
+$membre_photo_id   = (int) get_user_meta( $wp_user_id, 'seliweb_photo_id', true );
+
+// Paramètres SEL (utilisés dans plusieurs onglets)
+$tp_sel        = $wpdb->prefix . 'seliweb_parametres';
+$sel_actif     = (bool) $wpdb->get_var( "SELECT valeur FROM $tp_sel WHERE cle='sel_actif' LIMIT 1" );
+$sel_gid       = (int)  $wpdb->get_var( "SELECT valeur FROM $tp_sel WHERE cle='sel_groupe_id' LIMIT 1" );
+$is_sel_membre = $sel_actif && $sel_gid > 0 && (int) $membre->groupe_id === $sel_gid;
+
 // Monnaies autorisées par le groupe
 $monnaies_dispo = array();
 if ( $membre->groupe_id ) {
@@ -101,6 +114,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         </div>
     <?php endif; ?>
 
+    <?php if ( isset( $_GET['sel_saved_prefs'] ) ) : ?>
+        <div class="seliweb-notice seliweb-notice-ok"><?php esc_html_e( 'Préférences enregistrées.', 'seliweb' ); ?></div>
+    <?php endif; ?>
+
     <!-- Onglets -->
     <div class="seliweb-compte-tabs">
         <a href="<?php echo esc_url( $page_url ); ?>"
@@ -111,6 +128,16 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
            class="seliweb-tab <?php echo $action==='profil' ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Mon profil', 'seliweb' ); ?>
         </a>
+        <a href="<?php echo esc_url( add_query_arg('sel_action','prefs',$page_url) ); ?>"
+           class="seliweb-tab <?php echo $action==='prefs' ? 'seliweb-tab-active' : ''; ?>">
+            <?php esc_html_e( 'Préférences', 'seliweb' ); ?>
+        </a>
+        <?php if ( $is_sel_membre ) : ?>
+        <a href="<?php echo esc_url( add_query_arg('sel_action','transactions',$page_url) ); ?>"
+           class="seliweb-tab <?php echo $action==='transactions' ? 'seliweb-tab-active' : ''; ?>">
+            <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
+        </a>
+        <?php endif; ?>
     </div>
 
     <?php if ( in_array( $action, array( 'liste', 'creer', 'modifier' ) ) ) : ?>
@@ -236,32 +263,31 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                            value="<?php echo $is_modif ? esc_attr($edit_annonce->titre) : ''; ?>" required>
                 </div>
 
-                <div class="seliweb-field-row">
-                    <div class="seliweb-field">
-                        <label><?php esc_html_e('Catégorie','seliweb'); ?> *</label>
-                        <select name="categorie_id" class="seliweb-select" required
-                                onchange="selMCRub(this.value); selMCType(this.value)">
-                            <option value=""><?php esc_html_e('— Choisir —','seliweb'); ?></option>
-                            <?php foreach ($categories as $cat) : ?>
-                                <option value="<?php echo intval($cat->id); ?>"
-                                        data-slug="<?php echo esc_attr($cat->slug); ?>"
-                                        <?php selected($is_modif ? $edit_annonce->categorie_id : 0, $cat->id); ?>>
-                                    <?php echo esc_html($cat->nom); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="seliweb-field" id="mc_field_type"
-                         style="<?php echo ($is_modif && $edit_annonce->type_annonce) ? '' : 'display:none'; ?>">
-                        <label><?php esc_html_e('Type','seliweb'); ?></label>
-                        <div class="seliweb-radio-group">
-                            <label><input type="radio" name="type_annonce" value="offre"
-                                          <?php checked($is_modif ? $edit_annonce->type_annonce : '', 'offre'); ?>>
-                                <?php esc_html_e('Offre','seliweb'); ?></label>
-                            <label><input type="radio" name="type_annonce" value="demande"
-                                          <?php checked($is_modif ? $edit_annonce->type_annonce : '', 'demande'); ?>>
-                                <?php esc_html_e('Demande','seliweb'); ?></label>
-                        </div>
+                <div class="seliweb-field">
+                    <label><?php esc_html_e('Catégorie','seliweb'); ?> *</label>
+                    <select name="categorie_id" class="seliweb-select" required
+                            onchange="selMCRub(this.value); selMCType(this.value)">
+                        <option value=""><?php esc_html_e('— Choisir —','seliweb'); ?></option>
+                        <?php foreach ($categories as $cat) : ?>
+                            <option value="<?php echo intval($cat->id); ?>"
+                                    data-slug="<?php echo esc_attr($cat->slug); ?>"
+                                    <?php selected($is_modif ? $edit_annonce->categorie_id : 0, $cat->id); ?>>
+                                <?php echo esc_html($cat->nom); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="seliweb-field" id="mc_field_type"
+                     style="<?php echo ($is_modif && $edit_annonce->type_annonce) ? '' : 'display:none'; ?>">
+                    <label><?php esc_html_e('Type','seliweb'); ?></label>
+                    <div class="seliweb-radio-group">
+                        <label><input type="radio" name="type_annonce" value="offre"
+                                      <?php checked($is_modif ? $edit_annonce->type_annonce : '', 'offre'); ?>>
+                            <?php esc_html_e('Offre','seliweb'); ?></label>
+                        <label><input type="radio" name="type_annonce" value="demande"
+                                      <?php checked($is_modif ? $edit_annonce->type_annonce : '', 'demande'); ?>>
+                            <?php esc_html_e('Demande','seliweb'); ?></label>
                     </div>
                 </div>
 
@@ -286,24 +312,23 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                     <span class="seliweb-counter" id="mc_counter"></span>
                 </div>
 
-                <div class="seliweb-field-row">
-                    <div class="seliweb-field">
-                        <label><?php esc_html_e('Statut','seliweb'); ?></label>
-                        <select name="statut_id" class="seliweb-select">
-                            <option value=""><?php esc_html_e('— Aucun —','seliweb'); ?></option>
-                            <?php foreach ($statuts as $st) : ?>
-                                <option value="<?php echo intval($st->id); ?>"
-                                        <?php selected($is_modif ? $edit_annonce->statut_id : 0, $st->id); ?>>
-                                    <?php echo esc_html($st->nom); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="seliweb-field">
-                        <label><?php esc_html_e("Date d'expiration",'seliweb'); ?></label>
-                        <input type="date" name="date_expiration" class="seliweb-input"
-                               value="<?php echo $is_modif ? esc_attr($edit_annonce->date_expiration) : ''; ?>">
-                    </div>
+                <div class="seliweb-field">
+                    <label><?php esc_html_e('Statut','seliweb'); ?></label>
+                    <select name="statut_id" class="seliweb-select">
+                        <option value=""><?php esc_html_e('— Aucun —','seliweb'); ?></option>
+                        <?php foreach ($statuts as $st) : ?>
+                            <option value="<?php echo intval($st->id); ?>"
+                                    <?php selected($is_modif ? $edit_annonce->statut_id : 0, $st->id); ?>>
+                                <?php echo esc_html($st->nom); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="seliweb-field">
+                    <label><?php esc_html_e("Date d'expiration",'seliweb'); ?></label>
+                    <input type="date" name="date_expiration" class="seliweb-input"
+                           value="<?php echo $is_modif ? esc_attr($edit_annonce->date_expiration) : ''; ?>">
                 </div>
 
                 <!-- Don -->
@@ -322,7 +347,6 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                     <label><?php esc_html_e('Prix','seliweb'); ?></label>
                     <div id="mc_prix_container">
                         <?php
-                        $mc_is_first = true;
                         $mc_coord_map = array();
                         if ( $is_modif && $annonce_id ) {
                             foreach ( $wpdb->get_results( $wpdb->prepare(
@@ -331,21 +355,24 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                                 $mc_coord_map[$pc->monnaie_id] = $pc->coordination;
                             }
                         }
+                        $mc_n = 0;
                         foreach ($prix_lignes as $mon_id => $montant) :
                             $mc_coord = $mc_coord_map[$mon_id] ?? 'OU';
                         ?>
                         <div class="seliweb-prix-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                            <!-- ET/OU : masqué sur la 1ère ligne -->
-                            <select name="prix_coordination[]"
-                                    style="width:65px;<?php echo $mc_is_first ? 'visibility:hidden;' : ''; ?>">
-                                <option value="OU" <?php selected($mc_coord,'OU'); ?>>OU</option>
-                                <option value="ET" <?php selected($mc_coord,'ET'); ?>>ET</option>
-                            </select>
-                            <input type="text" name="prix_montant[]"
+                            <?php if ( $mc_n === 0 ) : ?>
+                                <span style="display:inline-block;width:65px;"></span>
+                            <?php else : ?>
+                                <select name="prix[<?php echo $mc_n; ?>][coordination]" style="width:65px;">
+                                    <option value="OU" <?php selected($mc_coord,'OU'); ?>>OU</option>
+                                    <option value="ET" <?php selected($mc_coord,'ET'); ?>>ET</option>
+                                </select>
+                            <?php endif; ?>
+                            <input type="text" name="prix[<?php echo $mc_n; ?>][montant]"
                                    value="<?php echo esc_attr($montant); ?>"
                                    maxlength="10" class="seliweb-input seliweb-prix-input"
                                    placeholder="<?php esc_attr_e('Montant','seliweb'); ?>">
-                            <select name="prix_monnaie[]" class="seliweb-select mc-prix-select" style="max-width:200px;">
+                            <select name="prix[<?php echo $mc_n; ?>][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">
                                 <option value=""><?php esc_html_e('— Monnaie —','seliweb'); ?></option>
                                 <?php foreach ($monnaies_dispo as $mon) : ?>
                                     <option value="<?php echo intval($mon->id); ?>"
@@ -357,7 +384,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                             <button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm"
                                     onclick="this.closest('.seliweb-prix-row').remove()">✕</button>
                         </div>
-                        <?php $mc_is_first = false; endforeach; ?>
+                        <?php $mc_n++; endforeach; ?>
                     </div>
                     <?php if (count($monnaies_dispo) > 1) : ?>
                     <button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm"
@@ -368,26 +395,25 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 </div>
 
                 <!-- Photos -->
-                <div class="seliweb-field-row">
-                    <div class="seliweb-field">
-                        <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo !$is_modif ? '*' : ''; ?></label>
-                        <input type="file" name="photo1" accept="image/*"
-                               class="seliweb-file" <?php echo !$is_modif ? 'required' : ''; ?>>
-                        <?php if ($is_modif && $edit_annonce->photo1) : ?>
-                            <img src="<?php echo esc_url($edit_annonce->photo1); ?>"
-                                 class="seliweb-photo-preview" alt="">
-                        <?php elseif (!$is_modif) : ?>
-                            <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
-                        <?php endif; ?>
-                    </div>
-                    <div class="seliweb-field">
-                        <label><?php esc_html_e('Photo 2','seliweb'); ?></label>
-                        <input type="file" name="photo2" accept="image/*" class="seliweb-file">
-                        <?php if ($is_modif && $edit_annonce->photo2) : ?>
-                            <img src="<?php echo esc_url($edit_annonce->photo2); ?>"
-                                 class="seliweb-photo-preview" alt="">
-                        <?php endif; ?>
-                    </div>
+                <div class="seliweb-field">
+                    <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo !$is_modif ? '*' : ''; ?></label>
+                    <input type="file" name="photo1" accept="image/*"
+                           class="seliweb-file" <?php echo !$is_modif ? 'required' : ''; ?>>
+                    <?php if ($is_modif && $edit_annonce->photo1) : ?>
+                        <img src="<?php echo esc_url($edit_annonce->photo1); ?>"
+                             class="seliweb-photo-preview" alt="">
+                    <?php elseif (!$is_modif) : ?>
+                        <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
+                    <?php endif; ?>
+                </div>
+
+                <div class="seliweb-field">
+                    <label><?php esc_html_e('Photo 2','seliweb'); ?></label>
+                    <input type="file" name="photo2" accept="image/*" class="seliweb-file">
+                    <?php if ($is_modif && $edit_annonce->photo2) : ?>
+                        <img src="<?php echo esc_url($edit_annonce->photo2); ?>"
+                             class="seliweb-photo-preview" alt="">
+                    <?php endif; ?>
                 </div>
 
                 <div class="seliweb-form-footer">
@@ -399,6 +425,13 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                     </a>
                 </div>
             </form>
+
+            <div id="seliweb-saving-overlay" class="seliweb-saving-overlay" style="display:none;" aria-live="assertive">
+                <div class="seliweb-saving-box">
+                    <div class="seliweb-saving-spinner"></div>
+                    <?php esc_html_e('Enregistrement en cours…','seliweb'); ?>
+                </div>
+            </div>
 
         <?php endif; ?>
 
@@ -413,7 +446,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         ?>
 
     <h3><?php esc_html_e('Mon profil','seliweb'); ?></h3>
-    <form method="post" action="<?php echo esc_url($page_url); ?>" style="max-width:560px;">
+    <form method="post" action="<?php echo esc_url($page_url); ?>" style="max-width:560px;" enctype="multipart/form-data">
         <?php wp_nonce_field('seliweb_profil_'.$wp_user_id,'seliweb_nonce_profil'); ?>
         <style>
         .sel-prf-table { width:100%; border-collapse:collapse; }
@@ -425,9 +458,37 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         .sel-prf-radio { display:flex; gap:20px; align-items:center; padding-top:2px; }
         .sel-prf-radio label { display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer; }
         .sel-prf-sep td { padding-top:14px; border-top:1px solid #e0e0e0; font-weight:600; color:#1d6a4a; font-size:13px; text-transform:uppercase; letter-spacing:.04em; }
+        .sel-prf-photo { display:flex; align-items:center; gap:14px; }
+        .sel-prf-photo img { width:80px; height:80px; object-fit:cover; border-radius:50%; border:2px solid #ddd; }
+        .sel-prf-photo-placeholder { width:80px; height:80px; border-radius:50%; background:#e8f0eb; border:2px solid #ddd; display:flex; align-items:center; justify-content:center; font-size:32px; color:#1d6a4a; }
         </style>
 
         <table class="sel-prf-table">
+            <!-- Photo -->
+            <tr class="sel-prf-sep"><td colspan="2"><?php esc_html_e('Photo','seliweb'); ?></td></tr>
+            <tr>
+                <td><?php esc_html_e('Photo de profil','seliweb'); ?></td>
+                <td>
+                    <div class="sel-prf-photo">
+                        <?php if ( $membre_photo_id ) : ?>
+                            <?php echo wp_get_attachment_image( $membre_photo_id, array(80,80), false, array('style'=>'width:80px;height:80px;object-fit:cover;border-radius:50%;border:2px solid #ddd;') ); ?>
+                        <?php else : ?>
+                            <div class="sel-prf-photo-placeholder">&#128100;</div>
+                        <?php endif; ?>
+                        <div>
+                            <input type="file" name="seliweb_photo" accept="image/*" style="font-size:13px;">
+                            <p style="margin:4px 0 0;font-size:12px;color:#666;"><?php esc_html_e('JPG, PNG, WebP — max 2 Mo','seliweb'); ?></p>
+                            <?php if ( $membre_photo_id ) : ?>
+                                <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;cursor:pointer;color:#b32d2e;">
+                                    <input type="checkbox" name="delete_photo" value="1">
+                                    <?php esc_html_e('Supprimer la photo','seliweb'); ?>
+                                </label>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+
             <!-- Identité -->
             <tr class="sel-prf-sep"><td colspan="2"><?php esc_html_e('Identité','seliweb'); ?></td></tr>
             <tr>
@@ -441,15 +502,15 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             </tr>
             <tr>
                 <td><?php esc_html_e('Nom','seliweb'); ?></td>
-                <td><input type="text" name="nom" value="<?php echo esc_attr($membre->nom??''); ?>"></td>
+                <td><input type="text" name="nom" value="<?php echo esc_attr($membre_nom); ?>"></td>
             </tr>
             <tr>
                 <td><?php esc_html_e('Prénom','seliweb'); ?></td>
-                <td><input type="text" name="prenom" value="<?php echo esc_attr($membre->prenom??''); ?>"></td>
+                <td><input type="text" name="prenom" value="<?php echo esc_attr($membre_prenom); ?>"></td>
             </tr>
             <tr>
                 <td><?php esc_html_e("Organisme",'seliweb'); ?></td>
-                <td><input type="text" name="organisme" value="<?php echo esc_attr($membre->organisme??''); ?>"></td>
+                <td><input type="text" name="organisme" value="<?php echo esc_attr($membre_organisme); ?>"></td>
             </tr>
 
             <!-- Contact -->
@@ -485,25 +546,6 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 <td><?php esc_html_e('Code postal','seliweb'); ?></td>
                 <td><input type="text" name="code_postal" maxlength="10" value="<?php echo esc_attr($membre->code_postal??''); ?>"></td>
             </tr>
-
-            <!-- Préférences -->
-            <tr class="sel-prf-sep"><td colspan="2"><?php esc_html_e('Préférences','seliweb'); ?></td></tr>
-            <tr>
-                <td><?php esc_html_e('Notifications','seliweb'); ?></td>
-                <td>
-                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;">
-                        <input type="checkbox" name="notif_annonces" value="1" <?php checked($membre->notif_annonces??1); ?>>
-                        <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
-                    </label>
-                </td>
-            </tr>
-            <?php if ($membre->groupe_id) :
-                $nom_groupe = $wpdb->get_var($wpdb->prepare("SELECT nom FROM $tg WHERE id=%d",$membre->groupe_id)); ?>
-            <tr>
-                <td><?php esc_html_e('Groupe','seliweb'); ?></td>
-                <td><span class="seliweb-tag"><?php echo esc_html($nom_groupe); ?></span></td>
-            </tr>
-            <?php endif; ?>
 
             <!-- Mot de passe -->
             <tr>
@@ -549,6 +591,116 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         </table>
     </form>
 
+    <?php elseif ( $action === 'prefs' ) : ?>
+
+    <?php
+    $nom_groupe = $membre->groupe_id
+        ? $wpdb->get_var( $wpdb->prepare( "SELECT nom FROM $tg WHERE id=%d", $membre->groupe_id ) )
+        : '';
+    ?>
+
+    <h3><?php esc_html_e( 'Préférences', 'seliweb' ); ?></h3>
+
+    <?php if ( $nom_groupe ) : ?>
+        <p style="margin-bottom:16px;">
+            <?php esc_html_e( 'Groupe :', 'seliweb' ); ?>
+            <span class="seliweb-tag" style="margin-left:6px;"><?php echo esc_html( $nom_groupe ); ?></span>
+            <?php if ( $sel_gid > 0 && (int)$membre->groupe_id === $sel_gid && !empty($membre->numero_sel) ) : ?>
+                <span style="margin-left:10px;font-size:13px;color:#555;font-weight:600;">
+                    <?php printf( esc_html__( 'N° %d', 'seliweb' ), intval( $membre->numero_sel ) ); ?>
+                </span>
+            <?php endif; ?>
+        </p>
+    <?php endif; ?>
+
+    <form method="post" action="<?php echo esc_url( $page_url ); ?>" style="max-width:560px;">
+        <?php wp_nonce_field( 'seliweb_prefs_' . $wp_user_id, 'seliweb_nonce_prefs' ); ?>
+        <style>
+        .sel-prf-pref-row { display:flex; flex-direction:column; gap:4px; margin-bottom:14px; }
+        .sel-prf-pref-row label { display:flex; align-items:flex-start; gap:8px; font-size:14px; cursor:pointer; }
+        .sel-prf-pref-row label input[type="checkbox"] { margin-top:2px; flex-shrink:0; }
+        .sel-prf-pref-hint { font-size:12px; color:#888; font-style:italic; margin-left:24px; }
+        </style>
+
+        <fieldset style="border:1px solid #e0e0e0;border-radius:6px;padding:14px 18px;margin-bottom:18px;">
+            <legend style="font-weight:600;font-size:13px;color:#1d6a4a;text-transform:uppercase;letter-spacing:.04em;padding:0 6px;">
+                <?php esc_html_e( 'Notifications', 'seliweb' ); ?>
+            </legend>
+            <div class="sel-prf-pref-row" style="margin-top:8px;">
+                <label>
+                    <input type="checkbox" name="notif_annonces" value="1" <?php checked( $membre->notif_annonces ?? 1 ); ?>>
+                    <?php esc_html_e( 'Recevoir un mail à chaque nouvelle annonce', 'seliweb' ); ?>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset style="border:1px solid #e0e0e0;border-radius:6px;padding:14px 18px;margin-bottom:18px;">
+            <legend style="font-weight:600;font-size:13px;color:#1d6a4a;text-transform:uppercase;letter-spacing:.04em;padding:0 6px;">
+                <?php esc_html_e( 'Confidentialité', 'seliweb' ); ?>
+            </legend>
+
+            <div class="sel-prf-pref-row" style="margin-top:8px;">
+                <label>
+                    <input type="checkbox" name="show_email" value="1" <?php checked( $membre->show_email ?? 1 ); ?>>
+                    <?php esc_html_e( 'Autoriser à montrer mon e-mail', 'seliweb' ); ?>
+                </label>
+                <span class="sel-prf-pref-hint"><?php esc_html_e( 'Si la case est décochée, vous recevrez quand même les mails qui vous sont destinés.', 'seliweb' ); ?></span>
+            </div>
+
+            <div class="sel-prf-pref-row">
+                <label>
+                    <input type="checkbox" name="show_tel_portable" value="1" <?php checked( $membre->show_tel_portable ?? 1 ); ?>>
+                    <?php esc_html_e( 'Autoriser à montrer mon tél. portable', 'seliweb' ); ?>
+                </label>
+            </div>
+
+            <div class="sel-prf-pref-row">
+                <label>
+                    <input type="checkbox" name="show_tel_fixe" value="1" <?php checked( $membre->show_tel_fixe ?? 1 ); ?>>
+                    <?php esc_html_e( 'Autoriser à montrer mon tél. fixe', 'seliweb' ); ?>
+                </label>
+            </div>
+
+            <div class="sel-prf-pref-row">
+                <label>
+                    <input type="checkbox" name="show_adresse" value="1" <?php checked( $membre->show_adresse ?? 1 ); ?>>
+                    <?php esc_html_e( 'Autoriser à montrer mon organisme', 'seliweb' ); ?>
+                </label>
+                <span class="sel-prf-pref-hint"><?php esc_html_e( 'Si la case est décochée, l\'organisme ne sera pas affiché.', 'seliweb' ); ?></span>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="seliweb-btn"><?php esc_html_e( 'Enregistrer', 'seliweb' ); ?></button>
+    </form>
+
+    <?php elseif ( $action === 'transactions' ) : ?>
+
+    <?php if ( ! $is_sel_membre ) : ?>
+        <p><em><?php esc_html_e( 'Accès non autorisé.', 'seliweb' ); ?></em></p>
+    <?php else : ?>
+
+    <h3><?php esc_html_e( 'Transactions', 'seliweb' ); ?></h3>
+
+    <table class="sel-prf-table" style="max-width:420px;margin-top:12px;">
+        <style>
+        .sel-prf-table { width:100%; border-collapse:collapse; }
+        .sel-prf-table td { padding:6px 8px 6px 0; vertical-align:middle; }
+        .sel-prf-table td:first-child { width:200px; text-align:right; padding-right:14px; font-size:14px; font-weight:500; color:#333; white-space:nowrap; }
+        </style>
+        <tr>
+            <td><?php esc_html_e( 'Découvert max autorisé', 'seliweb' ); ?></td>
+            <td>
+                <?php if ( $membre->decouvert_max !== null ) : ?>
+                    <strong><?php echo intval( $membre->decouvert_max ); ?></strong>
+                <?php else : ?>
+                    <em style="color:#888;"><?php esc_html_e( 'Aucun découvert autorisé', 'seliweb' ); ?></em>
+                <?php endif; ?>
+            </td>
+        </tr>
+    </table>
+
+    <?php endif; ?>
+
     <?php  endif; ?>
 
 
@@ -558,6 +710,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 var selMCMonnaies = <?php echo wp_json_encode(array_map(function($m){
     return array('id'=>$m->id,'label'=>$m->nom.($m->symbole?' ('.$m->symbole.')':''));
 }, $monnaies_dispo)); ?>;
+var prixMCNextIdx = <?php echo isset($prix_lignes) ? count($prix_lignes) : 1; ?>;
 
 function selMCRub(catId){
     var opts=document.querySelectorAll('#sel_rub_mc option[data-categorie]');
@@ -586,14 +739,15 @@ function selMCAddPrix(){
     var usedIds=selMCUsedIds();
     var available=selMCMonnaies.filter(function(m){ return usedIds.indexOf(String(m.id))===-1; });
     if(available.length===0){ alert(<?php echo wp_json_encode(__('Toutes les monnaies sont déjà utilisées.','seliweb')); ?>); return; }
+    var idx=prixMCNextIdx++;
     var opts='<option value=""><?php esc_attr_e("— Monnaie —","seliweb"); ?></option>';
     selMCMonnaies.forEach(function(m){ opts+='<option value="'+m.id+'">'+m.label+'</option>'; });
     var row=document.createElement('div');
     row.className='seliweb-prix-row';
     row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
-    row.innerHTML='<select name="prix_coordination[]" style="width:65px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
-                 +'<input type="text" name="prix_montant[]" maxlength="10" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
-                 +'<select name="prix_monnaie[]" class="seliweb-select mc-prix-select" style="max-width:200px;">'+opts+'</select>'
+    row.innerHTML='<select name="prix['+idx+'][coordination]" style="width:65px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
+                 +'<input type="text" name="prix['+idx+'][montant]" maxlength="10" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
+                 +'<select name="prix['+idx+'][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">'+opts+'</select>'
                  +'<button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" onclick="this.closest(\'.seliweb-prix-row\').remove()">✕</button>';
     document.getElementById('mc_prix_container').appendChild(row);
     row.querySelector('.mc-prix-select').addEventListener('change',function(){
@@ -647,5 +801,14 @@ document.addEventListener('DOMContentLoaded', function(){
 document.addEventListener('DOMContentLoaded',function(){
     var sel=document.querySelector('[name="categorie_id"]');
     if(sel&&sel.value){ selMCRub(sel.value); selMCType(sel.value); }
+});
+document.addEventListener('DOMContentLoaded',function(){
+    var form = document.getElementById('seliweb-form-annonce');
+    var overlay = document.getElementById('seliweb-saving-overlay');
+    if (form && overlay) {
+        form.addEventListener('submit', function() {
+            overlay.style.display = 'flex';
+        });
+    }
 });
 </script>

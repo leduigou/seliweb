@@ -5,6 +5,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Parametres {
 
+    private static $sel_saved = false;
+
     // ----------------------------------------------------------------
     // Hook init : traitement des suppressions GET avant tout affichage
     // ----------------------------------------------------------------
@@ -17,7 +19,7 @@ class Seliweb_Parametres {
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
         if ( ! current_user_can( 'manage_options' ) ) return;
 
-        $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'categories';
+        $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
 
         // Suppressions
         if ( isset( $_GET['delete_id'] ) ) {
@@ -87,12 +89,15 @@ class Seliweb_Parametres {
     // Point d'entrée de la page admin
     // ----------------------------------------------------------------
     public static function display() {
-        $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'categories';
+        $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
         $tabs = array(
+            'general'    => __( 'Général',     'seliweb' ),
+            'groupes'    => __( 'Groupes',     'seliweb' ),
+            'monnaies'   => __( 'Monnaies',    'seliweb' ),
             'categories' => __( 'Catégories',  'seliweb' ),
             'rubriques'  => __( 'Rubriques',   'seliweb' ),
             'statuts'    => __( 'Statuts',     'seliweb' ),
-            'monnaies'   => __( 'Monnaies',    'seliweb' ),
+            'sel'        => __( 'SEL',         'seliweb' ),
         );
 
         self::handle_post( $tab );
@@ -109,9 +114,12 @@ class Seliweb_Parametres {
         echo '</nav><div class="tab-content" style="margin-top:20px;">';
 
         switch ( $tab ) {
+            case 'general':   self::tab_general();   break;
+            case 'groupes':   self::tab_groupes();   break;
+            case 'monnaies':  self::tab_monnaies();  break;
             case 'rubriques': self::tab_rubriques(); break;
             case 'statuts':   self::tab_statuts();   break;
-            case 'monnaies':  self::tab_monnaies();  break;
+            case 'sel':       self::tab_sel();        break;
             default:          self::tab_categories(); break;
         }
 
@@ -122,6 +130,8 @@ class Seliweb_Parametres {
     // Traitement POST
     // ----------------------------------------------------------------
     private static function handle_post( $tab ) {
+        // Les POST de l'onglet Groupes sont traités par Seliweb_Groupes::handle_post() (hook init)
+        if ( $tab === 'groupes' ) return;
         // Suppressions GET gérées par handle_get_actions() via hook init
         // Ici on traite uniquement les POST (ajouts et modifications)
         if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
@@ -133,11 +143,65 @@ class Seliweb_Parametres {
         }
         $action = isset( $_POST['seliweb_action'] ) ? sanitize_key( $_POST['seliweb_action'] ) : '';
         switch ( $tab ) {
+            case 'general':    self::handle_general();             break;
             case 'categories': self::handle_categories( $action ); break;
             case 'rubriques':  self::handle_rubriques( $action );  break;
             case 'statuts':    self::handle_statuts( $action );    break;
             case 'monnaies':   self::handle_monnaies( $action );   break;
+            case 'sel':        self::handle_sel( $action );        break;
         }
+    }
+
+    // ================================================================
+    // GÉNÉRAL
+    // ================================================================
+    private static function tab_general() {
+        global $wpdb;
+        $tp  = $wpdb->prefix . 'seliweb_parametres';
+        $par_page = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_par_page' LIMIT 1" );
+        if ( $par_page < 1 ) $par_page = 12;
+
+        if ( isset( $_GET['updated'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
+        }
+        ?>
+        <form method="post">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="save_general">
+            <table class="form-table">
+                <tr>
+                    <th><label for="annonces_par_page"><?php esc_html_e( 'Annonces par page', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="number" id="annonces_par_page" name="annonces_par_page"
+                               value="<?php echo intval( $par_page ); ?>" min="1" max="100" class="small-text">
+                        <p class="description"><?php esc_html_e( 'Nombre d\'annonces affichées par page sur le site. La dernière page affiche le reste.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
+        </form>
+        <?php
+    }
+
+    private static function handle_general() {
+        global $wpdb;
+        $tp       = $wpdb->prefix . 'seliweb_parametres';
+        $par_page = max( 1, intval( $_POST['annonces_par_page'] ?? 12 ) );
+        $exists   = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", 'annonces_par_page' ) );
+        if ( $exists ) {
+            $wpdb->update( $tp, array( 'valeur' => $par_page ), array( 'cle' => 'annonces_par_page' ) );
+        } else {
+            $wpdb->insert( $tp, array( 'cle' => 'annonces_par_page', 'valeur' => $par_page ) );
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=general&updated=1' ) );
+        exit;
+    }
+
+    // ================================================================
+    // GROUPES
+    // ================================================================
+    private static function tab_groupes() {
+        Seliweb_Groupes::render_tab();
     }
 
     // ================================================================
@@ -521,6 +585,187 @@ class Seliweb_Parametres {
         <?php
     }
 
+    // ================================================================
+    // SEL
+    // ================================================================
+    private static function tab_sel() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_parametres';
+
+        $rows = $wpdb->get_results( "SELECT cle, valeur FROM $tp WHERE cle LIKE 'sel_%'" );
+        $settings = array();
+        foreach ( $rows as $row ) {
+            $settings[ $row->cle ] = $row->valeur;
+        }
+
+        $sel_actif              = ! empty( $settings['sel_actif'] );
+        $sel_groupe_id          = isset( $settings['sel_groupe_id'] )        ? intval( $settings['sel_groupe_id'] )       : 0;
+        $sel_monnaie_id         = isset( $settings['sel_monnaie_id'] )       ? intval( $settings['sel_monnaie_id'] )      : 0;
+        $sel_decouvert_possible = ! empty( $settings['sel_decouvert_possible'] );
+        $sel_decouvert_max      = isset( $settings['sel_decouvert_max'] )    ? intval( $settings['sel_decouvert_max'] ) : 0;
+
+        $groupes  = $wpdb->get_results( "SELECT id, nom FROM {$wpdb->prefix}seliweb_groupes ORDER BY nom ASC" );
+        $monnaies = $wpdb->get_results( "SELECT id, nom, symbole FROM {$wpdb->prefix}seliweb_monnaies ORDER BY nom ASC" );
+        ?>
+        <h2><?php esc_html_e( "Système d'échange local", 'seliweb' ); ?></h2>
+
+        <?php if ( self::$sel_saved ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Paramètres SEL enregistrés.', 'seliweb' ); ?></p></div>
+        <?php endif; ?>
+
+        <form method="post">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="save_sel">
+
+            <table class="form-table">
+                <tr>
+                    <th><?php esc_html_e( 'Fonctionne comme un SEL', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="sel_actif" value="1" id="sel_actif" <?php checked( $sel_actif ); ?>>
+                            <?php esc_html_e( 'Activer le mode SEL', 'seliweb' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( "L'activation de ce paramètre confirmera que vous êtes un SEL, activera le module transactions et la numérotation des membres. Avant d'activer ce paramètre, créez un groupe du genre \"Membres du SEL\" (onglet Groupes) et créez la monnaie du SEL (onglet Monnaies). Le groupe qui sera défini comme le groupe principal du SEL ne devrait plus être modifié.", 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <div id="sel-options" style="<?php echo $sel_actif ? '' : 'display:none;'; ?>">
+
+                <h3 style="margin-top:24px;"><?php esc_html_e( 'Groupe et monnaie', 'seliweb' ); ?></h3>
+                <table class="form-table">
+                    <tr>
+                        <th><?php esc_html_e( 'Groupe SEL', 'seliweb' ); ?></th>
+                        <td>
+                            <select name="sel_groupe_id">
+                                <option value=""><?php esc_html_e( '— Choisir un groupe —', 'seliweb' ); ?></option>
+                                <?php foreach ( $groupes as $g ) : ?>
+                                    <option value="<?php echo intval( $g->id ); ?>" <?php selected( $sel_groupe_id, $g->id ); ?>>
+                                        <?php echo esc_html( $g->nom ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e( 'Monnaie du SEL', 'seliweb' ); ?></th>
+                        <td>
+                            <select name="sel_monnaie_id">
+                                <option value=""><?php esc_html_e( '— Choisir une monnaie —', 'seliweb' ); ?></option>
+                                <?php foreach ( $monnaies as $mon ) : ?>
+                                    <option value="<?php echo intval( $mon->id ); ?>" <?php selected( $sel_monnaie_id, $mon->id ); ?>>
+                                        <?php echo esc_html( $mon->nom );
+                                        if ( $mon->symbole ) echo ' (' . esc_html( $mon->symbole ) . ')'; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e( 'Module Transactions', 'seliweb' ); ?></th>
+                        <td>
+                            <label style="opacity:0.6;">
+                                <input type="checkbox" disabled checked>
+                                <?php esc_html_e( 'Module Transactions activé', 'seliweb' ); ?>
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3 style="margin-top:24px;"><?php esc_html_e( 'Membres', 'seliweb' ); ?></h3>
+                <table class="form-table">
+                    <tr>
+                        <th><?php esc_html_e( 'Découvert', 'seliweb' ); ?></th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="sel_decouvert_possible" value="1" id="sel_decouvert_possible" <?php checked( $sel_decouvert_possible ); ?>>
+                                <?php esc_html_e( 'Découvert Possible', 'seliweb' ); ?>
+                            </label>
+                            <div id="sel-decouvert-montant" style="<?php echo $sel_decouvert_possible ? '' : 'display:none;'; ?> margin-top:8px;">
+                                <label>
+                                    <?php esc_html_e( 'Montant max du découvert', 'seliweb' ); ?>
+                                    <input type="number" name="sel_decouvert_max" value="<?php echo esc_attr( intval( $sel_decouvert_max ) ); ?>" min="0" step="1" class="small-text" style="margin:0 6px;">
+                                </label>
+                                <p class="description"><?php esc_html_e( "Ce montant pourra être ajusté pour chaque membre par l'administrateur.", 'seliweb' ); ?></p>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e( 'Numérotation', 'seliweb' ); ?></th>
+                        <td>
+                            <label style="opacity:0.6;">
+                                <input type="checkbox" disabled checked>
+                                <?php esc_html_e( 'Numérotation des membres activée', 'seliweb' ); ?>
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+
+            </div>
+
+            <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
+        </form>
+
+        <script>
+        (function(){
+            var chkSel = document.getElementById('sel_actif');
+            var divOpt = document.getElementById('sel-options');
+            var chkDec = document.getElementById('sel_decouvert_possible');
+            var divDec = document.getElementById('sel-decouvert-montant');
+            chkSel.addEventListener('change', function(){ divOpt.style.display = this.checked ? '' : 'none'; });
+            if ( chkDec ) {
+                chkDec.addEventListener('change', function(){ divDec.style.display = this.checked ? '' : 'none'; });
+            }
+        })();
+        </script>
+        <?php
+    }
+
+    private static function handle_sel( $action ) {
+        if ( $action !== 'save_sel' ) return;
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_parametres';
+
+        $sel_actif              = isset( $_POST['sel_actif'] )              ? 1 : 0;
+        $sel_groupe_id          = isset( $_POST['sel_groupe_id'] )          ? intval( $_POST['sel_groupe_id'] )        : 0;
+        $sel_monnaie_id         = isset( $_POST['sel_monnaie_id'] )         ? intval( $_POST['sel_monnaie_id'] )       : 0;
+        $sel_decouvert_possible = isset( $_POST['sel_decouvert_possible'] ) ? 1 : 0;
+        $sel_decouvert_max      = isset( $_POST['sel_decouvert_max'] )      ? intval( $_POST['sel_decouvert_max'] )    : 0;
+
+        $params = array(
+            'sel_actif'              => $sel_actif,
+            'sel_groupe_id'          => $sel_groupe_id,
+            'sel_monnaie_id'         => $sel_monnaie_id,
+            'sel_decouvert_possible' => $sel_decouvert_possible,
+            'sel_decouvert_max'      => $sel_decouvert_max,
+        );
+
+        foreach ( $params as $cle => $valeur ) {
+            $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
+            if ( $exists ) {
+                $wpdb->update( $tp, array( 'valeur' => $valeur ), array( 'cle' => $cle ) );
+            } else {
+                $wpdb->insert( $tp, array( 'cle' => $cle, 'valeur' => $valeur ) );
+            }
+        }
+
+        // Appliquer le montant découvert aux membres du groupe SEL dont le champ est NULL
+        if ( $sel_decouvert_possible && $sel_groupe_id && $sel_decouvert_max > 0 ) {
+            $tm = $wpdb->prefix . 'seliweb_membres';
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE `$tm` SET decouvert_max = %d WHERE groupe_id = %d AND decouvert_max IS NULL",
+                $sel_decouvert_max, $sel_groupe_id
+            ) );
+        }
+
+        self::$sel_saved = true;
+    }
+
+    // ================================================================
+    // MONNAIES
+    // ================================================================
     private static function handle_monnaies( $action ) {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_monnaies';

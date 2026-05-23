@@ -10,16 +10,9 @@ class Seliweb_Groupes {
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
     }
 
-    public static function display() {
+    public static function render_tab() {
         $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
         $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
-
-        echo '<div class="wrap">';
-        echo '<h1>' . esc_html__( 'Groupes', 'seliweb' );
-        if ( $action === 'list' ) {
-            echo ' <a href="' . esc_url( admin_url( 'admin.php?page=seliweb_groupes&action=new' ) ) . '" class="page-title-action">' . esc_html__( 'Ajouter un groupe', 'seliweb' ) . '</a>';
-        }
-        echo '</h1>';
 
         switch ( $action ) {
             case 'new':
@@ -30,7 +23,6 @@ class Seliweb_Groupes {
                 self::liste();
                 break;
         }
-        echo '</div>';
     }
 
     // ----------------------------------------------------------------
@@ -39,7 +31,7 @@ class Seliweb_Groupes {
     public static function handle_post() {
         if ( ! is_admin() ) return;
         if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
-        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_groupes' ) return;
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
         if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_groupes' ) ) return;
         if ( ! current_user_can( 'manage_options' ) ) return;
 
@@ -50,13 +42,9 @@ class Seliweb_Groupes {
         $est_defaut = isset( $_POST['est_defaut'] ) ? 1 : 0;
 
         $data = array(
-            'nom'                  => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
-            'limite_annonces'      => ( $_POST['limite_annonces'] !== '' ) ? intval( $_POST['limite_annonces'] ) : null,
-            'contact_mail_cache'   => isset( $_POST['contact_mail_cache'] )   ? 1 : 0,
-            'contact_mail_visible' => isset( $_POST['contact_mail_visible'] ) ? 1 : 0,
-            'contact_tel'          => isset( $_POST['contact_tel'] )          ? 1 : 0,
-            'contact_adresse'      => isset( $_POST['contact_adresse'] )      ? 1 : 0,
-            'est_defaut'           => $est_defaut,
+            'nom'             => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
+            'limite_annonces' => ( $_POST['limite_annonces'] !== '' ) ? intval( $_POST['limite_annonces'] ) : null,
+            'est_defaut'      => $est_defaut,
         );
 
         $action = sanitize_key( $_POST['seliweb_action'] );
@@ -83,13 +71,13 @@ class Seliweb_Groupes {
             $wpdb->insert( $tgm, array( 'groupe_id' => $groupe_id, 'monnaie_id' => $monnaie_id ) );
         }
 
-        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_groupes&updated=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&updated=1' ) );
         exit;
     }
 
     public static function handle_delete() {
         if ( ! is_admin() ) return;
-        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_groupes' ) return;
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
         if ( ! isset( $_GET['action'], $_GET['id'] ) || $_GET['action'] !== 'delete' ) return;
         if ( ! check_admin_referer( 'seliweb_delete_groupe_' . intval( $_GET['id'] ) ) ) return;
 
@@ -98,7 +86,7 @@ class Seliweb_Groupes {
         $wpdb->delete( $wpdb->prefix . 'seliweb_groupes_monnaies', array( 'groupe_id' => $id ) );
         $wpdb->delete( $wpdb->prefix . 'seliweb_groupes',          array( 'id'        => $id ) );
 
-        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_groupes&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&deleted=1' ) );
         exit;
     }
 
@@ -115,12 +103,15 @@ class Seliweb_Groupes {
         if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Groupe enregistré.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Groupe supprimé.', 'seliweb' ) . '</p></div>';
         ?>
-        <table class="wp-list-table widefat fixed striped" style="margin-top:16px;">
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&action=new' ) ); ?>"
+               class="button button-primary"><?php esc_html_e( 'Ajouter un groupe', 'seliweb' ); ?></a>
+        </p>
+        <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
                 <th><?php esc_html_e( 'Nom du groupe', 'seliweb' ); ?></th>
                 <th style="width:90px;"><?php esc_html_e( 'Par défaut', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Limite annonces', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Contact autorisé', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Monnaies', 'seliweb' ); ?></th>
                 <th style="width:140px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
@@ -132,11 +123,6 @@ class Seliweb_Groupes {
                     $monnaies = $wpdb->get_col( $wpdb->prepare(
                         "SELECT m.nom FROM $tm m INNER JOIN $tgm gm ON gm.monnaie_id=m.id WHERE gm.groupe_id=%d", $row->id
                     ) );
-                    $contacts = array();
-                    if ( $row->contact_mail_cache )   $contacts[] = __( 'Mail (caché)',   'seliweb' );
-                    if ( $row->contact_mail_visible )  $contacts[] = __( 'Mail (visible)', 'seliweb' );
-                    if ( $row->contact_tel )           $contacts[] = __( 'Téléphone',      'seliweb' );
-                    if ( $row->contact_adresse )       $contacts[] = __( 'Adresse',        'seliweb' );
                 ?>
                 <tr>
                     <td><strong><?php echo esc_html( $row->nom ); ?></strong></td>
@@ -148,12 +134,11 @@ class Seliweb_Groupes {
                         <?php endif; ?>
                     </td>
                     <td><?php echo $row->limite_annonces ? intval( $row->limite_annonces ) : '<em>' . esc_html__( 'Illimitée', 'seliweb' ) . '</em>'; ?></td>
-                    <td><?php echo ! empty( $contacts ) ? esc_html( implode( ', ', $contacts ) ) : '<em>' . esc_html__( 'Aucun', 'seliweb' ) . '</em>'; ?></td>
                     <td><?php echo ! empty( $monnaies ) ? esc_html( implode( ', ', $monnaies ) ) : '<em>' . esc_html__( 'Aucune', 'seliweb' ) . '</em>'; ?></td>
                     <td>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_groupes&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
                         &nbsp;|&nbsp;
-                        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=seliweb_groupes&action=delete&id=' . $row->id ), 'seliweb_delete_groupe_' . $row->id ) ); ?>"
+                        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&action=delete&id=' . $row->id ), 'seliweb_delete_groupe_' . $row->id ) ); ?>"
                            onclick="return confirm('<?php esc_attr_e( 'Supprimer ce groupe ?', 'seliweb' ); ?>')"
                            style="color:#b32d2e;"><?php esc_html_e( 'Supprimer', 'seliweb' ); ?></a>
                     </td>
@@ -226,18 +211,6 @@ class Seliweb_Groupes {
                 </tr>
 
                 <tr>
-                    <th><?php esc_html_e( 'Contact annonceur', 'seliweb' ); ?></th>
-                    <td>
-                        <fieldset>
-                            <label><input type="checkbox" name="contact_mail_cache" value="1" <?php checked( $item ? $item->contact_mail_cache : 0 ); ?>><?php esc_html_e( 'Envoyer un mail à l\'annonceur (mail caché)', 'seliweb' ); ?></label><br>
-                            <label><input type="checkbox" name="contact_mail_visible" value="1" <?php checked( $item ? $item->contact_mail_visible : 0 ); ?>><?php esc_html_e( 'Voir le mail de l\'annonceur', 'seliweb' ); ?></label><br>
-                            <label><input type="checkbox" name="contact_tel" value="1" <?php checked( $item ? $item->contact_tel : 0 ); ?>><?php esc_html_e( 'Voir le téléphone de l\'annonceur', 'seliweb' ); ?></label><br>
-                            <label><input type="checkbox" name="contact_adresse" value="1" <?php checked( $item ? $item->contact_adresse : 0 ); ?>><?php esc_html_e( 'Voir l\'adresse du membre', 'seliweb' ); ?></label>
-                        </fieldset>
-                    </td>
-                </tr>
-
-                <tr>
                     <th><?php esc_html_e( 'Monnaies autorisées', 'seliweb' ); ?></th>
                     <td>
                         <fieldset>
@@ -257,7 +230,7 @@ class Seliweb_Groupes {
             </table>
 
             <?php submit_button( $is_edit ? __( 'Mettre à jour', 'seliweb' ) : __( 'Créer le groupe', 'seliweb' ) ); ?>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_groupes' ) ); ?>" class="button">
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes' ) ); ?>" class="button">
                 <?php esc_html_e( 'Annuler', 'seliweb' ); ?>
             </a>
         </form>

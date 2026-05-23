@@ -6,6 +6,10 @@ global $wpdb;
 $tm = $wpdb->prefix . 'seliweb_membres';
 $ti = $wpdb->prefix . 'seliweb_inscriptions';
 $tg = $wpdb->prefix . 'seliweb_groupes';
+$tp = $wpdb->prefix . 'seliweb_parametres';
+
+// Groupe SEL configuré (0 si module SEL non activé)
+$sel_groupe_id = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='sel_groupe_id' LIMIT 1" );
 
 $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
 $edit_id   = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
@@ -19,6 +23,14 @@ if ( isset( $_POST['seliweb_nonce'] )
     $membre_id = intval( $_POST['membre_id'] );
     $groupe_id = ! empty( $_POST['groupe_id'] ) ? intval( $_POST['groupe_id'] ) : null;
     $wpdb->update( $tm, array( 'groupe_id' => $groupe_id ), array( 'id' => $membre_id ) );
+    // Auto-numérotation SEL lors d'un changement rapide de groupe
+    if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
+        $current_num = $wpdb->get_var( $wpdb->prepare( "SELECT numero_sel FROM $tm WHERE id=%d", $membre_id ) );
+        if ( $current_num === null ) {
+            $max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT GREATEST(COALESCE(MAX(numero_sel),1),1) FROM $tm WHERE groupe_id=%d", $sel_groupe_id ) );
+            $wpdb->update( $tm, array( 'numero_sel' => $max + 1 ), array( 'id' => $membre_id ) );
+        }
+    }
 }
 
 // ----------------------------------------------------------------
@@ -67,20 +79,55 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
         if ( $new_pwd && $new_pwd !== $new_pwd2 ) {
             $erreurs_modif[] = __( 'Les mots de passe ne correspondent pas.', 'seliweb' );
         }
+        // Validation numéro SEL
+        if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
+            $numero_check = isset( $_POST['numero_sel'] ) ? intval( $_POST['numero_sel'] ) : 0;
+            if ( $numero_check === 1 ) {
+                $erreurs_modif[] = __( 'Le numéro 1 est réservé au compte du SEL et ne peut pas être attribué à un membre.', 'seliweb' );
+            } elseif ( $numero_check > 1 ) {
+                $deja_attribue = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT id FROM $tm WHERE groupe_id=%d AND numero_sel=%d AND id != %d LIMIT 1",
+                    $sel_groupe_id, $numero_check, $mid
+                ) );
+                if ( $deja_attribue ) {
+                    $erreurs_modif[] = sprintf(
+                        __( 'Le numéro %d est déjà attribué à un autre membre.', 'seliweb' ),
+                        $numero_check
+                    );
+                }
+            }
+        }
     }
 
     if ( empty( $erreurs_modif ) && $membre_modif ) {
-        // Mettre à jour seliweb_membres
+        // Mettre à jour seliweb_membres (champs SEL uniquement)
         $wpdb->update( $tm, array(
-            'civilite'     => $civilite,   'nom'          => $nom,
-            'prenom'       => $prenom,     'organisme'    => $organisme,
-            'tel_portable' => $tel_port,   'tel_fixe'     => $tel_fixe,
-            'adresse1'     => $adresse1,   'adresse2'     => $adresse2,
-            'ville'        => $ville,      'code_postal'  => $cp,
-            'groupe_id'    => $groupe_id,  'notif_annonces' => $notif,
+            'civilite'       => $civilite,
+            'tel_portable'   => $tel_port,   'tel_fixe'     => $tel_fixe,
+            'adresse1'       => $adresse1,   'adresse2'     => $adresse2,
+            'ville'          => $ville,      'code_postal'  => $cp,
+            'groupe_id'          => $groupe_id,  'notif_annonces'    => $notif,
+            'show_email'         => isset( $_POST['show_email'] )        ? 1 : 0,
+            'show_tel_portable'  => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
+            'show_tel_fixe'      => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
+            'show_adresse'       => isset( $_POST['show_adresse'] )      ? 1 : 0,
         ), array( 'id' => $mid ) );
 
-        // Mettre à jour le compte WP
+        // Numérotation et découvert SEL
+        if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
+            $numero_sel_input = isset( $_POST['numero_sel'] ) ? intval( $_POST['numero_sel'] ) : 0;
+            if ( $numero_sel_input > 0 ) {
+                $wpdb->update( $tm, array( 'numero_sel' => $numero_sel_input ), array( 'id' => $mid ) );
+            } elseif ( $membre_modif->numero_sel === null ) {
+                $max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT GREATEST(COALESCE(MAX(numero_sel),1),1) FROM $tm WHERE groupe_id=%d", $sel_groupe_id ) );
+                $wpdb->update( $tm, array( 'numero_sel' => $max + 1 ), array( 'id' => $mid ) );
+            }
+            $decouvert_input = ( isset( $_POST['decouvert_max'] ) && $_POST['decouvert_max'] !== '' )
+                ? intval( $_POST['decouvert_max'] ) : null;
+            $wpdb->update( $tm, array( 'decouvert_max' => $decouvert_input ), array( 'id' => $mid ) );
+        }
+
+        // Mettre à jour le compte WP + usermeta
         $wp_data = array(
             'ID'           => $membre_modif->wp_user_id,
             'first_name'   => $prenom,
@@ -90,6 +137,7 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
         );
         if ( $new_pwd ) $wp_data['user_pass'] = $new_pwd;
         wp_update_user( $wp_data );
+        update_user_meta( $membre_modif->wp_user_id, 'seliweb_organisme', $organisme );
 
         // Mettre à jour seliweb_inscriptions
         $existe_ins = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $ti WHERE wp_user_id=%d", $membre_modif->wp_user_id ) );
@@ -159,20 +207,38 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
         if ( is_wp_error( $user_id ) ) {
             $erreurs_creation[] = $user_id->get_error_message();
         } else {
+            // Masquer la barre d'outils WP sur le front-end
+            update_user_meta( $user_id, 'show_admin_bar_front', 'false' );
+
             wp_update_user( array(
                 'ID'           => $user_id,
                 'first_name'   => $prenom,
                 'last_name'    => $nom,
                 'display_name' => $prenom . ' ' . $nom,
             ) );
-            $wpdb->insert( $tm, array(
-                'wp_user_id'   => $user_id, 'groupe_id'    => $groupe_id,
-                'civilite'     => $civilite, 'nom'          => $nom,
-                'prenom'       => $prenom,   'organisme'    => $organisme,
-                'tel_portable' => $tel_port, 'tel_fixe'     => $tel_fixe,
-                'adresse1'     => $adresse1, 'adresse2'     => $adresse2,
-                'ville'        => $ville,    'code_postal'  => $cp,
-            ) );
+            update_user_meta( $user_id, 'seliweb_organisme', $organisme );
+
+            // Numérotation SEL automatique
+            $numero_sel_new = null;
+            if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
+                $max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT GREATEST(COALESCE(MAX(numero_sel),1),1) FROM $tm WHERE groupe_id=%d", $sel_groupe_id ) );
+                $numero_sel_new = $max + 1;
+            }
+
+            // rattacher_groupe_defaut() (hook user_register) a déjà inséré la ligne ;
+            // on met à jour plutôt qu'insérer pour éviter l'échec sur la UNIQUE KEY wp_user_id.
+            $wpdb->update( $tm, array(
+                'groupe_id'         => $groupe_id,
+                'civilite'          => $civilite,
+                'tel_portable'      => $tel_port,  'tel_fixe'          => $tel_fixe,
+                'adresse1'          => $adresse1,  'adresse2'          => $adresse2,
+                'ville'             => $ville,     'code_postal'       => $cp,
+                'show_email'        => isset($_POST['show_email'])        ? 1 : 0,
+                'show_tel_portable' => isset($_POST['show_tel_portable']) ? 1 : 0,
+                'show_tel_fixe'     => isset($_POST['show_tel_fixe'])     ? 1 : 0,
+                'show_adresse'      => isset($_POST['show_adresse'])      ? 1 : 0,
+                'numero_sel'        => $numero_sel_new,
+            ), array( 'wp_user_id' => $user_id ) );
             $wpdb->insert( $ti, array(
                 'wp_user_id'   => $user_id,  'civilite'     => $civilite,
                 'nom'          => $nom,       'prenom'       => $prenom,
@@ -198,18 +264,48 @@ $filtre_groupe = isset( $_GET['filtre_groupe'] ) ? intval( $_GET['filtre_groupe'
 $filtre_ville  = isset( $_GET['filtre_ville'] )  ? sanitize_text_field( $_GET['filtre_ville'] ) : '';
 $villes_dispo  = $wpdb->get_col( "SELECT DISTINCT ville FROM $tm WHERE ville != '' AND ville IS NOT NULL ORDER BY ville ASC" );
 
+$allowed_orderby = array(
+    'numero' => 'ISNULL(m.numero_sel), m.numero_sel',
+    'prenom' => 'um_p.meta_value',
+    'nom'    => 'um_n.meta_value',
+    'email'  => 'u.user_email',
+);
+$orderby_key = ( isset( $_GET['orderby'] ) && array_key_exists( $_GET['orderby'], $allowed_orderby ) )
+    ? sanitize_key( $_GET['orderby'] ) : 'nom';
+$order       = ( isset( $_GET['order'] ) && strtolower( $_GET['order'] ) === 'desc' ) ? 'DESC' : 'ASC';
+$order_sql   = $allowed_orderby[ $orderby_key ] . ' ' . $order;
+
+$per_page_allowed = array( 50, 100, 250 );
+$per_page_raw = isset( $_GET['per_page'] ) ? (int) $_GET['per_page'] : 50;
+$per_page     = in_array( $per_page_raw, $per_page_allowed, true ) ? $per_page_raw : 50;
+$paged        = max( 1, isset( $_GET['paged'] ) ? (int) $_GET['paged'] : 1 );
+$offset       = ( $paged - 1 ) * $per_page;
+
 $where  = array('1=1'); $values = array();
 if ( $filtre_groupe ) { $where[] = 'm.groupe_id = %d'; $values[] = $filtre_groupe; }
 if ( $filtre_ville )  { $where[] = 'm.ville = %s';     $values[] = $filtre_ville; }
 $where_sql = implode(' AND ', $where);
 
-$sql = "SELECT m.*, g.nom AS groupe_nom, u.display_name, u.user_email
-        FROM $tm m
+$joins = "FROM $tm m
         LEFT JOIN $tg g ON g.id=m.groupe_id
         LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id
-        WHERE $where_sql ORDER BY u.display_name ASC";
+        LEFT JOIN {$wpdb->usermeta} um_p ON um_p.user_id=m.wp_user_id AND um_p.meta_key='first_name'
+        LEFT JOIN {$wpdb->usermeta} um_n ON um_n.user_id=m.wp_user_id AND um_n.meta_key='last_name'
+        LEFT JOIN {$wpdb->usermeta} um_o ON um_o.user_id=m.wp_user_id AND um_o.meta_key='seliweb_organisme'";
 
-$membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$values) ) : $wpdb->get_results($sql);
+$sql_count = "SELECT COUNT(*) $joins WHERE $where_sql";
+$total     = (int) ( ! empty($values) ? $wpdb->get_var( $wpdb->prepare( $sql_count, ...$values ) ) : $wpdb->get_var( $sql_count ) );
+$total_pages = max( 1, (int) ceil( $total / $per_page ) );
+$paged = min( $paged, $total_pages );
+
+$sql = "SELECT m.*, g.nom AS groupe_nom, u.display_name, u.user_email,
+               um_p.meta_value AS prenom, um_n.meta_value AS nom, um_o.meta_value AS organisme
+        $joins
+        WHERE $where_sql ORDER BY $order_sql
+        LIMIT %d OFFSET %d";
+
+$values_paged = array_merge( $values, array( $per_page, $offset ) );
+$membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
 ?>
 
 <div class="wrap">
@@ -299,7 +395,7 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
             </tr>
             <tr>
                 <th><?php esc_html_e('Code postal','seliweb'); ?> *</th>
-                <td><input type="text" name="code_postal" class="small-text" maxlength="10" value="<?php echo esc_attr($_POST['code_postal']??''); ?>" required></td>
+                <td><input type="text" name="code_postal" class="regular-text" maxlength="10" value="<?php echo esc_attr($_POST['code_postal']??''); ?>" required></td>
             </tr>
 
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Compte','seliweb'); ?></th></tr>
@@ -329,6 +425,44 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
                     <input type="password" name="password_confirm" id="swb_pwd2" class="regular-text" required autocomplete="new-password"
                            oninput="swbCheckPwd()">
                     <span id="swb_pwd_msg" style="color:#b32d2e;font-size:12px;display:block;margin-top:3px;"></span>
+                </td>
+            </tr>
+            <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Notifications','seliweb'); ?></th></tr>
+            <tr>
+                <th></th>
+                <td>
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" name="notif_annonces" value="1" checked>
+                        <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Confidentialité','seliweb'); ?></th></tr>
+            <tr>
+                <th></th>
+                <td>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_email" value="1" checked style="margin-top:2px;">
+                            <span><?php esc_html_e('Autoriser à montrer mon e-mail','seliweb'); ?><br>
+                                <em style="font-size:12px;color:#888;"><?php esc_html_e('Si la case est décochée, vous recevrez quand même les mails qui vous sont destinés.','seliweb'); ?></em>
+                            </span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_tel_portable" value="1" checked>
+                            <?php esc_html_e('Autoriser à montrer mon tél. portable','seliweb'); ?>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_tel_fixe" value="1" checked>
+                            <?php esc_html_e('Autoriser à montrer mon tél. fixe','seliweb'); ?>
+                        </label>
+                        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_adresse" value="1" checked style="margin-top:2px;">
+                            <span><?php esc_html_e('Autoriser à montrer mon organisme','seliweb'); ?><br>
+                                <em style="font-size:12px;color:#888;"><?php esc_html_e('Si la case est décochée, l\'organisme ne sera pas affiché.','seliweb'); ?></em>
+                            </span>
+                        </label>
+                    </div>
                 </td>
             </tr>
             <tr>
@@ -370,6 +504,13 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
             $edit_id
         );
         $m_edit = $wpdb->get_row( $sql_edit );
+        // Compléter avec les données WP (nom/prénom/organisme)
+        if ( $m_edit ) {
+            $_wp_edit = get_userdata( $m_edit->wp_user_id );
+            $m_edit->nom       = $_wp_edit ? $_wp_edit->last_name  : '';
+            $m_edit->prenom    = $_wp_edit ? $_wp_edit->first_name : '';
+            $m_edit->organisme = get_user_meta( $m_edit->wp_user_id, 'seliweb_organisme', true );
+        }
     ?>
 
     <!-- ===== FORMULAIRE MODIFICATION ===== -->
@@ -441,7 +582,7 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
             </tr>
             <tr>
                 <th><?php esc_html_e('Code postal','seliweb'); ?></th>
-                <td><input type="text" name="code_postal" class="small-text" maxlength="10" value="<?php echo esc_attr($m_edit->code_postal??''); ?>"></td>
+                <td><input type="text" name="code_postal" class="regular-text" maxlength="10" value="<?php echo esc_attr($m_edit->code_postal??''); ?>"></td>
             </tr>
 
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Compte','seliweb'); ?></th></tr>
@@ -458,6 +599,26 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
                     </select>
                 </td>
             </tr>
+            <?php if ( $sel_groupe_id > 0 && (int)$m_edit->groupe_id === $sel_groupe_id ) : ?>
+            <tr>
+                <th><?php esc_html_e('N° membre SEL','seliweb'); ?></th>
+                <td>
+                    <input type="number" name="numero_sel" class="small-text" min="1" max="999999"
+                           value="<?php echo $m_edit->numero_sel ? intval($m_edit->numero_sel) : ''; ?>"
+                           style="width:100px;">
+                    <p class="description"><?php esc_html_e('Laissez vide pour attribution automatique (dernier numéro + 1).','seliweb'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e('Découvert max autorisé','seliweb'); ?></th>
+                <td>
+                    <input type="number" name="decouvert_max" class="small-text" min="0" step="1"
+                           value="<?php echo $m_edit->decouvert_max !== null ? intval($m_edit->decouvert_max) : ''; ?>"
+                           style="width:100px;">
+                    <p class="description"><?php esc_html_e("Laissez vide pour aucun découvert autorisé.",'seliweb'); ?></p>
+                </td>
+            </tr>
+            <?php endif; ?>
             <tr>
                 <th><?php esc_html_e('Notifications','seliweb'); ?></th>
                 <td>
@@ -465,6 +626,34 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
                         <input type="checkbox" name="notif_annonces" value="1" <?php checked($m_edit->notif_annonces??1); ?>>
                         <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
                     </label>
+                </td>
+            </tr>
+            <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Confidentialité','seliweb'); ?></th></tr>
+            <tr>
+                <th></th>
+                <td>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_email" value="1" <?php checked($m_edit->show_email??1); ?> style="margin-top:2px;">
+                            <span><?php esc_html_e('Autoriser à montrer mon e-mail','seliweb'); ?><br>
+                                <em style="font-size:12px;color:#888;"><?php esc_html_e('Si la case est décochée, vous recevrez quand même les mails qui vous sont destinés.','seliweb'); ?></em>
+                            </span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_tel_portable" value="1" <?php checked($m_edit->show_tel_portable??1); ?>>
+                            <?php esc_html_e('Autoriser à montrer mon tél. portable','seliweb'); ?>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_tel_fixe" value="1" <?php checked($m_edit->show_tel_fixe??1); ?>>
+                            <?php esc_html_e('Autoriser à montrer mon tél. fixe','seliweb'); ?>
+                        </label>
+                        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" name="show_adresse" value="1" <?php checked($m_edit->show_adresse??1); ?> style="margin-top:2px;">
+                            <span><?php esc_html_e('Autoriser à montrer mon organisme','seliweb'); ?><br>
+                                <em style="font-size:12px;color:#888;"><?php esc_html_e('Si la case est décochée, l\'organisme ne sera pas affiché.','seliweb'); ?></em>
+                            </span>
+                        </label>
+                    </div>
                 </td>
             </tr>
             <tr>
@@ -565,34 +754,69 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
         </div>
         <?php endif; ?>
         <div>
+            <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Par page','seliweb'); ?></label>
+            <select name="per_page">
+                <?php foreach ( $per_page_allowed as $pp ) : ?>
+                    <option value="<?php echo $pp; ?>" <?php selected( $per_page, $pp ); ?>><?php echo $pp; ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
             <button type="submit" class="button"><?php esc_html_e('Filtrer','seliweb'); ?></button>
             <a href="<?php echo esc_url(admin_url('admin.php?page=seliweb_membres')); ?>" class="button"><?php esc_html_e('Réinitialiser','seliweb'); ?></a>
         </div>
         <span style="font-size:13px;color:#555;align-self:center;">
-            <?php printf(esc_html(_n('%d membre','%d membres',count($membres),'seliweb')),count($membres)); ?>
+            <?php printf( esc_html__( '%d membre(s) — page %d/%d', 'seliweb' ), $total, $paged, $total_pages ); ?>
         </span>
     </form>
 
     <!-- ===== LISTE ===== -->
+    <?php
+    $base_args = array( 'page' => 'seliweb_membres', 'per_page' => $per_page );
+    if ( $filtre_groupe ) $base_args['filtre_groupe'] = $filtre_groupe;
+    if ( $filtre_ville )  $base_args['filtre_ville']  = $filtre_ville;
+
+    $sort_url = function( $col ) use ( $orderby_key, $order, $base_args ) {
+        $new_order = ( $orderby_key === $col && $order === 'ASC' ) ? 'desc' : 'asc';
+        $args = array_merge( $base_args, array( 'orderby' => $col, 'order' => $new_order ) );
+        return admin_url( 'admin.php?' . http_build_query( $args ) );
+    };
+    $page_url = function( $p ) use ( $base_args, $orderby_key, $order ) {
+        $args = array_merge( $base_args, array( 'orderby' => $orderby_key, 'order' => strtolower($order), 'paged' => $p ) );
+        return admin_url( 'admin.php?' . http_build_query( $args ) );
+    };
+    $sort_icon = function( $col ) use ( $orderby_key, $order ) {
+        if ( $orderby_key !== $col ) return '<span style="color:#ccc;"> ⇅</span>';
+        return $order === 'ASC'
+            ? '<span style="color:#2271b1;"> ↑</span>'
+            : '<span style="color:#2271b1;"> ↓</span>';
+    };
+    ?>
     <table class="wp-list-table widefat fixed striped">
         <thead><tr>
-            <th><?php esc_html_e('Nom','seliweb'); ?></th>
-            <th><?php esc_html_e('Email','seliweb'); ?></th>
-            <th><?php esc_html_e('Tél.','seliweb'); ?></th>
-            <th><?php esc_html_e('Ville','seliweb'); ?></th>
+            <th style="width:30px;"><a href="<?php echo esc_url($sort_url('numero')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('N°','seliweb'); echo $sort_icon('numero'); ?></a></th>
+            <th style="width:100px;"><a href="<?php echo esc_url($sort_url('prenom')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('Prénom','seliweb'); echo $sort_icon('prenom'); ?></a></th>
+            <th style="width:100px;"><a href="<?php echo esc_url($sort_url('nom')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('Nom','seliweb'); echo $sort_icon('nom'); ?></a></th>
+            <th style="width:200px;"><a href="<?php echo esc_url($sort_url('email')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('Email','seliweb'); echo $sort_icon('email'); ?></a></th>
+            <th style="width:100px;"><?php esc_html_e('Tél.','seliweb'); ?></th>
+            <th style="width:100px;"><?php esc_html_e('Ville','seliweb'); ?></th>
             <th><?php esc_html_e('Groupe','seliweb'); ?></th>
-            <th style="width:40px;"><?php esc_html_e('Notif.','seliweb'); ?></th>
             <th style="width:140px;"><?php esc_html_e('Actions','seliweb'); ?></th>
         </tr></thead>
         <tbody>
         <?php if (empty($membres)) : ?>
-            <tr><td colspan="7"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
+            <tr><td colspan="8"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
         <?php else : ?>
             <?php foreach ($membres as $m) : ?>
             <tr>
+                <td style="text-align:center;color:#888;font-size:12px;font-weight:600;">
+                    <?php echo ( $sel_groupe_id > 0 && (int)$m->groupe_id === $sel_groupe_id && !empty($m->numero_sel) )
+                        ? intval( $m->numero_sel ) : '—'; ?>
+                </td>
+                <td><?php echo esc_html( $m->prenom ?? '' ); ?></td>
                 <td>
-                    <strong><?php echo esc_html($m->display_name); ?></strong>
-                    <?php if (!empty($m->organisme)) : ?>
+                    <strong><?php echo esc_html( $m->nom ?? '' ); ?></strong>
+                    <?php if ( !empty($m->organisme) ) : ?>
                         <br><em style="font-size:12px;color:#888;"><?php echo esc_html($m->organisme); ?></em>
                     <?php endif; ?>
                 </td>
@@ -607,7 +831,7 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
                     <form method="post" style="display:inline;">
                         <?php wp_nonce_field('seliweb_membres','seliweb_nonce'); ?>
                         <input type="hidden" name="membre_id" value="<?php echo intval($m->id); ?>">
-                        <select name="groupe_id" onchange="this.form.submit()">
+                        <select name="groupe_id" onchange="this.form.submit()" style="max-width:160px;">
                             <option value=""><?php esc_html_e('— Aucun —','seliweb'); ?></option>
                             <?php foreach ($groupes as $g) : ?>
                                 <option value="<?php echo intval($g->id); ?>" <?php selected($m->groupe_id,$g->id); ?>>
@@ -616,9 +840,6 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
                             <?php endforeach; ?>
                         </select>
                     </form>
-                </td>
-                <td style="text-align:center;">
-                    <?php echo $m->notif_annonces ? '<span style="color:green;">&#10003;</span>' : '<span style="color:#aaa;">&#10007;</span>'; ?>
                 </td>
                 <td>
                     <a href="<?php echo esc_url(admin_url('admin.php?page=seliweb_membres&action=edit&id='.$m->id)); ?>">
@@ -634,5 +855,25 @@ $membres = ! empty($values) ? $wpdb->get_results( $wpdb->prepare($sql, ...$value
         <?php endif; ?>
         </tbody>
     </table>
+
+    <?php if ( $total_pages > 1 ) : ?>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <?php if ( $paged > 1 ) : ?>
+            <a href="<?php echo esc_url( $page_url( $paged - 1 ) ); ?>" class="button">&laquo; <?php esc_html_e('Précédente','seliweb'); ?></a>
+        <?php else : ?>
+            <button class="button" disabled>&laquo; <?php esc_html_e('Précédente','seliweb'); ?></button>
+        <?php endif; ?>
+
+        <span style="font-size:13px;color:#555;">
+            <?php printf( esc_html__('Page %d sur %d','seliweb'), $paged, $total_pages ); ?>
+        </span>
+
+        <?php if ( $paged < $total_pages ) : ?>
+            <a href="<?php echo esc_url( $page_url( $paged + 1 ) ); ?>" class="button"><?php esc_html_e('Suivante','seliweb'); ?> &raquo;</a>
+        <?php else : ?>
+            <button class="button" disabled><?php esc_html_e('Suivante','seliweb'); ?> &raquo;</button>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
     <?php endif; ?>
 </div>
