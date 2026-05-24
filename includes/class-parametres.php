@@ -5,13 +5,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Parametres {
 
-    private static $sel_saved = false;
+    private static $sel_saved            = false;
+    private static $compte_sel_message   = '';
+    private static $compte_sel_error     = false;
 
     // ----------------------------------------------------------------
     // Hook init : traitement des suppressions GET avant tout affichage
     // ----------------------------------------------------------------
     public static function init() {
-        add_action( 'init', array( __CLASS__, 'handle_get_actions' ) );
+        add_action( 'init',       array( __CLASS__, 'handle_get_actions'  ) );
+        add_action( 'admin_init', array( __CLASS__, 'handle_post_actions' ) );
+    }
+
+    public static function handle_post_actions() {
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
+        if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
+        $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
+        self::handle_post( $tab );
     }
 
     public static function handle_get_actions() {
@@ -99,8 +109,6 @@ class Seliweb_Parametres {
             'statuts'    => __( 'Statuts',     'seliweb' ),
             'sel'        => __( 'SEL',         'seliweb' ),
         );
-
-        self::handle_post( $tab );
 
         echo '<div class="wrap">';
         echo '<h1>' . esc_html__( 'Paramètres Seliweb', 'seliweb' ) . '</h1>';
@@ -708,6 +716,78 @@ class Seliweb_Parametres {
             <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
         </form>
 
+        <?php
+        // Section Compte du SEL — hors du formulaire principal (formulaire imbriqué interdit)
+        if ( $sel_actif && $sel_groupe_id ) :
+            $tm = $wpdb->prefix . 'seliweb_membres';
+            $compte_row = $wpdb->get_row(
+                "SELECT m.id, m.wp_user_id FROM {$tm} m WHERE m.numero_sel = 1 LIMIT 1"
+            );
+            $compte_info = null;
+            if ( $compte_row ) {
+                $u = get_userdata( $compte_row->wp_user_id );
+                $compte_info = array(
+                    'email'  => $u ? $u->user_email : '',
+                    'prenom' => get_user_meta( $compte_row->wp_user_id, 'first_name', true ),
+                    'nom'    => get_user_meta( $compte_row->wp_user_id, 'last_name',  true ),
+                );
+            }
+        ?>
+        <h3 style="margin-top:28px;"><?php esc_html_e( 'Compte du SEL N°1', 'seliweb' ); ?></h3>
+
+        <?php if ( self::$compte_sel_message ) : ?>
+            <div class="notice <?php echo self::$compte_sel_error ? 'notice-error' : 'notice-success'; ?> is-dismissible">
+                <p><?php echo esc_html( self::$compte_sel_message ); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <?php if ( $compte_info ) : ?>
+            <p style="margin-bottom:12px;">
+                <?php
+                $label = trim( $compte_info['prenom'] . ' ' . $compte_info['nom'] );
+                echo esc_html( 'N°1' . ( $label ? ' — ' . $label : '' ) . ' — ' . $compte_info['email'] );
+                ?>
+            </p>
+            <form method="post" style="max-width:600px;">
+                <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+                <input type="hidden" name="seliweb_action" value="update_compte_sel_email">
+                <table class="form-table">
+                    <tr>
+                        <th><?php esc_html_e( 'Modifier l\'email', 'seliweb' ); ?></th>
+                        <td>
+                            <input type="email" name="sel_email" class="regular-text" required
+                                   value="<?php echo esc_attr( $compte_info['email'] ); ?>">
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button( __( 'Enregistrer l\'email', 'seliweb' ), 'secondary' ); ?>
+            </form>
+        <?php else : ?>
+            <p class="description" style="margin-bottom:12px;">
+                <?php esc_html_e( "Aucun compte N°1 défini. Créez-en un pour pouvoir saisir des transactions avec le compte de l'association.", 'seliweb' ); ?>
+            </p>
+            <form method="post">
+                <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+                <input type="hidden" name="seliweb_action" value="create_compte_sel">
+                <table class="form-table" style="max-width:600px;">
+                    <tr>
+                        <th><?php esc_html_e( 'Email du SEL', 'seliweb' ); ?></th>
+                        <td>
+                            <input type="email" name="sel_email" class="regular-text" required
+                                   placeholder="contact@monsel.fr"
+                                   value="<?php echo esc_attr( $_POST['sel_email'] ?? '' ); ?>">
+                            <p class="description">
+                                <?php esc_html_e( "Un utilisateur WordPress sera créé pour ce compte. Il représente l'association, pas une personne physique.", 'seliweb' ); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button( __( 'Créer le compte du SEL', 'seliweb' ), 'secondary' ); ?>
+            </form>
+        <?php endif; ?>
+
+        <?php endif; // sel_actif && sel_groupe_id ?>
+
         <script>
         (function(){
             var chkSel = document.getElementById('sel_actif');
@@ -724,6 +804,14 @@ class Seliweb_Parametres {
     }
 
     private static function handle_sel( $action ) {
+        if ( $action === 'create_compte_sel' ) {
+            self::create_compte_sel();
+            return;
+        }
+        if ( $action === 'update_compte_sel_email' ) {
+            self::update_compte_sel_email();
+            return;
+        }
         if ( $action !== 'save_sel' ) return;
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_parametres';
@@ -761,6 +849,95 @@ class Seliweb_Parametres {
         }
 
         self::$sel_saved = true;
+    }
+
+    private static function update_compte_sel_email() {
+        global $wpdb;
+        $tm = $wpdb->prefix . 'seliweb_membres';
+
+        $email = sanitize_email( wp_unslash( $_POST['sel_email'] ?? '' ) );
+        if ( ! is_email( $email ) ) {
+            self::$compte_sel_message = __( 'Adresse email invalide.', 'seliweb' );
+            self::$compte_sel_error   = true;
+            return;
+        }
+
+        $compte_row = $wpdb->get_row( "SELECT wp_user_id FROM $tm WHERE numero_sel = 1 LIMIT 1" );
+        if ( ! $compte_row ) {
+            self::$compte_sel_message = __( 'Compte SEL N°1 introuvable.', 'seliweb' );
+            self::$compte_sel_error   = true;
+            return;
+        }
+
+        $result = wp_update_user( array( 'ID' => $compte_row->wp_user_id, 'user_email' => $email ) );
+        if ( is_wp_error( $result ) ) {
+            self::$compte_sel_message = sprintf( __( 'Erreur : %s', 'seliweb' ), $result->get_error_message() );
+            self::$compte_sel_error   = true;
+            return;
+        }
+
+        self::$compte_sel_message = __( 'Email du compte SEL mis à jour.', 'seliweb' );
+    }
+
+    private static function create_compte_sel() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_parametres';
+        $tm = $wpdb->prefix . 'seliweb_membres';
+
+        $email = sanitize_email( wp_unslash( $_POST['sel_email'] ?? '' ) );
+        if ( ! is_email( $email ) ) {
+            self::$compte_sel_message = __( 'Adresse email invalide.', 'seliweb' );
+            self::$compte_sel_error   = true;
+            return;
+        }
+
+        if ( $wpdb->get_var( "SELECT id FROM $tm WHERE numero_sel = 1 LIMIT 1" ) ) {
+            self::$compte_sel_message = __( 'Le compte SEL N°1 existe déjà.', 'seliweb' );
+            return;
+        }
+
+        $sel_groupe_id = intval( $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='sel_groupe_id' LIMIT 1" ) );
+        if ( ! $sel_groupe_id ) {
+            self::$compte_sel_message = __( "Définissez d'abord le groupe SEL avant de créer le compte.", 'seliweb' );
+            self::$compte_sel_error   = true;
+            return;
+        }
+
+        // Utiliser un WP user existant ou en créer un nouveau
+        $wp_user = get_user_by( 'email', $email );
+        if ( $wp_user ) {
+            $user_id = $wp_user->ID;
+        } else {
+            $login = 'sel-compte';
+            $i = 1;
+            while ( username_exists( $login ) ) {
+                $login = 'sel-compte-' . $i++;
+            }
+            $user_id = wp_create_user( $login, wp_generate_password( 24, true, true ), $email );
+            if ( is_wp_error( $user_id ) ) {
+                self::$compte_sel_message = sprintf( __( 'Erreur création utilisateur : %s', 'seliweb' ), $user_id->get_error_message() );
+                self::$compte_sel_error   = true;
+                return;
+            }
+            wp_update_user( array(
+                'ID'           => $user_id,
+                'display_name' => __( 'Compte SEL', 'seliweb' ),
+                'role'         => 'subscriber',
+            ) );
+        }
+
+        // Mettre à jour ou créer l'enregistrement membre
+        $membre_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tm WHERE wp_user_id = %d LIMIT 1", $user_id ) );
+        if ( $membre_id ) {
+            $wpdb->update( $tm,
+                array( 'numero_sel' => 1, 'groupe_id' => $sel_groupe_id ),
+                array( 'id' => $membre_id )
+            );
+        } else {
+            $wpdb->insert( $tm, array( 'wp_user_id' => $user_id, 'numero_sel' => 1, 'groupe_id' => $sel_groupe_id ) );
+        }
+
+        self::$compte_sel_message = __( 'Compte SEL N°1 créé avec succès.', 'seliweb' );
     }
 
     // ================================================================
