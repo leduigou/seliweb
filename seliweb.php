@@ -20,15 +20,18 @@ require_once SELIWEB_DIR . 'includes/class-database.php';
 require_once SELIWEB_DIR . 'includes/class-parametres.php';
 require_once SELIWEB_DIR . 'includes/class-groupes.php';
 require_once SELIWEB_DIR . 'includes/class-annonces.php';
+require_once SELIWEB_DIR . 'includes/class-transactions.php';
 
 Seliweb_Groupes::init();
 Seliweb_Annonces::init();
 Seliweb_Parametres::init();
+Seliweb_Transactions::init();
 
 class Seliweb {
 
     public function __construct() {
         add_action( 'plugins_loaded',        array( $this, 'load_textdomain' ) );
+        add_action( 'admin_init',            array( 'Seliweb_Database', 'install' ) );
         add_action( 'admin_menu',            array( $this, 'create_menu' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
         add_action( 'wp_enqueue_scripts',    array( $this, 'enqueue_public_assets' ) );
@@ -93,12 +96,13 @@ class Seliweb {
         add_submenu_page( 'seliweb', __('Paramètres','seliweb'),      __('Paramètres','seliweb'),      'manage_options', 'seliweb_parametres', array('Seliweb_Parametres','display') );
         add_submenu_page( 'seliweb', __('Annonces','seliweb'),        __('Annonces','seliweb'),        'manage_options', 'seliweb_annonces',   array('Seliweb_Annonces','display') );
         add_submenu_page( 'seliweb', __('Membres','seliweb'),         __('Membres','seliweb'),         'manage_options', 'seliweb_membres',    array($this,'display_membres') );
-        add_submenu_page( 'seliweb', __('Cotisations','seliweb'),     __('Cotisations','seliweb'),     'manage_options', 'seliweb_cotisations',array($this,'display_cotisations') );
+        if ( Seliweb_Transactions::sel_actif() ) {
+            add_submenu_page( 'seliweb', __('Transactions','seliweb'), __('Transactions','seliweb'), 'manage_options', 'seliweb_transactions', array('Seliweb_Transactions','display') );
+        }
     }
 
-    public function display_dashboard()   { include SELIWEB_DIR . 'templates/admin-dashboard.php'; }
-    public function display_membres()     { include SELIWEB_DIR . 'templates/admin-membres.php'; }
-    public function display_cotisations() { include SELIWEB_DIR . 'templates/admin-cotisations.php'; }
+    public function display_dashboard() { include SELIWEB_DIR . 'templates/admin-dashboard.php'; }
+    public function display_membres()   { include SELIWEB_DIR . 'templates/admin-membres.php'; }
 
     // ----------------------------------------------------------------
     // Rattachement au groupe par défaut à l'inscription
