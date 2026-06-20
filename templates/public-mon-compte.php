@@ -727,18 +727,21 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     $ecritures_txn = array();
     if ( ! empty( $txn_ids ) ) {
         $ids_ph = implode( ',', array_map( 'intval', $txn_ids ) );
+        $my_id  = intval( $membre->id );
+        // Une seule ligne par transaction : l'écriture du membre courant + nom de la contrepartie
         $ecritures_txn = $wpdb->get_results(
-            "SELECT e.id AS ecriture_id, t.id AS txn_id, t.date, t.libelle, t.montant, e.type,
-                    m.id AS membre_id, m.numero_sel,
-                    um_fn.meta_value AS prenom, um_ln.meta_value AS nom
-             FROM $te_t e
-             JOIN $tt_t t ON t.id = e.transaction_id
-             JOIN $tm_t m ON m.id = e.membre_id
-             JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
-             LEFT JOIN {$wpdb->usermeta} um_fn ON um_fn.user_id = u.ID AND um_fn.meta_key = 'first_name'
-             LEFT JOIN {$wpdb->usermeta} um_ln ON um_ln.user_id = u.ID AND um_ln.meta_key = 'last_name'
-             WHERE e.transaction_id IN ($ids_ph)
-             ORDER BY t.id DESC, e.type ASC"
+            "SELECT e_me.transaction_id AS txn_id, t.date, t.libelle, t.montant, e_me.type AS my_type,
+                    m_ctr.numero_sel AS ctr_numero,
+                    um_fn_ctr.meta_value AS ctr_prenom, um_ln_ctr.meta_value AS ctr_nom
+             FROM $te_t e_me
+             JOIN $tt_t t ON t.id = e_me.transaction_id
+             LEFT JOIN $te_t e_ctr ON e_ctr.transaction_id = e_me.transaction_id AND e_ctr.membre_id != $my_id
+             LEFT JOIN $tm_t m_ctr ON m_ctr.id = e_ctr.membre_id
+             LEFT JOIN {$wpdb->users} u_ctr ON u_ctr.ID = m_ctr.wp_user_id
+             LEFT JOIN {$wpdb->usermeta} um_fn_ctr ON um_fn_ctr.user_id = u_ctr.ID AND um_fn_ctr.meta_key = 'first_name'
+             LEFT JOIN {$wpdb->usermeta} um_ln_ctr ON um_ln_ctr.user_id = u_ctr.ID AND um_ln_ctr.meta_key = 'last_name'
+             WHERE e_me.membre_id = $my_id AND e_me.transaction_id IN ($ids_ph)
+             ORDER BY t.id DESC"
         );
     }
 
@@ -813,22 +816,21 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
                 <th style="width:76px;text-align:right;"><?php esc_html_e( 'Débit', 'seliweb' ); ?></th>
                 <th style="width:76px;text-align:right;"><?php esc_html_e( 'Crédit', 'seliweb' ); ?></th>
-                <th style="width:60px;text-align:center;"><?php esc_html_e( 'N° Mbr', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Prénom Nom', 'seliweb' ); ?></th>
+                <th style="width:60px;text-align:center;"><?php esc_html_e( 'N°', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Contrepartie', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
-            <?php $prev_txn_id = null; foreach ( $ecritures_txn as $e_row ) :
-                $is_debit   = ( $e_row->type === 'debit' );
-                $is_new_txn = ( $e_row->txn_id !== $prev_txn_id );
-                $nom_prenom = intval( $e_row->numero_sel ) === 1
+            <?php foreach ( $ecritures_txn as $e_row ) :
+                $is_debit    = ( $e_row->my_type === 'debit' );
+                $ctr_label   = intval( $e_row->ctr_numero ) === 1
                     ? __( 'Compte du SEL', 'seliweb' )
-                    : trim( ( $e_row->prenom ?? '' ) . ' ' . ( $e_row->nom ?? '' ) );
+                    : trim( ( $e_row->ctr_prenom ?? '' ) . ' ' . ( $e_row->ctr_nom ?? '' ) );
                 $montant_fmt = intval( $e_row->montant ) . ( $symbole_txn ? ' ' . $symbole_txn : '' );
             ?>
-            <tr<?php if ( $is_new_txn && $prev_txn_id !== null ) echo ' style="border-top:2px solid #e0e0e0;"'; ?>>
-                <td><?php if ( $is_new_txn ) echo '#' . intval( $e_row->txn_id ); ?></td>
-                <td><?php if ( $is_new_txn ) echo esc_html( date_i18n( get_option('date_format'), strtotime( $e_row->date ) ) ); ?></td>
-                <td><?php if ( $is_new_txn ) echo esc_html( $e_row->libelle ); ?></td>
+            <tr>
+                <td><?php echo '#' . intval( $e_row->txn_id ); ?></td>
+                <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime( $e_row->date ) ) ); ?></td>
+                <td><?php echo esc_html( $e_row->libelle ); ?></td>
                 <td style="text-align:right;">
                     <?php if ( $is_debit ) : ?>
                         <span style="color:#c0392b;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
@@ -839,10 +841,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                         <span style="color:#27ae60;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
                     <?php endif; ?>
                 </td>
-                <td style="text-align:center;"><?php echo esc_html( $e_row->numero_sel ); ?></td>
-                <td><?php echo esc_html( $nom_prenom ); ?></td>
+                <td style="text-align:center;"><?php echo esc_html( $e_row->ctr_numero ); ?></td>
+                <td><?php echo esc_html( $ctr_label ); ?></td>
             </tr>
-            <?php $prev_txn_id = $e_row->txn_id; endforeach; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
         </div>
