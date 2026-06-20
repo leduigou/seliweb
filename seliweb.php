@@ -21,11 +21,13 @@ require_once SELIWEB_DIR . 'includes/class-parametres.php';
 require_once SELIWEB_DIR . 'includes/class-groupes.php';
 require_once SELIWEB_DIR . 'includes/class-annonces.php';
 require_once SELIWEB_DIR . 'includes/class-transactions.php';
+require_once SELIWEB_DIR . 'includes/class-updater.php';
 
 Seliweb_Groupes::init();
 Seliweb_Annonces::init();
 Seliweb_Parametres::init();
 Seliweb_Transactions::init();
+Seliweb_Updater::init();
 
 class Seliweb {
 
