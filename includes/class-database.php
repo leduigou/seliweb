@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '1.2';
+    const DB_VERSION     = '1.3';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -153,6 +153,27 @@ class Seliweb_Database {
             coordination  ENUM('ET','OU') DEFAULT NULL,
             PRIMARY KEY (id),
             KEY annonce_id (annonce_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_transactions (
+            id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            date        DATE         NOT NULL,
+            libelle     VARCHAR(255) NOT NULL,
+            montant     INT UNSIGNED NOT NULL,
+            created_at  DATETIME     NOT NULL,
+            modified_at DATETIME     DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY date (date)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_ecritures (
+            id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            transaction_id  INT UNSIGNED NOT NULL,
+            membre_id       INT UNSIGNED NOT NULL,
+            type            ENUM('debit','credit') NOT NULL,
+            PRIMARY KEY (id),
+            KEY transaction_id (transaction_id),
+            KEY membre_id (membre_id)
         ) $charset;";
 
         foreach ( $sql as $query ) {
@@ -311,9 +332,10 @@ class Seliweb_Database {
 
         // Statuts — INSERT IGNORE fonctionne grâce à UNIQUE KEY slug
         $statuts = array(
-            array( 'nom' => 'Urgent',  'slug' => 'urgent',  'modifiable' => 0, 'supprimable' => 0 ),
-            array( 'nom' => 'Répondu', 'slug' => 'repondu', 'modifiable' => 0, 'supprimable' => 0 ),
-            array( 'nom' => 'Expiré',  'slug' => 'expire',  'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Urgent',    'slug' => 'urgent',    'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Répondu',  'slug' => 'repondu',  'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Expiré',   'slug' => 'expire',   'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Permanent', 'slug' => 'permanent', 'modifiable' => 1, 'supprimable' => 1 ),
         );
         foreach ( $statuts as $st ) {
             $wpdb->query( $wpdb->prepare(

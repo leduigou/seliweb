@@ -134,7 +134,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         </a>
         <?php if ( $is_sel_membre ) : ?>
         <a href="<?php echo esc_url( add_query_arg('sel_action','transactions',$page_url) ); ?>"
-           class="seliweb-tab <?php echo $action==='transactions' ? 'seliweb-tab-active' : ''; ?>">
+           class="seliweb-tab <?php echo in_array($action,array('transactions','creer_transaction','confirmer_transaction')) ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
@@ -673,33 +673,356 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         <button type="submit" class="seliweb-btn"><?php esc_html_e( 'Enregistrer', 'seliweb' ); ?></button>
     </form>
 
-    <?php elseif ( $action === 'transactions' ) : ?>
+    <?php elseif ( in_array( $action, array( 'transactions', 'creer_transaction', 'confirmer_transaction' ) ) ) : ?>
 
     <?php if ( ! $is_sel_membre ) : ?>
         <p><em><?php esc_html_e( 'Accès non autorisé.', 'seliweb' ); ?></em></p>
     <?php else : ?>
 
-    <h3><?php esc_html_e( 'Transactions', 'seliweb' ); ?></h3>
+    <?php
+    $sel_info    = Seliweb_Transactions::get_sel_info();
+    $monnaie_sel = $sel_info['monnaie_id'] ? Seliweb_Transactions::get_monnaie( $sel_info['monnaie_id'] ) : null;
+    $symbole_txn = $monnaie_sel ? ( $monnaie_sel->symbole ?: $monnaie_sel->nom ) : '';
+    $nom_monnaie = $monnaie_sel ? $monnaie_sel->nom : __( 'unités', 'seliweb' );
+    $balance_sel = Seliweb_Transactions::get_balance( $membre->id );
 
-    <table class="sel-prf-table" style="max-width:420px;margin-top:12px;">
-        <style>
-        .sel-prf-table { width:100%; border-collapse:collapse; }
-        .sel-prf-table td { padding:6px 8px 6px 0; vertical-align:middle; }
-        .sel-prf-table td:first-child { width:200px; text-align:right; padding-right:14px; font-size:14px; font-weight:500; color:#333; white-space:nowrap; }
-        </style>
+    $te_t = $wpdb->prefix . 'seliweb_ecritures';
+    $tt_t = $wpdb->prefix . 'seliweb_transactions';
+    $tm_t = $wpdb->prefix . 'seliweb_membres';
+
+    $nb_txn = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT transaction_id) FROM $te_t WHERE membre_id=%d", $membre->id
+    ) );
+
+    $par_page = 20;
+    $page_num = max( 1, intval( $_GET['sel_txn_page'] ?? 1 ) );
+    $offset   = ( $page_num - 1 ) * $par_page;
+    $nb_pages = max( 1, (int) ceil( $nb_txn / $par_page ) );
+
+    $txn_ids = array();
+    if ( $nb_txn > 0 ) {
+        $txn_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT DISTINCT transaction_id FROM $te_t WHERE membre_id=%d ORDER BY transaction_id DESC LIMIT %d OFFSET %d",
+            $membre->id, $par_page, $offset
+        ) );
+    }
+
+    $ecritures_txn = array();
+    if ( ! empty( $txn_ids ) ) {
+        $ids_ph = implode( ',', array_map( 'intval', $txn_ids ) );
+        $ecritures_txn = $wpdb->get_results(
+            "SELECT e.id AS ecriture_id, t.id AS txn_id, t.date, t.libelle, t.montant, e.type,
+                    m.id AS membre_id, m.numero_sel,
+                    um_fn.meta_value AS prenom, um_ln.meta_value AS nom
+             FROM $te_t e
+             JOIN $tt_t t ON t.id = e.transaction_id
+             JOIN $tm_t m ON m.id = e.membre_id
+             JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+             LEFT JOIN {$wpdb->usermeta} um_fn ON um_fn.user_id = u.ID AND um_fn.meta_key = 'first_name'
+             LEFT JOIN {$wpdb->usermeta} um_ln ON um_ln.user_id = u.ID AND um_ln.meta_key = 'last_name'
+             WHERE e.transaction_id IN ($ids_ph)
+             ORDER BY t.id DESC, e.type ASC"
+        );
+    }
+
+    $txn_url   = add_query_arg( 'sel_action', 'transactions', $page_url );
+    $creer_url = add_query_arg( 'sel_action', 'creer_transaction', $page_url );
+    ?>
+
+    <?php if ( isset( $_GET['sel_txn_added'] ) ) : ?>
+        <div class="seliweb-notice seliweb-notice-ok"><?php esc_html_e( 'Transaction enregistrée.', 'seliweb' ); ?></div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_txn_err'] ) ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php echo esc_html( rawurldecode( $_GET['sel_txn_err'] ) ); ?>
+        </div>
+    <?php endif; ?>
+
+    <!-- Solde + découvert -->
+    <style>
+    .sel-txn-info { width:100%; max-width:420px; border-collapse:collapse; margin-top:12px; margin-bottom:20px; }
+    .sel-txn-info td { padding:6px 8px 6px 0; vertical-align:middle; font-size:14px; }
+    .sel-txn-info td:first-child { width:200px; text-align:right; padding-right:14px; font-weight:500; color:#333; white-space:nowrap; }
+    </style>
+    <table class="sel-txn-info">
+        <tr>
+            <td><?php esc_html_e( 'Solde actuel', 'seliweb' ); ?></td>
+            <td>
+                <strong style="color:<?php echo $balance_sel >= 0 ? '#27ae60' : '#c0392b'; ?>;">
+                    <?php echo intval( $balance_sel ) . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?>
+                </strong>
+            </td>
+        </tr>
         <tr>
             <td><?php esc_html_e( 'Découvert max autorisé', 'seliweb' ); ?></td>
             <td>
                 <?php if ( $membre->decouvert_max !== null ) : ?>
-                    <strong><?php echo intval( $membre->decouvert_max ); ?></strong>
+                    <strong><?php echo intval( $membre->decouvert_max ) . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?></strong>
                 <?php else : ?>
-                    <em style="color:#888;"><?php esc_html_e( 'Aucun découvert autorisé', 'seliweb' ); ?></em>
+                    <em style="color:#888;"><?php esc_html_e( 'Aucun', 'seliweb' ); ?></em>
                 <?php endif; ?>
             </td>
         </tr>
     </table>
 
-    <?php endif; ?>
+    <?php if ( $action === 'transactions' ) : ?>
+
+        <!-- Toolbar -->
+        <div class="seliweb-compte-toolbar">
+            <span class="seliweb-limite-info">
+                <?php printf( esc_html__( 'Total transaction(s) : %d', 'seliweb' ), $nb_txn ); ?>
+            </span>
+            <?php if ( ! Seliweb_Transactions::is_compte_sel( $membre->id ) ) : ?>
+            <a href="<?php echo esc_url( $creer_url ); ?>" class="seliweb-btn">
+                <?php esc_html_e( '+ Créer une transaction', 'seliweb' ); ?>
+            </a>
+            <?php endif; ?>
+        </div>
+
+        <!-- Tableau -->
+        <?php if ( empty( $ecritures_txn ) ) : ?>
+            <p class="seliweb-empty"><?php esc_html_e( "Vous n'avez pas encore de transaction.", 'seliweb' ); ?></p>
+        <?php else : ?>
+        <div style="overflow-x:auto;">
+        <table class="seliweb-table">
+            <thead><tr>
+                <th style="width:50px;">ID</th>
+                <th style="width:88px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
+                <th style="width:76px;text-align:right;"><?php esc_html_e( 'Débit', 'seliweb' ); ?></th>
+                <th style="width:76px;text-align:right;"><?php esc_html_e( 'Crédit', 'seliweb' ); ?></th>
+                <th style="width:60px;text-align:center;"><?php esc_html_e( 'N° Mbr', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Prénom Nom', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php $prev_txn_id = null; foreach ( $ecritures_txn as $e_row ) :
+                $is_debit   = ( $e_row->type === 'debit' );
+                $is_new_txn = ( $e_row->txn_id !== $prev_txn_id );
+                $nom_prenom = intval( $e_row->numero_sel ) === 1
+                    ? __( 'Compte du SEL', 'seliweb' )
+                    : trim( ( $e_row->prenom ?? '' ) . ' ' . ( $e_row->nom ?? '' ) );
+                $montant_fmt = intval( $e_row->montant ) . ( $symbole_txn ? ' ' . $symbole_txn : '' );
+            ?>
+            <tr<?php if ( $is_new_txn && $prev_txn_id !== null ) echo ' style="border-top:2px solid #e0e0e0;"'; ?>>
+                <td><?php if ( $is_new_txn ) echo '#' . intval( $e_row->txn_id ); ?></td>
+                <td><?php if ( $is_new_txn ) echo esc_html( date_i18n( get_option('date_format'), strtotime( $e_row->date ) ) ); ?></td>
+                <td><?php if ( $is_new_txn ) echo esc_html( $e_row->libelle ); ?></td>
+                <td style="text-align:right;">
+                    <?php if ( $is_debit ) : ?>
+                        <span style="color:#c0392b;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
+                    <?php endif; ?>
+                </td>
+                <td style="text-align:right;">
+                    <?php if ( ! $is_debit ) : ?>
+                        <span style="color:#27ae60;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
+                    <?php endif; ?>
+                </td>
+                <td style="text-align:center;"><?php echo esc_html( $e_row->numero_sel ); ?></td>
+                <td><?php echo esc_html( $nom_prenom ); ?></td>
+            </tr>
+            <?php $prev_txn_id = $e_row->txn_id; endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+
+        <!-- Pagination -->
+        <?php if ( $nb_pages > 1 ) : ?>
+        <div style="display:flex;gap:8px;margin-top:16px;align-items:center;">
+            <?php if ( $page_num > 1 ) : ?>
+                <a href="<?php echo esc_url( add_query_arg( array( 'sel_action' => 'transactions', 'sel_txn_page' => $page_num - 1 ), $page_url ) ); ?>"
+                   class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm">
+                    &larr; <?php esc_html_e( 'Précédente', 'seliweb' ); ?>
+                </a>
+            <?php else : ?>
+                <span class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" style="opacity:.4;cursor:default;">&larr; <?php esc_html_e( 'Précédente', 'seliweb' ); ?></span>
+            <?php endif; ?>
+            <span style="font-size:14px;color:#555;">
+                <?php printf( esc_html__( 'Page %d / %d', 'seliweb' ), $page_num, $nb_pages ); ?>
+            </span>
+            <?php if ( $page_num < $nb_pages ) : ?>
+                <a href="<?php echo esc_url( add_query_arg( array( 'sel_action' => 'transactions', 'sel_txn_page' => $page_num + 1 ), $page_url ) ); ?>"
+                   class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm">
+                    <?php esc_html_e( 'Suivante', 'seliweb' ); ?> &rarr;
+                </a>
+            <?php else : ?>
+                <span class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" style="opacity:.4;cursor:default;"><?php esc_html_e( 'Suivante', 'seliweb' ); ?> &rarr;</span>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <?php endif; // empty ecritures_txn ?>
+
+    <?php elseif ( $action === 'creer_transaction' ) : ?>
+
+        <div class="seliweb-compte-toolbar">
+            <a href="<?php echo esc_url( $txn_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                &larr; <?php esc_html_e( 'Retour aux transactions', 'seliweb' ); ?>
+            </a>
+        </div>
+
+        <h3><?php esc_html_e( 'Créer une transaction', 'seliweb' ); ?></h3>
+
+        <?php
+        $membres_sel    = Seliweb_Transactions::get_sel_membres( $sel_info['groupe_id'] );
+        $membres_credit = array_values( array_filter( $membres_sel, function( $m ) use ( $membre ) {
+            return intval( $m->numero_sel ) !== 1 && intval( $m->id ) !== intval( $membre->id );
+        } ) );
+        ?>
+
+        <p style="margin-bottom:20px;font-size:15px;">
+            <?php printf(
+                esc_html__( 'A quel membre, voulez-vous virer des %s ?', 'seliweb' ),
+                '<strong>' . esc_html( $nom_monnaie ) . '</strong>'
+            ); ?>
+        </p>
+
+        <form method="post" action="<?php echo esc_url( $page_url ); ?>" style="max-width:480px;" class="seliweb-form">
+            <?php wp_nonce_field( 'seliweb_txn_creer_' . $wp_user_id, 'seliweb_nonce_txn_creer' ); ?>
+
+            <div class="seliweb-field">
+                <label><?php esc_html_e( 'Membre à créditer', 'seliweb' ); ?> *</label>
+                <select name="membre_credit_id" class="seliweb-select" required>
+                    <option value=""><?php esc_html_e( '— Choisir un membre —', 'seliweb' ); ?></option>
+                    <?php foreach ( $membres_credit as $m ) : ?>
+                        <option value="<?php echo intval( $m->id ); ?>">
+                            <?php echo esc_html( Seliweb_Transactions::membre_label( $m ) ); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="seliweb-field">
+                <label>
+                    <?php esc_html_e( 'Montant', 'seliweb' ); ?> *
+                    <?php if ( $symbole_txn ) : ?>
+                        <span class="seliweb-hint">(<?php echo esc_html( $symbole_txn ); ?>)</span>
+                    <?php endif; ?>
+                </label>
+                <input type="number" name="montant" class="seliweb-input" min="1" step="1"
+                       style="max-width:150px;" required>
+            </div>
+
+            <div class="seliweb-field">
+                <label><?php esc_html_e( 'Libellé', 'seliweb' ); ?> *</label>
+                <input type="text" name="libelle" class="seliweb-input" required>
+            </div>
+
+            <div class="seliweb-field">
+                <label><?php esc_html_e( 'Date', 'seliweb' ); ?> *</label>
+                <input type="date" name="date" class="seliweb-input"
+                       value="<?php echo esc_attr( date( 'Y-m-d' ) ); ?>"
+                       style="max-width:180px;" required>
+            </div>
+
+            <div class="seliweb-form-footer">
+                <button type="submit" class="seliweb-btn"><?php esc_html_e( 'Valider', 'seliweb' ); ?></button>
+                <a href="<?php echo esc_url( $txn_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                    <?php esc_html_e( 'Annuler', 'seliweb' ); ?>
+                </a>
+            </div>
+        </form>
+
+    <?php elseif ( $action === 'confirmer_transaction' ) :
+
+        $pending = get_transient( 'seliweb_pending_txn_' . $wp_user_id );
+
+        if ( ! $pending ) :
+            // Transient expiré
+            ?>
+            <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+                <?php esc_html_e( 'Session expirée. Veuillez recommencer.', 'seliweb' ); ?>
+            </div>
+            <p><a href="<?php echo esc_url( $creer_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                &larr; <?php esc_html_e( 'Retour au formulaire', 'seliweb' ); ?>
+            </a></p>
+        <?php else :
+            // Récupérer les infos du membre crédité pour l'affichage
+            $credit_membre = null;
+            $membres_all   = Seliweb_Transactions::get_sel_membres( $sel_info['groupe_id'] );
+            foreach ( $membres_all as $m ) {
+                if ( intval( $m->id ) === intval( $pending['credit_id'] ) ) {
+                    $credit_membre = $m;
+                    break;
+                }
+            }
+            $credit_label = $credit_membre
+                ? Seliweb_Transactions::membre_label( $credit_membre )
+                : '#' . intval( $pending['credit_id'] );
+        ?>
+
+        <div class="seliweb-compte-toolbar">
+            <a href="<?php echo esc_url( $creer_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                &larr; <?php esc_html_e( 'Modifier la saisie', 'seliweb' ); ?>
+            </a>
+        </div>
+
+        <h3><?php esc_html_e( 'Confirmation de la transaction', 'seliweb' ); ?></h3>
+
+        <p style="margin-bottom:16px;color:#555;">
+            <?php esc_html_e( 'Veuillez vérifier les informations ci-dessous avant de valider.', 'seliweb' ); ?>
+        </p>
+
+        <style>
+        .sel-txn-confirm { width:100%; max-width:480px; border-collapse:collapse; margin-bottom:24px; }
+        .sel-txn-confirm td { padding:10px 12px; font-size:14px; border-bottom:1px solid #e0e0e0; }
+        .sel-txn-confirm td:first-child { width:180px; font-weight:600; color:#555; background:#f9f9f9; }
+        .sel-txn-confirm tr:last-child td { border-bottom:none; }
+        .sel-txn-confirm-wrap { border:2px solid #2271b1; border-radius:6px; overflow:hidden; max-width:480px; margin-bottom:24px; }
+        </style>
+
+        <div class="sel-txn-confirm-wrap">
+            <table class="sel-txn-confirm">
+                <tr>
+                    <td><?php esc_html_e( 'Débité (vous)', 'seliweb' ); ?></td>
+                    <td>
+                        <?php
+                        $debit_nom_full = trim( $membre_prenom . ' ' . $membre_nom );
+                        echo '<strong>N°' . intval( $membre->numero_sel )
+                            . ( $debit_nom_full ? ' — ' . esc_html( $debit_nom_full ) : '' )
+                            . '</strong>';
+                        ?>
+                    </td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Crédité', 'seliweb' ); ?></td>
+                    <td><strong><?php echo esc_html( $credit_label ); ?></strong></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Montant', 'seliweb' ); ?></td>
+                    <td>
+                        <strong style="font-size:16px;">
+                            <?php echo intval( $pending['montant'] ) . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?>
+                        </strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Libellé', 'seliweb' ); ?></td>
+                    <td><?php echo esc_html( $pending['libelle'] ); ?></td>
+                </tr>
+                <tr>
+                    <td><?php esc_html_e( 'Date', 'seliweb' ); ?></td>
+                    <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime( $pending['date'] ) ) ); ?></td>
+                </tr>
+            </table>
+        </div>
+
+        <form method="post" action="<?php echo esc_url( $page_url ); ?>">
+            <?php wp_nonce_field( 'seliweb_txn_confirmer_' . $wp_user_id, 'seliweb_nonce_txn_confirmer' ); ?>
+            <div class="seliweb-form-footer">
+                <button type="submit" class="seliweb-btn">
+                    <?php esc_html_e( 'Confirmer la transaction', 'seliweb' ); ?>
+                </button>
+                <a href="<?php echo esc_url( $txn_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                    <?php esc_html_e( 'Annuler', 'seliweb' ); ?>
+                </a>
+            </div>
+        </form>
+
+        <?php endif; // pending ?>
+
+    <?php endif; // transactions vs creer_transaction vs confirmer_transaction ?>
+
+    <?php endif; // is_sel_membre ?>
 
     <?php  endif; ?>
 
