@@ -756,8 +756,13 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         <tr>
             <td><?php esc_html_e( 'Découvert max autorisé', 'seliweb' ); ?></td>
             <td>
-                <?php if ( $membre->decouvert_max !== null ) : ?>
-                    <strong><?php echo intval( $membre->decouvert_max ) . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?></strong>
+                <?php
+                $dec_val = $membre->decouvert_max !== null
+                    ? intval( $membre->decouvert_max )
+                    : ( $sel_info['decouvert_possible'] ? intval( $sel_info['decouvert_max'] ) : null );
+                ?>
+                <?php if ( $dec_val !== null ) : ?>
+                    <strong><?php echo $dec_val . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?></strong>
                 <?php else : ?>
                     <em style="color:#888;"><?php esc_html_e( 'Aucun', 'seliweb' ); ?></em>
                 <?php endif; ?>
@@ -867,6 +872,9 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         $membres_credit = array_values( array_filter( $membres_sel, function( $m ) use ( $membre ) {
             return intval( $m->numero_sel ) !== 1 && intval( $m->id ) !== intval( $membre->id );
         } ) );
+        $ac_credit = array_map( function( $m ) {
+            return array( 'id' => intval( $m->id ), 'label' => Seliweb_Transactions::membre_label( $m ) );
+        }, $membres_credit );
         ?>
 
         <p style="margin-bottom:20px;font-size:15px;">
@@ -881,14 +889,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
             <div class="seliweb-field">
                 <label><?php esc_html_e( 'Membre à créditer', 'seliweb' ); ?> *</label>
-                <select name="membre_credit_id" class="seliweb-select" required>
-                    <option value=""><?php esc_html_e( '— Choisir un membre —', 'seliweb' ); ?></option>
-                    <?php foreach ( $membres_credit as $m ) : ?>
-                        <option value="<?php echo intval( $m->id ); ?>">
-                            <?php echo esc_html( Seliweb_Transactions::membre_label( $m ) ); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <div class="swv-ac-wrap" id="swv_wrap_fe_credit" data-value="" data-label=""></div>
             </div>
 
             <div class="seliweb-field">
@@ -921,6 +922,59 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 </a>
             </div>
         </form>
+        <style>
+        .swv-ac-wrap{position:relative;display:block;width:100%;}
+        .swv-ac-input{width:100%;padding:8px 12px;font-size:15px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;font-family:inherit;}
+        .swv-ac-input:focus{border-color:#1d6a4a;outline:none;box-shadow:0 0 0 2px rgba(29,106,74,.15);}
+        .swv-ac-list{position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1px solid #ccc;border-top:0;border-radius:0 0 6px 6px;list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);}
+        .swv-ac-list li{padding:9px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid #f0f0f0;}
+        .swv-ac-list li:hover{background:#e0ede7;}
+        </style>
+        <script>
+        (function() {
+            function swvAc(wrapId, hiddenName, items, placeholder) {
+                var wrap = document.getElementById(wrapId);
+                if (!wrap) return;
+                var txt = document.createElement('input');
+                txt.type = 'text'; txt.placeholder = placeholder || ''; txt.autocomplete = 'off'; txt.className = 'swv-ac-input';
+                var hid = document.createElement('input');
+                hid.type = 'hidden'; hid.name = hiddenName; hid.value = wrap.dataset.value || '';
+                var list = document.createElement('ul');
+                list.className = 'swv-ac-list'; list.hidden = true;
+                wrap.appendChild(txt); wrap.appendChild(hid); wrap.appendChild(list);
+                function render(matches) {
+                    list.innerHTML = '';
+                    if (!matches.length) { list.hidden = true; return; }
+                    matches.slice(0, 15).forEach(function(item) {
+                        var li = document.createElement('li');
+                        li.textContent = item.label;
+                        li.addEventListener('mousedown', function(e) { e.preventDefault(); txt.value = item.label; hid.value = item.id; list.hidden = true; });
+                        list.appendChild(li);
+                    });
+                    list.hidden = false;
+                }
+                txt.addEventListener('input', function() {
+                    hid.value = '';
+                    var q = this.value.toLowerCase().trim();
+                    if (!q) { list.hidden = true; return; }
+                    render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('focus', function() {
+                    var q = this.value.toLowerCase().trim();
+                    if (q) render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('blur', function() { setTimeout(function() { list.hidden = true; }, 200); });
+            }
+            swvAc('swv_wrap_fe_credit', 'membre_credit_id',
+                <?php echo wp_json_encode( $ac_credit ); ?>,
+                '<?php echo esc_js( __( 'Taper un nom ou un N°…', 'seliweb' ) ); ?>'
+            );
+            document.querySelector('.seliweb-form').addEventListener('submit', function(e) {
+                if (!document.querySelector('[name="membre_credit_id"]').value)
+                    { e.preventDefault(); alert('<?php echo esc_js( __( 'Veuillez choisir le membre à créditer.', 'seliweb' ) ); ?>'); }
+            });
+        })();
+        </script>
 
     <?php elseif ( $action === 'confirmer_transaction' ) :
 

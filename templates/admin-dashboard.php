@@ -17,6 +17,19 @@ $statut_expire  = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $ts WHERE slug
 $nb_expirees    = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $ta WHERE statut_id=%d", $statut_expire ?? 0 ) );
 
 $db_version     = Seliweb_Database::get_installed_version();
+
+// Solde compte SEL N°1
+$sel_info        = class_exists('Seliweb_Transactions') ? Seliweb_Transactions::get_sel_info() : null;
+$solde_sel       = null;
+$symbole_sel     = '';
+if ( $sel_info && $sel_info['actif'] ) {
+    $compte_sel = $wpdb->get_row( "SELECT id FROM $tm WHERE numero_sel = 1 LIMIT 1" );
+    if ( $compte_sel ) {
+        $solde_sel   = Seliweb_Transactions::get_balance( $compte_sel->id );
+        $monnaie_sel = $sel_info['monnaie_id'] ? Seliweb_Transactions::get_monnaie( $sel_info['monnaie_id'] ) : null;
+        $symbole_sel = $monnaie_sel ? ( $monnaie_sel->symbole ?: $monnaie_sel->nom ) : '';
+    }
+}
 ?>
 <div class="wrap">
     <h1><?php esc_html_e( 'Tableau de bord Seliweb', 'seliweb' ); ?></h1>
@@ -24,24 +37,33 @@ $db_version     = Seliweb_Database::get_installed_version();
     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:20px;">
 
         <div style="background:var(--wp-admin-theme-color,#2271b1);color:#fff;padding:20px 28px;border-radius:4px;min-width:160px;text-align:center;">
-            <div style="font-size:36px;font-weight:600;"><?php echo intval( $nb_annonces ); ?></div>
+            <div style="font-size:36px;font-weight:600;margin-bottom:8px;"><?php echo intval( $nb_annonces ); ?></div>
             <div><?php esc_html_e( 'Annonces', 'seliweb' ); ?></div>
         </div>
 
         <div style="background:#3858e9;color:#fff;padding:20px 28px;border-radius:4px;min-width:160px;text-align:center;">
-            <div style="font-size:36px;font-weight:600;"><?php echo intval( $nb_membres ); ?></div>
+            <div style="font-size:36px;font-weight:600;margin-bottom:8px;"><?php echo intval( $nb_membres ); ?></div>
             <div><?php esc_html_e( 'Membres', 'seliweb' ); ?></div>
         </div>
 
         <div style="background:#1d9e75;color:#fff;padding:20px 28px;border-radius:4px;min-width:160px;text-align:center;">
-            <div style="font-size:36px;font-weight:600;"><?php echo intval( $nb_groupes ); ?></div>
+            <div style="font-size:36px;font-weight:600;margin-bottom:8px;"><?php echo intval( $nb_groupes ); ?></div>
             <div><?php esc_html_e( 'Groupes', 'seliweb' ); ?></div>
         </div>
 
         <div style="background:#b32d2e;color:#fff;padding:20px 28px;border-radius:4px;min-width:160px;text-align:center;">
-            <div style="font-size:36px;font-weight:600;"><?php echo intval( $nb_expirees ); ?></div>
+            <div style="font-size:36px;font-weight:600;margin-bottom:8px;"><?php echo intval( $nb_expirees ); ?></div>
             <div><?php esc_html_e( 'Annonces expirées', 'seliweb' ); ?></div>
         </div>
+
+        <?php if ( $solde_sel !== null ) : ?>
+        <div style="background:#5a5a9a;color:#fff;padding:20px 28px;border-radius:4px;min-width:160px;text-align:center;">
+            <div style="font-size:36px;font-weight:600;margin-bottom:8px;">
+                <?php echo intval( $solde_sel ) . ( $symbole_sel ? ' ' . esc_html( $symbole_sel ) : '' ); ?>
+            </div>
+            <div><?php esc_html_e( 'Solde compte SEL N°1', 'seliweb' ); ?></div>
+        </div>
+        <?php endif; ?>
 
     </div>
 
