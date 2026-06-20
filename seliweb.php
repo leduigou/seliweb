@@ -889,6 +889,21 @@ class Seliweb {
                 if ( ! is_wp_error($att_id) ) $data['photo2'] = wp_get_attachment_url($att_id);
             }
 
+            // Validation photos obligatoires (création uniquement)
+            if ( $is_new ) {
+                $tp_sv          = $wpdb->prefix . 'seliweb_parametres';
+                $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_sv WHERE cle='annonces_photos_min' LIMIT 1" );
+                $photos_min_sv  = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
+                if ( $photos_min_sv >= 1 && empty( $data['photo1'] ) ) {
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'creer', 'sel_error' => 'no_photo1' ), get_permalink() ) );
+                    exit;
+                }
+                if ( $photos_min_sv >= 2 && empty( $data['photo2'] ) ) {
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'creer', 'sel_error' => 'no_photo2' ), get_permalink() ) );
+                    exit;
+                }
+            }
+
             if ( $is_new ) {
                 $data['membre_id']     = $membre->id;
                 $data['date_creation'] = current_time('mysql');

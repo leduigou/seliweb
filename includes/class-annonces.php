@@ -59,6 +59,12 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
         }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo1' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'La photo 1 est obligatoire.', 'seliweb' ) . '</p></div>';
+        }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo2' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ) . '</p></div>';
+        }
 
         switch ( $action ) {
             case 'new':
@@ -151,6 +157,21 @@ class Seliweb_Annonces {
         $photo1 = self::handle_upload( 'photo1' );
         $photo2 = self::handle_upload( 'photo2' );
 
+        // Validation photos obligatoires (création uniquement)
+        if ( $action === 'add_annonce' ) {
+            $tp_table       = $wpdb->prefix . 'seliweb_parametres';
+            $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_table WHERE cle='annonces_photos_min' LIMIT 1" );
+            $photos_min_sv  = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
+            if ( $photos_min_sv >= 1 && ! $photo1 ) {
+                wp_safe_redirect( add_query_arg( array( 'page' => 'seliweb_annonces', 'action' => 'new', 'error' => 'no_photo1' ), admin_url('admin.php') ) );
+                exit;
+            }
+            if ( $photos_min_sv >= 2 && ! $photo2 ) {
+                wp_safe_redirect( add_query_arg( array( 'page' => 'seliweb_annonces', 'action' => 'new', 'error' => 'no_photo2' ), admin_url('admin.php') ) );
+                exit;
+            }
+        }
+
         if ( $action === 'add_annonce' ) {
             // En backend, le membre est choisi dans le formulaire
             $membre_id = ! empty($_POST['membre_id']) ? intval($_POST['membre_id']) : self::get_or_create_membre(get_current_user_id());
@@ -231,9 +252,9 @@ class Seliweb_Annonces {
         $used  = array();
         $first = true;
         foreach ( (array) $post['prix'] as $line ) {
-            $montant    = sanitize_text_field( wp_unslash( $line['montant'] ?? '' ) );
+            $montant    = intval( $line['montant'] ?? 0 );
             $monnaie_id = intval( $line['monnaie_id'] ?? 0 );
-            if ( $montant === '' || $monnaie_id === 0 ) continue;
+            if ( $montant <= 0 || $monnaie_id === 0 ) continue;
             if ( in_array( $monnaie_id, $used ) ) continue;
             $used[] = $monnaie_id;
 
@@ -299,6 +320,8 @@ class Seliweb_Annonces {
         if ( isset( $_GET['warn_expire'] ) ) echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__( "Cette annonce ne sera pas visible car le statut est Expiré.", 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_rubrique' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Vous devez choisir une rubrique.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' )    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo1' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'La photo 1 est obligatoire.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo2' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ) . '</p></div>';
 
         // Tri par colonne
         $allowed_orderby = [
@@ -491,6 +514,10 @@ class Seliweb_Annonces {
 
         // Lignes de prix à afficher : existantes ou 1 ligne vide
         $prix_lignes = ! empty( $prix_map ) ? $prix_map : array( '' => '' );
+
+        $tp_table       = $wpdb->prefix . 'seliweb_parametres';
+        $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_table WHERE cle='annonces_photos_min' LIMIT 1" );
+        $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
         ?>
         <form id="seliweb-admin-form-annonce" method="post" enctype="multipart/form-data" style="max-width:750px;">
             <?php wp_nonce_field( 'seliweb_annonces', 'seliweb_nonce' ); ?>
@@ -633,9 +660,9 @@ class Seliweb_Annonces {
                                         <option value="ET" <?php selected($coord_val,'ET'); ?>>ET</option>
                                     </select>
                                 <?php endif; ?>
-                                <input type="text" name="prix[<?php echo $adm_n; ?>][montant]"
+                                <input type="number" name="prix[<?php echo $adm_n; ?>][montant]"
                                        value="<?php echo esc_attr( $montant ); ?>"
-                                       maxlength="10" style="width:100px;"
+                                       min="1" step="1" style="width:100px;"
                                        placeholder="<?php esc_attr_e( 'Montant', 'seliweb' ); ?>">
                                 <select name="prix[<?php echo $adm_n; ?>][monnaie_id]" class="adm-prix-select">
                                     <option value=""><?php esc_html_e( '— Monnaie —', 'seliweb' ); ?></option>
@@ -658,16 +685,16 @@ class Seliweb_Annonces {
                     </td>
                 </tr>
 
-                <!-- Photo 1 obligatoire en création -->
+                <!-- Photos -->
                 <tr>
                     <th><label for="photo1"><?php esc_html_e( 'Photo 1', 'seliweb' ); ?></label></th>
                     <td>
                         <input type="file" id="photo1" name="photo1" accept="image/*"
-                               <?php echo ! $item ? 'required' : ''; ?>>
+                               <?php echo ( ! $item && $photos_min >= 1 ) ? 'required' : ''; ?>>
                         <?php if ( $item && $item->photo1 ) : ?>
                             <br><img src="<?php echo esc_url( $item->photo1 ); ?>"
                                      style="max-height:80px;margin-top:6px;border-radius:3px;border:1px solid #ddd;">
-                        <?php elseif ( ! $item ) : ?>
+                        <?php elseif ( ! $item && $photos_min >= 1 ) : ?>
                             <p class="description"><?php esc_html_e( 'Obligatoire.', 'seliweb' ); ?></p>
                         <?php endif; ?>
                     </td>
@@ -675,10 +702,13 @@ class Seliweb_Annonces {
                 <tr>
                     <th><label for="photo2"><?php esc_html_e( 'Photo 2', 'seliweb' ); ?></label></th>
                     <td>
-                        <input type="file" id="photo2" name="photo2" accept="image/*">
+                        <input type="file" id="photo2" name="photo2" accept="image/*"
+                               <?php echo ( ! $item && $photos_min >= 2 ) ? 'required' : ''; ?>>
                         <?php if ( $item && $item->photo2 ) : ?>
                             <br><img src="<?php echo esc_url( $item->photo2 ); ?>"
                                      style="max-height:80px;margin-top:6px;border-radius:3px;border:1px solid #ddd;">
+                        <?php elseif ( ! $item && $photos_min >= 2 ) : ?>
+                            <p class="description"><?php esc_html_e( 'Obligatoire.', 'seliweb' ); ?></p>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -799,7 +829,7 @@ class Seliweb_Annonces {
             row.className = 'seliweb-prix-row';
             row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
             row.innerHTML = '<select name="prix['+idx+'][coordination]" style="width:60px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
-                          + '<input type="text" name="prix['+idx+'][montant]" maxlength="10" style="width:100px;" placeholder="Montant">'
+                          + '<input type="number" name="prix['+idx+'][montant]" min="1" step="1" style="width:100px;" placeholder="Montant">'
                           + '<select name="prix['+idx+'][monnaie_id]" class="adm-prix-select">'+opts+'</select>'
                           + '<button type="button" class="button" onclick="this.closest(\'.seliweb-prix-row\').remove()">✕</button>';
             document.getElementById('adm_prix_container').appendChild(row);

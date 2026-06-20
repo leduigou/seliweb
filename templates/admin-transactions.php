@@ -209,14 +209,14 @@ $par_page = in_array( $par_page, array( 50, 100, 250 ), true ) ? $par_page : 50;
 $page_cur = max( 1, intval( $_GET['sel_page'] ?? 1 ) );
 
 $allowed_orderby = array(
-    'date'   => 't.date, t.id',
-    'numero' => 'ISNULL(m.numero_sel), m.numero_sel',
-    'nom'    => 'um_ln.meta_value, um_fn.meta_value',
+    'date'   => 't.date %s, t.id %s',
+    'numero' => 'ISNULL(m.numero_sel) ASC, m.numero_sel %s',
+    'nom'    => 'um_ln.meta_value %s, um_fn.meta_value %s',
 );
 $orderby_key = ( isset( $_GET['orderby'] ) && array_key_exists( $_GET['orderby'], $allowed_orderby ) )
     ? sanitize_key( $_GET['orderby'] ) : 'date';
 $order       = ( isset( $_GET['order'] ) && strtolower( $_GET['order'] ) === 'asc' ) ? 'ASC' : 'DESC';
-$order_sql   = $allowed_orderby[ $orderby_key ] . ' ' . $order . ', e.type ASC';
+$order_sql   = str_replace( '%s', $order, $allowed_orderby[ $orderby_key ] ) . ', e.type ASC';
 
 $where     = array( '1=1' );
 $where_val = array();

@@ -169,6 +169,9 @@ class Seliweb_Parametres {
         $par_page = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_par_page' LIMIT 1" );
         if ( $par_page < 1 ) $par_page = 12;
 
+        $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_photos_min' LIMIT 1" );
+        $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
+
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
         }
@@ -185,6 +188,17 @@ class Seliweb_Parametres {
                         <p class="description"><?php esc_html_e( 'Nombre d\'annonces affichées par page sur le site. La dernière page affiche le reste.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
+                <tr>
+                    <th><label for="annonces_photos_min"><?php esc_html_e( 'Photos obligatoires par annonce', 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="annonces_photos_min" name="annonces_photos_min">
+                            <option value="0" <?php selected( $photos_min, 0 ); ?>><?php esc_html_e( '0 — Aucune photo obligatoire', 'seliweb' ); ?></option>
+                            <option value="1" <?php selected( $photos_min, 1 ); ?>><?php esc_html_e( '1 — Photo 1 obligatoire', 'seliweb' ); ?></option>
+                            <option value="2" <?php selected( $photos_min, 2 ); ?>><?php esc_html_e( '2 — Photos 1 et 2 obligatoires', 'seliweb' ); ?></option>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Nombre de photos requises à la création d\'une annonce (frontend et backend).', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
             </table>
             <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
         </form>
@@ -193,13 +207,17 @@ class Seliweb_Parametres {
 
     private static function handle_general() {
         global $wpdb;
-        $tp       = $wpdb->prefix . 'seliweb_parametres';
-        $par_page = max( 1, intval( $_POST['annonces_par_page'] ?? 12 ) );
-        $exists   = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", 'annonces_par_page' ) );
-        if ( $exists ) {
-            $wpdb->update( $tp, array( 'valeur' => $par_page ), array( 'cle' => 'annonces_par_page' ) );
-        } else {
-            $wpdb->insert( $tp, array( 'cle' => 'annonces_par_page', 'valeur' => $par_page ) );
+        $tp         = $wpdb->prefix . 'seliweb_parametres';
+        $par_page   = max( 1, intval( $_POST['annonces_par_page'] ?? 12 ) );
+        $photos_min = max( 0, min( 2, intval( $_POST['annonces_photos_min'] ?? 1 ) ) );
+
+        foreach ( array( 'annonces_par_page' => $par_page, 'annonces_photos_min' => $photos_min ) as $cle => $valeur ) {
+            $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
+            if ( $exists ) {
+                $wpdb->update( $tp, array( 'valeur' => $valeur ), array( 'cle' => $cle ) );
+            } else {
+                $wpdb->insert( $tp, array( 'cle' => $cle, 'valeur' => $valeur ) );
+            }
         }
         wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=general&updated=1' ) );
         exit;

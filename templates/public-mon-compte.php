@@ -102,6 +102,16 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ); ?>
         </div>
     <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_photo1' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( 'La photo 1 est obligatoire.', 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_photo2' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
     <?php if ( isset( $_GET['sel_deleted'] ) ) : ?>
         <div class="seliweb-notice seliweb-notice-ok"><?php esc_html_e( 'Annonce supprimée.', 'seliweb' ); ?></div>
     <?php endif; ?>
@@ -230,6 +240,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
             // Lignes de prix : existantes ou 1 ligne vide
             $prix_lignes = ! empty( $prix_existants ) ? $prix_existants : array( '' => '' );
+
+            $tp_mc          = $wpdb->prefix . 'seliweb_parametres';
+            $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_mc WHERE cle='annonces_photos_min' LIMIT 1" );
+            $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
             ?>
 
             <div class="seliweb-compte-toolbar">
@@ -368,9 +382,9 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                                     <option value="ET" <?php selected($mc_coord,'ET'); ?>>ET</option>
                                 </select>
                             <?php endif; ?>
-                            <input type="text" name="prix[<?php echo $mc_n; ?>][montant]"
+                            <input type="number" name="prix[<?php echo $mc_n; ?>][montant]"
                                    value="<?php echo esc_attr($montant); ?>"
-                                   maxlength="10" class="seliweb-input seliweb-prix-input"
+                                   min="1" step="1" class="seliweb-input seliweb-prix-input"
                                    placeholder="<?php esc_attr_e('Montant','seliweb'); ?>">
                             <select name="prix[<?php echo $mc_n; ?>][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">
                                 <option value=""><?php esc_html_e('— Monnaie —','seliweb'); ?></option>
@@ -396,23 +410,26 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
                 <!-- Photos -->
                 <div class="seliweb-field">
-                    <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo !$is_modif ? '*' : ''; ?></label>
+                    <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 1 ) ? '*' : ''; ?></label>
                     <input type="file" name="photo1" accept="image/*"
-                           class="seliweb-file" <?php echo !$is_modif ? 'required' : ''; ?>>
+                           class="seliweb-file" <?php echo ( ! $is_modif && $photos_min >= 1 ) ? 'required' : ''; ?>>
                     <?php if ($is_modif && $edit_annonce->photo1) : ?>
                         <img src="<?php echo esc_url($edit_annonce->photo1); ?>"
                              class="seliweb-photo-preview" alt="">
-                    <?php elseif (!$is_modif) : ?>
+                    <?php elseif ( ! $is_modif && $photos_min >= 1 ) : ?>
                         <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
                     <?php endif; ?>
                 </div>
 
                 <div class="seliweb-field">
-                    <label><?php esc_html_e('Photo 2','seliweb'); ?></label>
-                    <input type="file" name="photo2" accept="image/*" class="seliweb-file">
+                    <label><?php esc_html_e('Photo 2','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 2 ) ? '*' : ''; ?></label>
+                    <input type="file" name="photo2" accept="image/*" class="seliweb-file"
+                           <?php echo ( ! $is_modif && $photos_min >= 2 ) ? 'required' : ''; ?>>
                     <?php if ($is_modif && $edit_annonce->photo2) : ?>
                         <img src="<?php echo esc_url($edit_annonce->photo2); ?>"
                              class="seliweb-photo-preview" alt="">
+                    <?php elseif ( ! $is_modif && $photos_min >= 2 ) : ?>
+                        <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
                     <?php endif; ?>
                 </div>
 
@@ -1123,7 +1140,7 @@ function selMCAddPrix(){
     row.className='seliweb-prix-row';
     row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
     row.innerHTML='<select name="prix['+idx+'][coordination]" style="width:65px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
-                 +'<input type="text" name="prix['+idx+'][montant]" maxlength="10" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
+                 +'<input type="number" name="prix['+idx+'][montant]" min="1" step="1" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
                  +'<select name="prix['+idx+'][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">'+opts+'</select>'
                  +'<button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" onclick="this.closest(\'.seliweb-prix-row\').remove()">✕</button>';
     document.getElementById('mc_prix_container').appendChild(row);
