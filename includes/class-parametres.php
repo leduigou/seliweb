@@ -15,6 +15,52 @@ class Seliweb_Parametres {
     public static function init() {
         add_action( 'init',       array( __CLASS__, 'handle_get_actions'  ) );
         add_action( 'admin_init', array( __CLASS__, 'handle_post_actions' ) );
+
+        // Filtres emails — appliqués uniquement si des valeurs sont enregistrées
+        add_filter( 'wp_mail_from',              array( __CLASS__, 'filter_mail_from'        ) );
+        add_filter( 'wp_mail_from_name',         array( __CLASS__, 'filter_mail_from_name'   ) );
+        add_filter( 'retrieve_password_title',   array( __CLASS__, 'filter_reset_pw_title'   ), 10, 3 );
+        add_filter( 'retrieve_password_message', array( __CLASS__, 'filter_reset_pw_message' ), 10, 4 );
+    }
+
+    // ----------------------------------------------------------------
+    // Cache interne des réglages emails (un seul SELECT par requête)
+    // ----------------------------------------------------------------
+    private static $mail_cfg = null;
+
+    private static function mail_cfg() {
+        if ( self::$mail_cfg !== null ) return self::$mail_cfg;
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT cle, valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle LIKE 'mail\_%'"
+        );
+        self::$mail_cfg = array();
+        foreach ( $rows as $r ) self::$mail_cfg[ $r->cle ] = $r->valeur;
+        return self::$mail_cfg;
+    }
+
+    public static function filter_mail_from( $email ) {
+        $v = self::mail_cfg()['mail_from_email'] ?? '';
+        return ( $v && is_email( $v ) ) ? $v : $email;
+    }
+
+    public static function filter_mail_from_name( $name ) {
+        $v = self::mail_cfg()['mail_from_name'] ?? '';
+        return $v ?: $name;
+    }
+
+    public static function filter_reset_pw_title( $title, $user_login, $user_data ) {
+        $v = self::mail_cfg()['mail_reset_subject'] ?? '';
+        return $v ?: $title;
+    }
+
+    public static function filter_reset_pw_message( $message, $key, $user_login, $user_data ) {
+        $cfg  = self::mail_cfg();
+        $intro = trim( $cfg['mail_reset_intro'] ?? '' );
+        $sig   = trim( $cfg['mail_reset_signature'] ?? '' );
+        if ( $intro )  $message = $intro . "\r\n\r\n" . $message;
+        if ( $sig )    $message = $message . "\r\n" . $sig;
+        return $message;
     }
 
     public static function handle_post_actions() {
@@ -108,6 +154,7 @@ class Seliweb_Parametres {
             'rubriques'  => __( 'Rubriques',   'seliweb' ),
             'statuts'    => __( 'Statuts',     'seliweb' ),
             'sel'        => __( 'SEL',         'seliweb' ),
+            'mails'      => __( 'Mails',       'seliweb' ),
         );
 
         echo '<div class="wrap">';
@@ -128,6 +175,7 @@ class Seliweb_Parametres {
             case 'rubriques': self::tab_rubriques(); break;
             case 'statuts':   self::tab_statuts();   break;
             case 'sel':       self::tab_sel();        break;
+            case 'mails':     self::tab_mails();      break;
             default:          self::tab_categories(); break;
         }
 
@@ -157,6 +205,7 @@ class Seliweb_Parametres {
             case 'statuts':    self::handle_statuts( $action );    break;
             case 'monnaies':   self::handle_monnaies( $action );   break;
             case 'sel':        self::handle_sel( $action );        break;
+            case 'mails':      self::handle_mails( $action );      break;
         }
     }
 
@@ -1116,5 +1165,209 @@ class Seliweb_Parametres {
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&updated=1' ) );
             exit;
         }
+    }
+
+    // ================================================================
+    // MAILS
+    // ================================================================
+
+    // Catalogue statique des emails configurables
+    private static function mail_list() {
+        return array(
+            'reset_password' => array(
+                'label' => __( 'Réinitialisation du mot de passe', 'seliweb' ),
+                'desc'  => __( 'Envoyé lorsqu\'un utilisateur demande à réinitialiser son mot de passe depuis la page de connexion.', 'seliweb' ),
+            ),
+        );
+    }
+
+    private static function tab_mails() {
+        $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
+        $slug   = isset( $_GET['mail'] )   ? sanitize_key( $_GET['mail'] )   : '';
+        if ( $action === 'edit' && isset( self::mail_list()[ $slug ] ) ) {
+            self::form_mails( $slug );
+        } else {
+            self::liste_mails();
+        }
+    }
+
+    private static function liste_mails() {
+        if ( isset( $_GET['updated'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Mail enregistré.', 'seliweb' ) . '</p></div>';
+        }
+        ?>
+        <p class="description" style="margin-bottom:16px;">
+            <?php esc_html_e( 'Personnalisez l\'expéditeur, le sujet et le contenu des emails envoyés par Seliweb.', 'seliweb' ); ?>
+        </p>
+        <table class="wp-list-table widefat fixed striped">
+            <thead><tr>
+                <th><?php esc_html_e( 'Nom du mail', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Description', 'seliweb' ); ?></th>
+                <th style="width:100px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ( self::mail_list() as $slug => $info ) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html( $info['label'] ); ?></strong></td>
+                    <td><?php echo esc_html( $info['desc'] ); ?></td>
+                    <td>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=mails&action=edit&mail=' . $slug ) ); ?>">
+                            <?php esc_html_e( 'Modifier', 'seliweb' ); ?>
+                        </a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    private static function form_mails( $slug ) {
+        global $wpdb;
+        $tp  = $wpdb->prefix . 'seliweb_parametres';
+        $cfg = self::mail_cfg();
+
+        $back_url   = admin_url( 'admin.php?page=seliweb_parametres&tab=mails' );
+        $mail_list  = self::mail_list();
+        $mail_label = $mail_list[ $slug ]['label'] ?? $slug;
+
+        $from_email = $cfg['mail_from_email']    ?? '';
+        $from_name  = $cfg['mail_from_name']     ?? '';
+        $subject    = $cfg['mail_reset_subject'] ?? '';
+        $intro      = $cfg['mail_reset_intro']   ?? '';
+        $signature  = $cfg['mail_reset_signature'] ?? '';
+
+        // Valeurs par défaut WordPress pour l'affichage
+        $default_from_email = 'wordpress@' . preg_replace( '/^www\./', '', strtolower( $_SERVER['HTTP_HOST'] ?? 'votre-site.fr' ) );
+        $default_subject    = sprintf( '[%s] %s', get_bloginfo('name'), __('Réinitialisation du mot de passe', 'seliweb') );
+        ?>
+        <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
+        <?php if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_email' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Adresse email expéditeur invalide.', 'seliweb' ); ?></p></div>
+        <?php endif; ?>
+        <h2><?php echo esc_html( $mail_label ); ?></h2>
+
+        <form method="post">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="save_mail">
+            <input type="hidden" name="mail_slug" value="<?php echo esc_attr( $slug ); ?>">
+
+            <h3 style="margin-top:8px;"><?php esc_html_e( 'Expéditeur', 'seliweb' ); ?></h3>
+            <p class="description" style="margin-bottom:12px;">
+                <?php esc_html_e( 'Ces réglages s\'appliquent à tous les emails envoyés par le site.', 'seliweb' ); ?>
+            </p>
+            <table class="form-table">
+                <tr>
+                    <th><label for="mail_from_name"><?php esc_html_e( 'Nom de l\'expéditeur', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="text" id="mail_from_name" name="mail_from_name" class="regular-text"
+                               value="<?php echo esc_attr( $from_name ); ?>"
+                               placeholder="<?php echo esc_attr( get_bloginfo('name') ); ?>">
+                        <p class="description"><?php printf( esc_html__( 'Par défaut : "%s"', 'seliweb' ), esc_html( get_bloginfo('name') ) ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="mail_from_email"><?php esc_html_e( 'Adresse email de l\'expéditeur', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="email" id="mail_from_email" name="mail_from_email" class="regular-text"
+                               value="<?php echo esc_attr( $from_email ); ?>"
+                               placeholder="<?php echo esc_attr( $default_from_email ); ?>">
+                        <p class="description"><?php printf( esc_html__( 'Par défaut WordPress : "%s"', 'seliweb' ), esc_html( $default_from_email ) ); ?></p>
+                    </td>
+                </tr>
+            </table>
+
+            <h3 style="margin-top:24px;"><?php esc_html_e( 'Sujet', 'seliweb' ); ?></h3>
+            <table class="form-table">
+                <tr>
+                    <th><label for="mail_reset_subject"><?php esc_html_e( 'Sujet du mail', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="text" id="mail_reset_subject" name="mail_reset_subject" class="large-text"
+                               value="<?php echo esc_attr( $subject ); ?>"
+                               placeholder="<?php echo esc_attr( $default_subject ); ?>">
+                        <p class="description"><?php printf( esc_html__( 'Par défaut : "%s"', 'seliweb' ), esc_html( $default_subject ) ); ?></p>
+                    </td>
+                </tr>
+            </table>
+
+            <h3 style="margin-top:24px;"><?php esc_html_e( 'Corps du mail', 'seliweb' ); ?></h3>
+            <table class="form-table">
+                <tr>
+                    <th><label for="mail_reset_intro"><?php esc_html_e( 'Introduction', 'seliweb' ); ?></label></th>
+                    <td>
+                        <textarea id="mail_reset_intro" name="mail_reset_intro" rows="3" class="large-text"
+                                  placeholder="<?php esc_attr_e( 'Texte ajouté avant le contenu système (facultatif).', 'seliweb' ); ?>"><?php echo esc_textarea( $intro ); ?></textarea>
+                    </td>
+                </tr>
+                <tr>
+                    <th><?php esc_html_e( 'Contenu système', 'seliweb' ); ?></th>
+                    <td>
+                        <div style="background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px;padding:12px 16px;font-family:monospace;font-size:12px;line-height:1.7;color:#555;max-width:560px;">
+                            <?php esc_html_e( 'Quelqu\'un a demandé la réinitialisation du mot de passe pour le compte suivant :', 'seliweb' ); ?><br><br>
+                            <?php printf( esc_html__( 'Titre du site : %s', 'seliweb' ), '<em>' . esc_html( get_bloginfo('name') ) . '</em>' ); ?><br>
+                            <?php esc_html_e( 'Identifiant : [identifiant du membre]', 'seliweb' ); ?><br><br>
+                            <?php esc_html_e( 'Si ceci est une erreur, ignorez cet e-mail et rien ne se passera.', 'seliweb' ); ?><br><br>
+                            <?php esc_html_e( 'Pour renouveler votre mot de passe, cliquez sur le lien suivant :', 'seliweb' ); ?><br>
+                            <span style="color:#1d6a4a;"><?php esc_html_e( '[lien de réinitialisation généré automatiquement]', 'seliweb' ); ?></span>
+                        </div>
+                        <p class="description" style="margin-top:6px;">
+                            <?php esc_html_e( 'Ce contenu est généré par WordPress et ne peut pas être modifié.', 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="mail_reset_signature"><?php esc_html_e( 'Signature', 'seliweb' ); ?></label></th>
+                    <td>
+                        <textarea id="mail_reset_signature" name="mail_reset_signature" rows="4" class="large-text"
+                                  placeholder="<?php esc_attr_e( 'Ex. : Cordialement,\nL\'équipe du SEL\ncontact@monsel.fr', 'seliweb' ); ?>"><?php echo esc_textarea( $signature ); ?></textarea>
+                    </td>
+                </tr>
+            </table>
+
+            <p>
+                <?php submit_button( __( 'Enregistrer', 'seliweb' ), 'primary', 'submit', false ); ?>
+                <a href="<?php echo esc_url( $back_url ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
+            </p>
+        </form>
+        <?php
+    }
+
+    private static function handle_mails( $action ) {
+        if ( $action !== 'save_mail' ) return;
+
+        global $wpdb;
+        $tp   = $wpdb->prefix . 'seliweb_parametres';
+        $slug = sanitize_key( $_POST['mail_slug'] ?? '' );
+        if ( ! isset( self::mail_list()[ $slug ] ) ) return;
+
+        $params = array(
+            'mail_from_email'      => sanitize_email( wp_unslash( $_POST['mail_from_email'] ?? '' ) ),
+            'mail_from_name'       => sanitize_text_field( wp_unslash( $_POST['mail_from_name'] ?? '' ) ),
+            'mail_reset_subject'   => sanitize_text_field( wp_unslash( $_POST['mail_reset_subject'] ?? '' ) ),
+            'mail_reset_intro'     => sanitize_textarea_field( wp_unslash( $_POST['mail_reset_intro'] ?? '' ) ),
+            'mail_reset_signature' => sanitize_textarea_field( wp_unslash( $_POST['mail_reset_signature'] ?? '' ) ),
+        );
+
+        // Validation email expéditeur : accepter vide (= défaut WP) ou valide
+        if ( $params['mail_from_email'] !== '' && ! is_email( $params['mail_from_email'] ) ) {
+            // Renvoyer au formulaire avec un message d'erreur
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=mails&action=edit&mail=' . $slug . '&error=bad_email' ) );
+            exit;
+        }
+
+        foreach ( $params as $cle => $valeur ) {
+            $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
+            if ( $exists ) {
+                $wpdb->update( $tp, array( 'valeur' => $valeur ), array( 'cle' => $cle ) );
+            } else {
+                $wpdb->insert( $tp, array( 'cle' => $cle, 'valeur' => $valeur ) );
+            }
+        }
+
+        // Invalider le cache en mémoire
+        self::$mail_cfg = null;
+
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=mails&updated=1' ) );
+        exit;
     }
 }
