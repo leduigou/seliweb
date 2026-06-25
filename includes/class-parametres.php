@@ -456,8 +456,9 @@ class Seliweb_Parametres {
     // ================================================================
     private static function tab_statuts() {
         $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
-        if ( $action === 'new' ) {
-            self::form_statuts();
+        $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
+        if ( $action === 'new' || $action === 'edit' ) {
+            self::form_statuts( $id );
         } else {
             self::liste_statuts();
         }
@@ -497,6 +498,8 @@ class Seliweb_Parametres {
                     </td>
                     <td>
                         <?php if ( ! $is_systeme ) : ?>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
+                            &nbsp;|&nbsp;
                             <a href="<?php echo esc_url( wp_nonce_url(
                                 admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&delete_id=' . $row->id ),
                                 'seliweb_delete_' . $row->id
@@ -516,25 +519,30 @@ class Seliweb_Parametres {
         <?php
     }
 
-    private static function form_statuts() {
+    private static function form_statuts( $id = 0 ) {
+        global $wpdb;
+        $table    = $wpdb->prefix . 'seliweb_statuts';
+        $item     = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id=%d AND modifiable=1", $id ) ) : null;
         $back_url = admin_url( 'admin.php?page=seliweb_parametres&tab=statuts' );
         ?>
         <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
-        <h2><?php esc_html_e( 'Ajouter un statut', 'seliweb' ); ?></h2>
+        <h2><?php echo $item ? esc_html__( 'Modifier le statut', 'seliweb' ) : esc_html__( 'Ajouter un statut', 'seliweb' ); ?></h2>
         <form method="post">
             <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
-            <input type="hidden" name="seliweb_action" value="add_statut">
+            <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_statut' : 'add_statut'; ?>">
+            <?php if ( $item ) : ?><input type="hidden" name="id" value="<?php echo intval( $item->id ); ?>"><?php endif; ?>
             <table class="form-table">
                 <tr>
                     <th><?php esc_html_e( 'Nom du statut', 'seliweb' ); ?></th>
                     <td>
                         <input type="text" name="nom" class="regular-text"
+                               value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>"
                                placeholder="<?php esc_attr_e( 'Ex. : En attente', 'seliweb' ); ?>" required>
                     </td>
                 </tr>
             </table>
             <p>
-                <?php submit_button( __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
+                <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
                 <a href="<?php echo esc_url( $back_url ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
             </p>
         </form>
@@ -556,6 +564,20 @@ class Seliweb_Parametres {
                     'modifiable'  => 1,
                     'supprimable' => 1,
                 ) );
+            }
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&updated=1' ) );
+            exit;
+        }
+
+        if ( $action === 'update_statut' ) {
+            $id  = intval( $_POST['id'] );
+            $row = $wpdb->get_row( $wpdb->prepare( "SELECT modifiable FROM $table WHERE id=%d", $id ) );
+            if ( $row && $row->modifiable ) {
+                $nom = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
+                $wpdb->update( $table, array(
+                    'nom'  => $nom,
+                    'slug' => sanitize_title( $nom ),
+                ), array( 'id' => $id ) );
             }
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&updated=1' ) );
             exit;
