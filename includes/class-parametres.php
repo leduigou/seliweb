@@ -234,37 +234,31 @@ class Seliweb_Parametres {
     // CATÉGORIES
     // ================================================================
     private static function tab_categories() {
+        $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
+        $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
+        if ( $action === 'new' || $action === 'edit' ) {
+            self::form_categories( $id );
+        } else {
+            self::liste_categories();
+        }
+    }
+
+    private static function liste_categories() {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_categories';
         $items = $wpdb->get_results( "SELECT * FROM $table ORDER BY id ASC" );
-        $edit  = isset( $_GET['edit_id'] ) ? intval( $_GET['edit_id'] ) : 0;
-        $item  = $edit ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id=%d", $edit ) ) : null;
+
+        if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Catégorie enregistrée.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Catégorie supprimée.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'has_rubriques' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Suppression impossible : des rubriques sont rattachées à cette catégorie. Supprimez d'abord les rubriques correspondantes.", 'seliweb' ) . '</p></div>';
+        }
         ?>
-        <h2><?php esc_html_e( 'Catégories d\'annonces', 'seliweb' ); ?></h2>
-        <?php if ( isset($_GET['error']) && $_GET['error'] === 'has_rubriques' ) : ?>
-            <div class="notice notice-error is-dismissible">
-                <p><?php esc_html_e( "Suppression impossible : des rubriques sont rattachées à cette catégorie. Supprimez d'abord les rubriques correspondantes.", 'seliweb' ); ?></p>
-            </div>
-        <?php endif; ?>
-        <?php if ( isset($_GET['deleted']) ) : ?>
-            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Catégorie supprimée.', 'seliweb' ); ?></p></div>
-        <?php endif; ?>
-        <form method="post">
-            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
-            <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_categorie' : 'add_categorie'; ?>">
-            <?php if ( $item ) : ?><input type="hidden" name="id" value="<?php echo intval( $item->id ); ?>"><?php endif; ?>
-            <table class="form-table">
-                <tr>
-                    <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
-                    <td><input type="text" name="nom" class="regular-text" value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
-                </tr>
-            </table>
-            <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ) ); ?>
-            <?php if ( $item ) : ?>
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=categories' ) ); ?>" class="button"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
-            <?php endif; ?>
-        </form>
-        <table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&action=new' ) ); ?>"
+               class="button button-primary"><?php esc_html_e( 'Ajouter une catégorie', 'seliweb' ); ?></a>
+        </p>
+        <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
                 <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
                 <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
@@ -275,7 +269,7 @@ class Seliweb_Parametres {
                     <td><?php echo esc_html( $row->nom ); ?></td>
                     <td>
                         <?php if ( $row->modifiable ) : ?>
-                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&edit_id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
                         <?php endif; ?>
                         <?php if ( $row->supprimable ) : ?>
                             &nbsp;|&nbsp;
@@ -294,12 +288,40 @@ class Seliweb_Parametres {
         <?php
     }
 
+    private static function form_categories( $id = 0 ) {
+        global $wpdb;
+        $table    = $wpdb->prefix . 'seliweb_categories';
+        $item     = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id=%d", $id ) ) : null;
+        $back_url = admin_url( 'admin.php?page=seliweb_parametres&tab=categories' );
+        ?>
+        <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
+        <h2><?php echo $item ? esc_html__( 'Modifier la catégorie', 'seliweb' ) : esc_html__( 'Ajouter une catégorie', 'seliweb' ); ?></h2>
+        <form method="post">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_categorie' : 'add_categorie'; ?>">
+            <?php if ( $item ) : ?><input type="hidden" name="id" value="<?php echo intval( $item->id ); ?>"><?php endif; ?>
+            <table class="form-table">
+                <tr>
+                    <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
+                    <td><input type="text" name="nom" class="regular-text" value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
+                </tr>
+            </table>
+            <p>
+                <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
+                <a href="<?php echo esc_url( $back_url ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
+            </p>
+        </form>
+        <?php
+    }
+
     private static function handle_categories( $action ) {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_categories';
         if ( $action === 'add_categorie' ) {
             $nom = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
             $wpdb->insert( $table, array( 'nom' => $nom, 'slug' => sanitize_title( $nom ) ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&updated=1' ) );
+            exit;
         }
         if ( $action === 'update_categorie' ) {
             $id  = intval( $_POST['id'] );
@@ -308,12 +330,7 @@ class Seliweb_Parametres {
                 $nom = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
                 $wpdb->update( $table, array( 'nom' => $nom, 'slug' => sanitize_title( $nom ) ), array( 'id' => $id ) );
             }
-        }
-        if ( isset( $_GET['delete_id'] ) && check_admin_referer( 'seliweb_delete_' . intval( $_GET['delete_id'] ) ) ) {
-            $id  = intval( $_GET['delete_id'] );
-            $row = $wpdb->get_row( $wpdb->prepare( "SELECT supprimable FROM $table WHERE id=%d", $id ) );
-            if ( $row && $row->supprimable ) $wpdb->delete( $table, array( 'id' => $id ) );
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=categories' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&updated=1' ) );
             exit;
         }
     }
@@ -322,23 +339,66 @@ class Seliweb_Parametres {
     // RUBRIQUES
     // ================================================================
     private static function tab_rubriques() {
+        $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
+        $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
+        if ( $action === 'new' || $action === 'edit' ) {
+            self::form_rubriques( $id );
+        } else {
+            self::liste_rubriques();
+        }
+    }
+
+    private static function liste_rubriques() {
         global $wpdb;
         $table_r = $wpdb->prefix . 'seliweb_rubriques';
         $table_c = $wpdb->prefix . 'seliweb_categories';
-        $items      = $wpdb->get_results( "SELECT r.*, c.nom AS cat_nom FROM $table_r r LEFT JOIN $table_c c ON r.categorie_id=c.id ORDER BY r.categorie_id, r.nom" );
-        $categories = $wpdb->get_results( "SELECT * FROM $table_c ORDER BY nom" );
-        $edit       = isset( $_GET['edit_id'] ) ? intval( $_GET['edit_id'] ) : 0;
-        $item       = $edit ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_r WHERE id=%d", $edit ) ) : null;
+        $items   = $wpdb->get_results( "SELECT r.*, c.nom AS cat_nom FROM $table_r r LEFT JOIN $table_c c ON r.categorie_id=c.id ORDER BY c.nom, r.nom" );
+
+        if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Rubrique enregistrée.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Rubrique supprimée.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'has_annonces' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Suppression impossible : des annonces sont rattachées à cette rubrique. Modifiez d'abord ces annonces.", 'seliweb' ) . '</p></div>';
+        }
         ?>
-        <h2><?php esc_html_e( 'Rubriques', 'seliweb' ); ?></h2>
-        <?php if ( isset($_GET['error']) && $_GET['error'] === 'has_annonces' ) : ?>
-            <div class="notice notice-error is-dismissible">
-                <p><?php esc_html_e( "Suppression impossible : des annonces sont rattachées à cette rubrique. Modifiez d'abord ces annonces.", 'seliweb' ); ?></p>
-            </div>
-        <?php endif; ?>
-        <?php if ( isset($_GET['deleted']) ) : ?>
-            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Rubrique supprimée.', 'seliweb' ); ?></p></div>
-        <?php endif; ?>
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=new' ) ); ?>"
+               class="button button-primary"><?php esc_html_e( 'Ajouter une rubrique', 'seliweb' ); ?></a>
+        </p>
+        <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
+            <thead><tr>
+                <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
+                <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ( $items as $row ) : ?>
+                <tr>
+                    <td><?php echo esc_html( $row->cat_nom ); ?></td>
+                    <td><?php echo esc_html( $row->nom ); ?></td>
+                    <td>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
+                        &nbsp;|&nbsp;
+                        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&delete_id=' . $row->id ), 'seliweb_delete_' . $row->id ) ); ?>"
+                           onclick="return confirm('<?php esc_attr_e( 'Supprimer ?', 'seliweb' ); ?>')"
+                           style="color:#b32d2e;"><?php esc_html_e( 'Supprimer', 'seliweb' ); ?></a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    private static function form_rubriques( $id = 0 ) {
+        global $wpdb;
+        $table_r    = $wpdb->prefix . 'seliweb_rubriques';
+        $table_c    = $wpdb->prefix . 'seliweb_categories';
+        $item       = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_r WHERE id=%d", $id ) ) : null;
+        $categories = $wpdb->get_results( "SELECT * FROM $table_c ORDER BY nom" );
+        $back_url   = admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques' );
+        ?>
+        <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
+        <h2><?php echo $item ? esc_html__( 'Modifier la rubrique', 'seliweb' ) : esc_html__( 'Ajouter une rubrique', 'seliweb' ); ?></h2>
         <form method="post">
             <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
             <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_rubrique' : 'add_rubrique'; ?>">
@@ -362,33 +422,11 @@ class Seliweb_Parametres {
                     <td><input type="text" name="nom" class="regular-text" value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
                 </tr>
             </table>
-            <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ) ); ?>
-            <?php if ( $item ) : ?>
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques' ) ); ?>" class="button"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
-            <?php endif; ?>
+            <p>
+                <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
+                <a href="<?php echo esc_url( $back_url ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
+            </p>
         </form>
-        <table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
-            <thead><tr>
-                <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
-                <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
-            </tr></thead>
-            <tbody>
-            <?php foreach ( $items as $row ) : ?>
-                <tr>
-                    <td><?php echo esc_html( $row->cat_nom ); ?></td>
-                    <td><?php echo esc_html( $row->nom ); ?></td>
-                    <td>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&edit_id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
-                        &nbsp;|&nbsp;
-                        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&delete_id=' . $row->id ), 'seliweb_delete_' . $row->id ) ); ?>"
-                           onclick="return confirm('<?php esc_attr_e( 'Supprimer ?', 'seliweb' ); ?>')"
-                           style="color:#b32d2e;"><?php esc_html_e( 'Supprimer', 'seliweb' ); ?></a>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
         <?php
     }
 
@@ -400,16 +438,15 @@ class Seliweb_Parametres {
                 'categorie_id' => intval( $_POST['categorie_id'] ),
                 'nom'          => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&updated=1' ) );
+            exit;
         }
         if ( $action === 'update_rubrique' ) {
             $wpdb->update( $table, array(
                 'categorie_id' => intval( $_POST['categorie_id'] ),
                 'nom'          => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             ), array( 'id' => intval( $_POST['id'] ) ) );
-        }
-        if ( isset( $_GET['delete_id'] ) && check_admin_referer( 'seliweb_delete_' . intval( $_GET['delete_id'] ) ) ) {
-            $wpdb->delete( $table, array( 'id' => intval( $_GET['delete_id'] ) ) );
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&updated=1' ) );
             exit;
         }
     }
@@ -418,32 +455,31 @@ class Seliweb_Parametres {
     // STATUTS
     // ================================================================
     private static function tab_statuts() {
+        $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
+        if ( $action === 'new' ) {
+            self::form_statuts();
+        } else {
+            self::liste_statuts();
+        }
+    }
+
+    private static function liste_statuts() {
         global $wpdb;
         $table         = $wpdb->prefix . 'seliweb_statuts';
         $items         = $wpdb->get_results( "SELECT * FROM $table ORDER BY id ASC" );
-        $slugs_systeme = array('urgent','repondu','expire');
+        $slugs_systeme = array( 'urgent', 'repondu', 'expire' );
+
+        if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Statut ajouté.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Statut supprimé.', 'seliweb' ) . '</p></div>';
         ?>
-        <h2><?php esc_html_e( "Statuts d'annonce", 'seliweb' ); ?></h2>
         <p class="description" style="margin-bottom:12px;">
             <?php esc_html_e( 'Les statuts Urgent, Répondu et Expiré sont des statuts système non modifiables. Vous pouvez ajouter vos propres statuts.', 'seliweb' ); ?>
         </p>
-
-        <form method="post">
-            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
-            <input type="hidden" name="seliweb_action" value="add_statut">
-            <table class="form-table">
-                <tr>
-                    <th><?php esc_html_e( 'Nouveau statut', 'seliweb' ); ?></th>
-                    <td>
-                        <input type="text" name="nom" class="regular-text"
-                               placeholder="<?php esc_attr_e( 'Nom du statut', 'seliweb' ); ?>" required>
-                    </td>
-                </tr>
-            </table>
-            <?php submit_button( __( 'Ajouter', 'seliweb' ) ); ?>
-        </form>
-
-        <table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&action=new' ) ); ?>"
+               class="button button-primary"><?php esc_html_e( 'Ajouter un statut', 'seliweb' ); ?></a>
+        </p>
+        <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
                 <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
                 <th style="width:180px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
@@ -480,17 +516,39 @@ class Seliweb_Parametres {
         <?php
     }
 
+    private static function form_statuts() {
+        $back_url = admin_url( 'admin.php?page=seliweb_parametres&tab=statuts' );
+        ?>
+        <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
+        <h2><?php esc_html_e( 'Ajouter un statut', 'seliweb' ); ?></h2>
+        <form method="post">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="add_statut">
+            <table class="form-table">
+                <tr>
+                    <th><?php esc_html_e( 'Nom du statut', 'seliweb' ); ?></th>
+                    <td>
+                        <input type="text" name="nom" class="regular-text"
+                               placeholder="<?php esc_attr_e( 'Ex. : En attente', 'seliweb' ); ?>" required>
+                    </td>
+                </tr>
+            </table>
+            <p>
+                <?php submit_button( __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
+                <a href="<?php echo esc_url( $back_url ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
+            </p>
+        </form>
+        <?php
+    }
+
     private static function handle_statuts( $action ) {
         global $wpdb;
-        $table         = $wpdb->prefix . 'seliweb_statuts';
-        $slugs_systeme = array('urgent','repondu','expire');
+        $table = $wpdb->prefix . 'seliweb_statuts';
 
         if ( $action === 'add_statut' ) {
             $nom  = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
             $slug = sanitize_title( $nom );
-            $existe = $wpdb->get_var( $wpdb->prepare(
-                "SELECT id FROM $table WHERE slug=%s LIMIT 1", $slug
-            ) );
+            $existe = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $table WHERE slug=%s LIMIT 1", $slug ) );
             if ( ! $existe && $nom ) {
                 $wpdb->insert( $table, array(
                     'nom'         => $nom,
@@ -499,32 +557,87 @@ class Seliweb_Parametres {
                     'supprimable' => 1,
                 ) );
             }
-        }
-
-        // Suppression : interdite pour les statuts système (vérification par slug)
-        if ( isset( $_GET['delete_id'] ) && check_admin_referer( 'seliweb_delete_' . intval( $_GET['delete_id'] ) ) ) {
-            $id  = intval( $_GET['delete_id'] );
-            $row = $wpdb->get_row( $wpdb->prepare( "SELECT slug FROM $table WHERE id=%d", $id ) );
-            if ( $row && ! in_array( $row->slug, $slugs_systeme, true ) ) {
-                $wpdb->delete( $table, array( 'id' => $id ) );
-            }
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&updated=1' ) );
             exit;
         }
     }
 
     private static function tab_monnaies() {
+        $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
+        $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
+        if ( $action === 'new' || $action === 'edit' ) {
+            self::form_monnaies( $id );
+        } else {
+            self::liste_monnaies();
+        }
+    }
+
+    private static function liste_monnaies() {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_monnaies';
         $items = $wpdb->get_results( "SELECT * FROM $table ORDER BY est_defaut DESC, nom ASC" );
-        $edit  = isset( $_GET['edit_id'] ) ? intval( $_GET['edit_id'] ) : 0;
-        $item  = $edit ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id=%d", $edit ) ) : null;
 
-        // Monnaie par défaut actuelle
-        $defaut_id = $wpdb->get_var( "SELECT id FROM $table WHERE est_defaut=1 LIMIT 1" );
+        if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Monnaie enregistrée.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Monnaie supprimée.', 'seliweb' ) . '</p></div>';
         ?>
-        <h2><?php esc_html_e( 'Monnaies', 'seliweb' ); ?></h2>
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&action=new' ) ); ?>"
+               class="button button-primary"><?php esc_html_e( 'Ajouter une monnaie', 'seliweb' ); ?></a>
+        </p>
+        <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
+            <thead><tr>
+                <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Symbole', 'seliweb' ); ?></th>
+                <th style="width:80px;text-align:center;"><?php esc_html_e( 'Par défaut', 'seliweb' ); ?></th>
+                <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ( $items as $row ) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html( $row->nom ); ?></strong></td>
+                    <td><?php echo esc_html( $row->symbole ); ?></td>
+                    <td style="text-align:center;">
+                        <?php if ( $row->est_defaut ) : ?>
+                            <span style="color:green;font-weight:700;" title="<?php esc_attr_e( 'Monnaie par défaut', 'seliweb' ); ?>">&#10003;</span>
+                        <?php else : ?>
+                            <a href="<?php echo esc_url( wp_nonce_url(
+                                admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&set_defaut=' . $row->id ),
+                                'seliweb_defaut_' . $row->id
+                            ) ); ?>" style="font-size:11px;"><?php esc_html_e( 'Définir', 'seliweb' ); ?></a>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&action=edit&id=' . $row->id ) ); ?>">
+                            <?php esc_html_e( 'Modifier', 'seliweb' ); ?>
+                        </a>
+                        <?php if ( ! $row->est_defaut ) : ?>
+                            &nbsp;|&nbsp;
+                            <a href="<?php echo esc_url( wp_nonce_url(
+                                admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&delete_id=' . $row->id ),
+                                'seliweb_delete_' . $row->id
+                            ) ); ?>"
+                               onclick="return confirm('<?php esc_attr_e( 'Supprimer cette monnaie ?', 'seliweb' ); ?>')"
+                               style="color:#b32d2e;"><?php esc_html_e( 'Supprimer', 'seliweb' ); ?></a>
+                        <?php else : ?>
+                            &nbsp;<em style="color:#888;font-size:12px;"><?php esc_html_e( '(par défaut — non supprimable)', 'seliweb' ); ?></em>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
 
+    private static function form_monnaies( $id = 0 ) {
+        global $wpdb;
+        $table     = $wpdb->prefix . 'seliweb_monnaies';
+        $item      = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id=%d", $id ) ) : null;
+        $defaut_id = $wpdb->get_var( "SELECT id FROM $table WHERE est_defaut=1 LIMIT 1" );
+        $back_url  = admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies' );
+        ?>
+        <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
+        <h2><?php echo $item ? esc_html__( 'Modifier la monnaie', 'seliweb' ) : esc_html__( 'Ajouter une monnaie', 'seliweb' ); ?></h2>
         <form method="post">
             <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
             <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_monnaie' : 'add_monnaie'; ?>">
@@ -559,55 +672,11 @@ class Seliweb_Parametres {
                     </td>
                 </tr>
             </table>
-            <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ) ); ?>
-            <?php if ( $item ) : ?>
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies' ) ); ?>"
-                   class="button"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
-            <?php endif; ?>
+            <p>
+                <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
+                <a href="<?php echo esc_url( $back_url ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
+            </p>
         </form>
-
-        <table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
-            <thead><tr>
-                <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Symbole', 'seliweb' ); ?></th>
-                <th style="width:80px;text-align:center;"><?php esc_html_e( 'Par défaut', 'seliweb' ); ?></th>
-                <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
-            </tr></thead>
-            <tbody>
-            <?php foreach ( $items as $row ) : ?>
-                <tr>
-                    <td><strong><?php echo esc_html( $row->nom ); ?></strong></td>
-                    <td><?php echo esc_html( $row->symbole ); ?></td>
-                    <td style="text-align:center;">
-                        <?php if ( $row->est_defaut ) : ?>
-                            <span style="color:green;font-weight:700;" title="<?php esc_attr_e('Monnaie par défaut','seliweb'); ?>">&#10003;</span>
-                        <?php else : ?>
-                            <a href="<?php echo esc_url( wp_nonce_url(
-                                admin_url('admin.php?page=seliweb_parametres&tab=monnaies&set_defaut='.$row->id),
-                                'seliweb_defaut_'.$row->id
-                            ) ); ?>" style="font-size:11px;"><?php esc_html_e('Définir','seliweb'); ?></a>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&edit_id=' . $row->id ) ); ?>">
-                            <?php esc_html_e( 'Modifier', 'seliweb' ); ?>
-                        </a>
-                        <?php if ( ! $row->est_defaut ) : ?>
-                            &nbsp;|&nbsp;
-                            <a href="<?php echo esc_url( wp_nonce_url(
-                                admin_url('admin.php?page=seliweb_parametres&tab=monnaies&delete_id='.$row->id),
-                                'seliweb_delete_'.$row->id
-                            ) ); ?>"
-                               onclick="return confirm('<?php esc_attr_e('Supprimer cette monnaie ?','seliweb'); ?>')"
-                               style="color:#b32d2e;"><?php esc_html_e('Supprimer','seliweb'); ?></a>
-                        <?php else : ?>
-                            &nbsp;<em style="color:#888;font-size:12px;"><?php esc_html_e('(par défaut — non supprimable)','seliweb'); ?></em>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
         <?php
     }
 
@@ -965,18 +1034,8 @@ class Seliweb_Parametres {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_monnaies';
 
-        // Définir une monnaie comme défaut via lien direct
-        if ( isset( $_GET['set_defaut'] ) && check_admin_referer( 'seliweb_defaut_' . intval( $_GET['set_defaut'] ) ) ) {
-            $id = intval( $_GET['set_defaut'] );
-            $wpdb->update( $table, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
-            $wpdb->update( $table, array( 'est_defaut' => 1 ), array( 'id' => $id ) );
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies' ) );
-            exit;
-        }
-
         if ( $action === 'add_monnaie' ) {
             $est_defaut = isset( $_POST['est_defaut'] ) ? 1 : 0;
-            // Si nouvelle monnaie par défaut, retirer l'ancien défaut
             if ( $est_defaut ) {
                 $wpdb->update( $table, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
             }
@@ -985,12 +1044,13 @@ class Seliweb_Parametres {
                 'symbole'    => sanitize_text_field( wp_unslash( $_POST['symbole'] ) ),
                 'est_defaut' => $est_defaut,
             ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&updated=1' ) );
+            exit;
         }
 
         if ( $action === 'update_monnaie' ) {
             $id         = intval( $_POST['id'] );
             $est_defaut = isset( $_POST['est_defaut'] ) ? 1 : 0;
-            // Si on définit ce monnaie comme défaut, retirer l'ancien
             if ( $est_defaut ) {
                 $wpdb->update( $table, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
             }
@@ -999,16 +1059,7 @@ class Seliweb_Parametres {
                 'symbole'    => sanitize_text_field( wp_unslash( $_POST['symbole'] ) ),
                 'est_defaut' => $est_defaut,
             ), array( 'id' => $id ) );
-        }
-
-        if ( isset( $_GET['delete_id'] ) && check_admin_referer( 'seliweb_delete_' . intval( $_GET['delete_id'] ) ) ) {
-            $id  = intval( $_GET['delete_id'] );
-            $row = $wpdb->get_row( $wpdb->prepare( "SELECT est_defaut FROM $table WHERE id=%d", $id ) );
-            // Ne pas supprimer la monnaie par défaut
-            if ( $row && ! $row->est_defaut ) {
-                $wpdb->delete( $table, array( 'id' => $id ) );
-            }
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&updated=1' ) );
             exit;
         }
     }
