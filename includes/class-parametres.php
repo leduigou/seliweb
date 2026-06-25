@@ -350,9 +350,19 @@ class Seliweb_Parametres {
 
     private static function liste_rubriques() {
         global $wpdb;
-        $table_r = $wpdb->prefix . 'seliweb_rubriques';
-        $table_c = $wpdb->prefix . 'seliweb_categories';
-        $items   = $wpdb->get_results( "SELECT r.*, c.nom AS cat_nom FROM $table_r r LEFT JOIN $table_c c ON r.categorie_id=c.id ORDER BY c.nom, r.nom" );
+        $table_r    = $wpdb->prefix . 'seliweb_rubriques';
+        $table_c    = $wpdb->prefix . 'seliweb_categories';
+        $categories = $wpdb->get_results( "SELECT * FROM $table_c ORDER BY nom" );
+        $cat_filter = isset( $_GET['cat_filter'] ) ? intval( $_GET['cat_filter'] ) : 0;
+
+        if ( $cat_filter ) {
+            $items = $wpdb->get_results( $wpdb->prepare(
+                "SELECT r.*, c.nom AS cat_nom FROM $table_r r LEFT JOIN $table_c c ON r.categorie_id=c.id WHERE r.categorie_id=%d ORDER BY r.nom",
+                $cat_filter
+            ) );
+        } else {
+            $items = $wpdb->get_results( "SELECT r.*, c.nom AS cat_nom FROM $table_r r LEFT JOIN $table_c c ON r.categorie_id=c.id ORDER BY c.nom, r.nom" );
+        }
 
         if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Rubrique enregistrée.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Rubrique supprimée.', 'seliweb' ) . '</p></div>';
@@ -360,20 +370,39 @@ class Seliweb_Parametres {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Suppression impossible : des annonces sont rattachées à cette rubrique. Modifiez d'abord ces annonces.", 'seliweb' ) . '</p></div>';
         }
         ?>
-        <p>
+        <p style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=new' ) ); ?>"
                class="button button-primary"><?php esc_html_e( 'Ajouter une rubrique', 'seliweb' ); ?></a>
+
+            <?php if ( count( $categories ) > 1 ) : ?>
+            <form method="get" style="display:contents;">
+                <input type="hidden" name="page" value="seliweb_parametres">
+                <input type="hidden" name="tab"  value="rubriques">
+                <select name="cat_filter" onchange="this.form.submit()" style="max-width:220px;">
+                    <option value=""><?php esc_html_e( '— Toutes les catégories —', 'seliweb' ); ?></option>
+                    <?php foreach ( $categories as $cat ) : ?>
+                        <option value="<?php echo intval( $cat->id ); ?>" <?php selected( $cat_filter, $cat->id ); ?>>
+                            <?php echo esc_html( $cat->nom ); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+            <?php endif; ?>
         </p>
         <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
+                <?php if ( ! $cat_filter ) : ?>
                 <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
+                <?php endif; ?>
                 <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
                 <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
             <?php foreach ( $items as $row ) : ?>
                 <tr>
+                    <?php if ( ! $cat_filter ) : ?>
                     <td><?php echo esc_html( $row->cat_nom ); ?></td>
+                    <?php endif; ?>
                     <td><?php echo esc_html( $row->nom ); ?></td>
                     <td>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
@@ -384,6 +413,9 @@ class Seliweb_Parametres {
                     </td>
                 </tr>
             <?php endforeach; ?>
+            <?php if ( empty( $items ) ) : ?>
+                <tr><td colspan="<?php echo $cat_filter ? 2 : 3; ?>"><em><?php esc_html_e( 'Aucune rubrique.', 'seliweb' ); ?></em></td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
         <?php
