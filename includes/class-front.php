@@ -94,13 +94,33 @@ if ( ! function_exists( 'swv_page_url' ) ) {
 
 // ================================================================
 // RENDU PAGINATION
+//
+// La barre du haut est rendue directement (position fixe par rapport
+// à la liste des annonces).
+//
+// La barre du bas est rendue via l'action 'seliweb_pagination_bottom' :
+// un thème tiers peut supprimer le handler par défaut et appeler
+// do_action('seliweb_pagination_bottom', $page, $nb, $total) à
+// l'endroit de son choix dans ses propres templates.
+//
+//   Exemple dans functions.php d'un thème tiers :
+//   remove_action( 'seliweb_pagination_bottom', '_swv_render_pagination_bottom' );
+//   // puis dans le template, à l'endroit voulu :
+//   do_action( 'seliweb_pagination_bottom', $page_courante, $nb_pages, $total );
 // ================================================================
 if ( ! function_exists( 'swv_render_pagination' ) ) {
     function swv_render_pagination( $page_courante, $nb_pages, $total, $top = false ) {
         if ( $total < 1 ) return;
-        if ( ! $top && $nb_pages < 2 ) return;
+
+        if ( ! $top ) {
+            if ( $nb_pages < 2 ) return;
+            do_action( 'seliweb_pagination_bottom', $page_courante, $nb_pages, $total );
+            return;
+        }
+
+        // ---- Barre du HAUT (avec vue-toggle et JS) ----
         ?>
-        <div class="swv-pagination-bar<?php echo $top ? ' swv-pagination-bar-top' : ' swv-pagination-bar-bottom'; ?>">
+        <div class="swv-pagination-bar swv-pagination-bar-top">
             <div class="swv-pagination-bar-inner">
 
                 <span class="swv-page-info">
@@ -113,8 +133,6 @@ if ( ! function_exists( 'swv_render_pagination' ) ) {
                 </span>
 
                 <div class="swv-bar-controls">
-
-                    <?php if ( $top ) : ?>
                     <div class="swv-vue-toggle">
                         <button type="button" id="swv-vue-liste" class="swv-vue-btn" title="<?php esc_attr_e('Vue liste','seliweb'); ?>">
                             <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="1" width="16" height="2" rx="1"/><rect x="0" y="7" width="16" height="2" rx="1"/><rect x="0" y="13" width="16" height="2" rx="1"/></svg>
@@ -125,7 +143,6 @@ if ( ! function_exists( 'swv_render_pagination' ) ) {
                             <?php esc_html_e('Colonnes','seliweb'); ?>
                         </button>
                     </div>
-                    <?php endif; ?>
 
                     <nav class="swv-pages-nav">
                         <?php if ( $page_courante > 1 ) : ?>
@@ -134,34 +151,15 @@ if ( ! function_exists( 'swv_render_pagination' ) ) {
                             <span class="swv-page-prev disabled">&laquo; <?php esc_html_e('Préc.','seliweb'); ?></span>
                         <?php endif; ?>
 
-                        <?php if ( ! $top && $nb_pages > 1 ) :
-                            $shown = array();
-                            for ($i=1; $i<=$nb_pages; $i++) {
-                                if ($i===1 || $i===$nb_pages || ($i>=$page_courante-2 && $i<=$page_courante+2)) $shown[]=$i;
-                            }
-                            $prev=null;
-                            foreach($shown as $n):
-                                if ($prev!==null && $n>$prev+1) echo '<span class="swv-page-ellipsis">&hellip;</span>';
-                                if ($n===$page_courante): ?>
-                                    <span class="swv-page-num current"><?php echo $n; ?></span>
-                                <?php else: ?>
-                                    <a href="<?php echo esc_url(swv_page_url($n)); ?>" class="swv-page-num"><?php echo $n; ?></a>
-                                <?php endif;
-                                $prev=$n;
-                            endforeach;
-                        endif; ?>
-
                         <?php if ( $page_courante < $nb_pages ) : ?>
                             <a href="<?php echo esc_url(swv_page_url($page_courante+1)); ?>" class="swv-page-next"><?php esc_html_e('Suiv.','seliweb'); ?> &raquo;</a>
                         <?php else : ?>
                             <span class="swv-page-next disabled"><?php esc_html_e('Suiv.','seliweb'); ?> &raquo;</span>
                         <?php endif; ?>
                     </nav>
-
                 </div>
             </div>
         </div>
-        <?php if ( $top ) : ?>
         <script>
         document.addEventListener('DOMContentLoaded', function() {
             var KEY = 'seliweb_vue';
@@ -186,8 +184,62 @@ if ( ! function_exists( 'swv_render_pagination' ) ) {
             btnG.addEventListener('click', function(){ apply('grille'); });
         });
         </script>
-        <?php endif;
+        <?php
     }
+}
+
+// Rendu par défaut de la barre du bas — hookable via 'seliweb_pagination_bottom'
+if ( ! function_exists( '_swv_render_pagination_bottom' ) ) {
+    function _swv_render_pagination_bottom( $page_courante, $nb_pages, $total ) {
+        ?>
+        <div id="swv-pagination-bottom" class="swv-pagination-bar swv-pagination-bar-bottom">
+            <div class="swv-pagination-bar-inner">
+
+                <span class="swv-page-info">
+                    <?php printf(
+                        esc_html( _n('%d annonce','%d annonces',$total,'seliweb') ),
+                        $total
+                    ); ?>
+                    &nbsp;&mdash;&nbsp;
+                    <?php printf( esc_html__('Page %1$d / %2$d','seliweb'), $page_courante, $nb_pages ); ?>
+                </span>
+
+                <div class="swv-bar-controls">
+                    <nav class="swv-pages-nav">
+                        <?php if ( $page_courante > 1 ) : ?>
+                            <a href="<?php echo esc_url(swv_page_url($page_courante-1)); ?>" class="swv-page-prev">&laquo; <?php esc_html_e('Préc.','seliweb'); ?></a>
+                        <?php else : ?>
+                            <span class="swv-page-prev disabled">&laquo; <?php esc_html_e('Préc.','seliweb'); ?></span>
+                        <?php endif; ?>
+
+                        <?php
+                        $shown = array();
+                        for ($i=1; $i<=$nb_pages; $i++) {
+                            if ($i===1 || $i===$nb_pages || ($i>=$page_courante-2 && $i<=$page_courante+2)) $shown[]=$i;
+                        }
+                        $prev=null;
+                        foreach($shown as $n):
+                            if ($prev!==null && $n>$prev+1) echo '<span class="swv-page-ellipsis">&hellip;</span>';
+                            if ($n===$page_courante): ?>
+                                <span class="swv-page-num current"><?php echo $n; ?></span>
+                            <?php else: ?>
+                                <a href="<?php echo esc_url(swv_page_url($n)); ?>" class="swv-page-num"><?php echo $n; ?></a>
+                            <?php endif;
+                            $prev=$n;
+                        endforeach; ?>
+
+                        <?php if ( $page_courante < $nb_pages ) : ?>
+                            <a href="<?php echo esc_url(swv_page_url($page_courante+1)); ?>" class="swv-page-next"><?php esc_html_e('Suiv.','seliweb'); ?> &raquo;</a>
+                        <?php else : ?>
+                            <span class="swv-page-next disabled"><?php esc_html_e('Suiv.','seliweb'); ?> &raquo;</span>
+                        <?php endif; ?>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    add_action( 'seliweb_pagination_bottom', '_swv_render_pagination_bottom', 10, 3 );
 }
 
 // ================================================================
