@@ -1319,7 +1319,7 @@ class Seliweb_Parametres {
                     <th><label for="mail_reset_signature"><?php esc_html_e( 'Signature', 'seliweb' ); ?></label></th>
                     <td>
                         <textarea id="mail_reset_signature" name="mail_reset_signature" rows="4" class="large-text"
-                                  placeholder="<?php esc_attr_e( 'Ex. : Cordialement,\nL\'équipe du SEL\ncontact@monsel.fr', 'seliweb' ); ?>"><?php echo esc_textarea( $signature ); ?></textarea>
+                                  placeholder="<?php esc_attr_e( 'Ex. : Cordialement, L\'équipe du SEL, contact@monsel.fr', 'seliweb' ); ?>"><?php echo esc_textarea( $signature ); ?></textarea>
                     </td>
                 </tr>
             </table>
