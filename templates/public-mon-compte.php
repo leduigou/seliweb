@@ -68,6 +68,7 @@ $statuts    = $wpdb->get_results( "SELECT * FROM $ts ORDER BY id ASC" );
 
 $action     = isset( $_GET['sel_action'] ) ? sanitize_key( $_GET['sel_action'] ) : 'liste';
 $annonce_id = isset( $_GET['sel_id'] )     ? intval( $_GET['sel_id'] )           : 0;
+$sel_cat    = isset( $_GET['sel_cat'] )    ? intval( $_GET['sel_cat'] )           : 0;
 
 // Mes annonces
 $mes_annonces       = $wpdb->get_results( $wpdb->prepare(
@@ -154,8 +155,15 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
         <?php if ( $action === 'liste' ) : ?>
 
+            <?php
+            $categories_mc = $wpdb->get_results( "SELECT id, nom FROM $tc ORDER BY nom ASC" );
+            $annonces_affichees = $sel_cat
+                ? array_values( array_filter( $mes_annonces, function( $a ) use ( $sel_cat ) {
+                    return (int) $a->categorie_id === $sel_cat;
+                } ) )
+                : $mes_annonces;
+            ?>
             <div class="seliweb-compte-toolbar">
-                <!-- CORRECTION : "Total annonce(s) : N" -->
                 <span class="seliweb-limite-info">
                     <?php printf(
                         esc_html__( 'Total annonce(s) : %d', 'seliweb' ),
@@ -165,6 +173,20 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                         echo ' / ' . $limite;
                     } ?>
                 </span>
+
+                <?php if ( count( $categories_mc ) > 1 ) : ?>
+                <form method="get" action="<?php echo esc_url( $page_url ); ?>" style="display:inline;">
+                    <select name="sel_cat" onchange="this.form.submit()" style="max-width:200px;">
+                        <option value=""><?php esc_html_e( '— Toutes catégories —', 'seliweb' ); ?></option>
+                        <?php foreach ( $categories_mc as $cat ) : ?>
+                            <option value="<?php echo intval( $cat->id ); ?>" <?php selected( $sel_cat, $cat->id ); ?>>
+                                <?php echo esc_html( $cat->nom ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+                <?php endif; ?>
+
                 <?php if ( $limite === 0 || $nb_annonces_membre < $limite ) : ?>
                     <a href="<?php echo esc_url( add_query_arg('sel_action','creer',$page_url) ); ?>"
                        class="seliweb-btn">
@@ -175,23 +197,29 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
             <?php if ( empty( $mes_annonces ) ) : ?>
                 <p class="seliweb-empty"><?php esc_html_e( "Vous n'avez pas encore d'annonce.", 'seliweb' ); ?></p>
+            <?php elseif ( empty( $annonces_affichees ) ) : ?>
+                <p class="seliweb-empty"><?php esc_html_e( 'Aucune annonce dans cette catégorie.', 'seliweb' ); ?></p>
             <?php else : ?>
             <table class="seliweb-table">
                 <thead><tr>
                     <th style="width:50px;">ID</th>
                     <th><?php esc_html_e( 'Titre', 'seliweb' ); ?></th>
+                    <?php if ( ! $sel_cat ) : ?>
                     <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
+                    <?php endif; ?>
                     <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
                     <th><?php esc_html_e( 'Créée le', 'seliweb' ); ?></th>
                     <th><?php esc_html_e( 'Statut', 'seliweb' ); ?></th>
                     <th style="width:80px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ( $mes_annonces as $a ) : ?>
+                <?php foreach ( $annonces_affichees as $a ) : ?>
                     <tr>
                         <td>#<?php echo intval( $a->id ); ?></td>
                         <td><?php echo esc_html( $a->titre ); ?></td>
+                        <?php if ( ! $sel_cat ) : ?>
                         <td><?php echo esc_html( $a->cat_nom ); ?></td>
+                        <?php endif; ?>
                         <td><?php echo esc_html( $a->rub_nom ?: '—' ); ?></td>
                         <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime($a->date_creation) ) ); ?></td>
                         <td>
