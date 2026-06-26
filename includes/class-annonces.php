@@ -281,15 +281,40 @@ class Seliweb_Annonces {
         global $wpdb;
         $ta = $wpdb->prefix . 'seliweb_annonces';
         $tm = $wpdb->prefix . 'seliweb_membres';
+        $tp = $wpdb->prefix . 'seliweb_parametres';
+
         $annonce = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $ta WHERE id=%d", $annonce_id ) );
         $membres = $wpdb->get_results( "SELECT wp_user_id FROM $tm WHERE notif_annonces=1" );
         if ( ! $annonce || empty( $membres ) ) return;
-        $sujet = sprintf( __( '[Seliweb] Nouvelle annonce : %s', 'seliweb' ), $annonce->titre );
+
+        // Charger la config mail (clés mail_annonce_*)
+        $rows = $wpdb->get_results( "SELECT cle, valeur FROM $tp WHERE cle LIKE 'mail\_annonce\_%'" );
+        $cfg  = array();
+        foreach ( $rows as $r ) $cfg[ $r->cle ] = $r->valeur;
+
         $url   = home_url( '/?seliweb_annonce=' . $annonce_id );
-        $corps = sprintf( __( "Une nouvelle annonce a été publiée :\n\n%s\n\nVoir : %s", 'seliweb' ), $annonce->titre, $url );
+        $titre = $annonce->titre;
+
+        $sujet_tpl = $cfg['mail_annonce_subject'] ?? sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle annonce : {titre}', 'seliweb' ) );
+        $sujet     = str_replace( '{titre}', $titre, $sujet_tpl );
+
+        $corps = sprintf( __( "Une nouvelle annonce a été publiée :\n\n%s\n\nVoir : %s", 'seliweb' ), $titre, $url );
+
+        $intro      = trim( $cfg['mail_annonce_intro']      ?? '' );
+        $sig        = trim( $cfg['mail_annonce_signature']  ?? '' );
+        $from_email = trim( $cfg['mail_annonce_from_email'] ?? '' );
+        $from_name  = trim( $cfg['mail_annonce_from_name']  ?? '' );
+        if ( $intro ) $corps = $intro . "\n\n" . $corps;
+        if ( $sig )   $corps = $corps . "\n" . $sig;
+
+        $headers = array();
+        if ( $from_email && is_email( $from_email ) ) {
+            $headers[] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
+        }
+
         foreach ( $membres as $m ) {
             $user = get_userdata( $m->wp_user_id );
-            if ( $user && $user->user_email ) wp_mail( $user->user_email, $sujet, $corps );
+            if ( $user && $user->user_email ) wp_mail( $user->user_email, $sujet, $corps, $headers );
         }
     }
 
