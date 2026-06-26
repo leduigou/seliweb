@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.7
+ * Version: 0.7.3
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.7' );
+define( 'SELIWEB_VERSION', '0.7.3' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 
@@ -21,11 +21,14 @@ require_once SELIWEB_DIR . 'includes/class-parametres.php';
 require_once SELIWEB_DIR . 'includes/class-groupes.php';
 require_once SELIWEB_DIR . 'includes/class-annonces.php';
 require_once SELIWEB_DIR . 'includes/class-transactions.php';
+require_once SELIWEB_DIR . 'includes/class-updater.php';
+require_once SELIWEB_DIR . 'includes/class-front.php';
 
 Seliweb_Groupes::init();
 Seliweb_Annonces::init();
 Seliweb_Parametres::init();
 Seliweb_Transactions::init();
+Seliweb_Updater::init();
 
 class Seliweb {
 
@@ -36,6 +39,7 @@ class Seliweb {
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
         add_action( 'wp_enqueue_scripts',    array( $this, 'enqueue_public_assets' ) );
         add_action( 'init',                  array( $this, 'handle_contact_message' ) );
+        add_action( 'init',                  array( $this, 'handle_signalement' ) );
         add_action( 'init',                  array( $this, 'handle_mon_compte_post' ) );
 
         // Rattachement au groupe par défaut à l'inscription
@@ -198,6 +202,12 @@ class Seliweb {
                 </div>
             <?php endif; ?>
 
+            <?php if ( isset( $_GET['checkemail'] ) && $_GET['checkemail'] === 'confirm' ) : ?>
+                <div class="seliweb-notice seliweb-notice-ok">
+                    <?php esc_html_e( 'Un email vous a été envoyé avec un lien de réinitialisation de mot de passe.', 'seliweb' ); ?>
+                </div>
+            <?php endif; ?>
+
             <div class="seliweb-login-box" style="max-width:420px;background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:28px;">
                 <h2 style="font-size:1.15rem;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #e0e0e0;color:var(--color-primary,#1d6a4a);">
                     <?php esc_html_e( 'Connexion', 'seliweb' ); ?>
@@ -226,7 +236,7 @@ class Seliweb {
                         </button>
                     </div>
                     <p style="margin-top:12px;font-size:.88rem;">
-                        <a href="<?php echo esc_url( wp_lostpassword_url( get_permalink() ) ); ?>">
+                        <a href="<?php echo esc_url( wp_lostpassword_url( add_query_arg( 'checkemail', 'confirm', get_permalink() ) ) ); ?>">
                             <?php esc_html_e( 'Mot de passe oublié ?', 'seliweb' ); ?>
                         </a>
                     </p>
@@ -652,16 +662,120 @@ class Seliweb {
         $expediteur = wp_get_current_user();
         $message    = sanitize_textarea_field( wp_unslash( $_POST['message'] ) );
 
-        wp_mail(
-            $destinataire->user_email,
-            sprintf( __('[Seliweb] Message concernant votre annonce : %s','seliweb'), $annonce->titre ),
-            sprintf(
-                __("Bonjour %s,\n\n%s vous a envoyé un message concernant \"%s\" :\n\n%s\n\n---\nL'adresse de l'expéditeur n'est pas visible.",'seliweb'),
-                $destinataire->display_name, $expediteur->display_name, $annonce->titre, $message
-            )
+        // Charger la config mail contact_annonce
+        $tp       = $wpdb->prefix . 'seliweb_parametres';
+        $cfg_rows = $wpdb->get_results( "SELECT cle, valeur FROM $tp WHERE cle LIKE 'mail\_contact\_%'" );
+        $cfg      = array();
+        foreach ( $cfg_rows as $r ) $cfg[ $r->cle ] = $r->valeur;
+
+        $from_email = $cfg['mail_contact_from_email'] ?? '';
+        $from_name  = $cfg['mail_contact_from_name']  ?? '';
+        $sujet_tpl  = $cfg['mail_contact_subject']    ?? '';
+        $intro      = $cfg['mail_contact_intro']       ?? '';
+        $signature  = $cfg['mail_contact_signature']   ?? '';
+
+        $default_subject = sprintf( '[%s] Message concernant votre annonce : {titre}', get_bloginfo('name') );
+        if ( ! $sujet_tpl ) $sujet_tpl = $default_subject;
+        $sujet = str_replace( '{titre}', $annonce->titre, $sujet_tpl );
+
+        $corps_systeme = sprintf(
+            __("Bonjour %s,\n\n%s (%s) vous a envoyé un message concernant \"%s\" :\n\n%s",'seliweb'),
+            $destinataire->display_name, $expediteur->display_name, $expediteur->user_email, $annonce->titre, $message
         );
+        $corps = trim( ( $intro ? $intro . "\n\n" : '' ) . $corps_systeme . ( $signature ? "\n\n" . $signature : '' ) );
+
+        $headers = array(
+            'Reply-To: ' . $expediteur->display_name . ' <' . $expediteur->user_email . '>',
+        );
+        if ( $from_email && is_email( $from_email ) ) {
+            $headers[] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
+        }
+
+        wp_mail( $destinataire->user_email, $sujet, $corps, $headers );
 
         wp_safe_redirect( add_query_arg('seliweb_message_envoye','1', wp_get_referer() ?: home_url()) );
+        exit;
+    }
+
+    // ----------------------------------------------------------------
+    // Signalement d'une annonce — hook init
+    // ----------------------------------------------------------------
+    public function handle_signalement() {
+        if ( is_admin() ) return;
+        if ( ! isset( $_POST['seliweb_signaler_annonce'] ) ) return;
+
+        $annonce_id = intval( $_POST['annonce_id'] ?? 0 );
+        if ( ! wp_verify_nonce( $_POST['seliweb_signal_nonce'] ?? '', 'seliweb_signal_' . $annonce_id ) ) return;
+
+        global $wpdb;
+        $ta      = $wpdb->prefix . 'seliweb_annonces';
+        $annonce = $wpdb->get_row( $wpdb->prepare( "SELECT id, titre FROM $ta WHERE id=%d", $annonce_id ) );
+        if ( ! $annonce ) return;
+
+        $raison = sanitize_textarea_field( wp_unslash( $_POST['raison'] ?? '' ) );
+
+        $tp       = $wpdb->prefix . 'seliweb_parametres';
+        $cfg_rows = $wpdb->get_results( "SELECT cle, valeur FROM $tp WHERE cle LIKE 'mail\_signal\_%'" );
+        $cfg      = array();
+        foreach ( $cfg_rows as $r ) $cfg[ $r->cle ] = $r->valeur;
+
+        $to_email      = trim( $cfg['mail_signal_to_email']      ?? '' );
+        $from_email    = trim( $cfg['mail_signal_from_email']    ?? '' );
+        $from_name     = trim( $cfg['mail_signal_from_name']     ?? '' );
+        $sujet_tpl     = trim( $cfg['mail_signal_subject']       ?? '' );
+        $avertissement = trim( $cfg['mail_signal_avertissement'] ?? '' );
+        $prompt        = trim( $cfg['mail_signal_prompt']        ?? '' );
+        $signature     = trim( $cfg['mail_signal_signature']     ?? '' );
+
+        if ( ! $to_email || ! is_email( $to_email ) ) {
+            $to_email = get_option( 'admin_email' );
+        }
+
+        $default_avertissement = __( "Toute annonce qui présente des caractéristiques contraires à la loi telles que pornographie, racisme, incitation à la haine, à la xénophobie, à la violence, vantant des produits illicites, incitant à l'intrusion dans des systèmes informatiques, atteinte aux droits d'auteur, etc. n'a pas sa place sur ce site.", 'seliweb' );
+        $default_prompt        = __( "Vous allez signaler une annonce au webmaster de ce site. Merci d'en préciser les raisons.", 'seliweb' );
+
+        $sujet = $sujet_tpl ?: sprintf( '[%s] %s', get_bloginfo('name'), __( "Signalement d'une annonce", 'seliweb' ) );
+
+        if ( is_user_logged_in() ) {
+            $user   = wp_get_current_user();
+            $prenom = get_user_meta( $user->ID, 'first_name', true );
+            $nom    = get_user_meta( $user->ID, 'last_name',  true );
+            $declarant = sprintf(
+                "ID : %d\n%s\n%s\n%s",
+                $user->ID,
+                __( 'Nom : ', 'seliweb' ) . trim( $prenom . ' ' . $nom ),
+                __( 'Email : ', 'seliweb' ) . $user->user_email,
+                ''
+            );
+        } else {
+            $declarant = __( 'Visiteur non connecté', 'seliweb' );
+        }
+
+        $corps_systeme = sprintf(
+            "%s %d\n%s %s\n\n%s\n%s\n\n%s\n%s",
+            __( 'N° annonce :', 'seliweb' ), $annonce->id,
+            __( 'Titre :', 'seliweb' ), $annonce->titre,
+            __( 'Déclarant :', 'seliweb' ), trim( $declarant ),
+            __( 'Raison invoquée :', 'seliweb' ), $raison
+        );
+
+        $parts = array();
+        if ( $avertissement ) $parts[] = $avertissement;
+        elseif ( ! $avertissement ) $parts[] = $default_avertissement;
+        if ( $prompt ) $parts[] = $prompt;
+        elseif ( ! $prompt ) $parts[] = $default_prompt;
+        $parts[] = $corps_systeme;
+        if ( $signature ) $parts[] = $signature;
+        $corps = implode( "\n\n", $parts );
+
+        $headers = array();
+        if ( $from_email && is_email( $from_email ) ) {
+            $headers[] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
+        }
+
+        wp_mail( $to_email, $sujet, $corps, $headers );
+
+        wp_safe_redirect( add_query_arg( 'seliweb_signal_envoye', '1', wp_get_referer() ?: home_url() ) );
         exit;
     }
 
@@ -887,6 +1001,21 @@ class Seliweb {
             if ( ! empty($_FILES['photo2']['name']) && $_FILES['photo2']['error'] === UPLOAD_ERR_OK ) {
                 $att_id = media_handle_upload('photo2', 0);
                 if ( ! is_wp_error($att_id) ) $data['photo2'] = wp_get_attachment_url($att_id);
+            }
+
+            // Validation photos obligatoires (création uniquement)
+            if ( $is_new ) {
+                $tp_sv          = $wpdb->prefix . 'seliweb_parametres';
+                $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_sv WHERE cle='annonces_photos_min' LIMIT 1" );
+                $photos_min_sv  = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
+                if ( $photos_min_sv >= 1 && empty( $data['photo1'] ) ) {
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'creer', 'sel_error' => 'no_photo1' ), get_permalink() ) );
+                    exit;
+                }
+                if ( $photos_min_sv >= 2 && empty( $data['photo2'] ) ) {
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'creer', 'sel_error' => 'no_photo2' ), get_permalink() ) );
+                    exit;
+                }
             }
 
             if ( $is_new ) {

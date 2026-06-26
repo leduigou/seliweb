@@ -18,7 +18,7 @@
     margin-bottom: 6px;
 }
 
-.seliweb-prix-row input[type="text"] {
+.seliweb-prix-row input[type="number"] {
     width: 120px;
 }
 

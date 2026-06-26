@@ -68,6 +68,7 @@ $statuts    = $wpdb->get_results( "SELECT * FROM $ts ORDER BY id ASC" );
 
 $action     = isset( $_GET['sel_action'] ) ? sanitize_key( $_GET['sel_action'] ) : 'liste';
 $annonce_id = isset( $_GET['sel_id'] )     ? intval( $_GET['sel_id'] )           : 0;
+$sel_cat    = isset( $_GET['sel_cat'] )    ? intval( $_GET['sel_cat'] )           : 0;
 
 // Mes annonces
 $mes_annonces       = $wpdb->get_results( $wpdb->prepare(
@@ -100,6 +101,16 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'bad_date' ) : ?>
         <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
             <?php esc_html_e( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_photo1' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( 'La photo 1 est obligatoire.', 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_photo2' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ); ?>
         </div>
     <?php endif; ?>
     <?php if ( isset( $_GET['sel_deleted'] ) ) : ?>
@@ -144,8 +155,15 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
         <?php if ( $action === 'liste' ) : ?>
 
+            <?php
+            $categories_mc = $wpdb->get_results( "SELECT id, nom FROM $tc ORDER BY nom ASC" );
+            $annonces_affichees = $sel_cat
+                ? array_values( array_filter( $mes_annonces, function( $a ) use ( $sel_cat ) {
+                    return (int) $a->categorie_id === $sel_cat;
+                } ) )
+                : $mes_annonces;
+            ?>
             <div class="seliweb-compte-toolbar">
-                <!-- CORRECTION : "Total annonce(s) : N" -->
                 <span class="seliweb-limite-info">
                     <?php printf(
                         esc_html__( 'Total annonce(s) : %d', 'seliweb' ),
@@ -155,6 +173,20 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                         echo ' / ' . $limite;
                     } ?>
                 </span>
+
+                <?php if ( count( $categories_mc ) > 1 ) : ?>
+                <form method="get" action="<?php echo esc_url( $page_url ); ?>" style="display:inline;">
+                    <select name="sel_cat" onchange="this.form.submit()" style="max-width:200px;">
+                        <option value=""><?php esc_html_e( '— Toutes catégories —', 'seliweb' ); ?></option>
+                        <?php foreach ( $categories_mc as $cat ) : ?>
+                            <option value="<?php echo intval( $cat->id ); ?>" <?php selected( $sel_cat, $cat->id ); ?>>
+                                <?php echo esc_html( $cat->nom ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+                <?php endif; ?>
+
                 <?php if ( $limite === 0 || $nb_annonces_membre < $limite ) : ?>
                     <a href="<?php echo esc_url( add_query_arg('sel_action','creer',$page_url) ); ?>"
                        class="seliweb-btn">
@@ -165,23 +197,29 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
             <?php if ( empty( $mes_annonces ) ) : ?>
                 <p class="seliweb-empty"><?php esc_html_e( "Vous n'avez pas encore d'annonce.", 'seliweb' ); ?></p>
+            <?php elseif ( empty( $annonces_affichees ) ) : ?>
+                <p class="seliweb-empty"><?php esc_html_e( 'Aucune annonce dans cette catégorie.', 'seliweb' ); ?></p>
             <?php else : ?>
             <table class="seliweb-table">
                 <thead><tr>
                     <th style="width:50px;">ID</th>
                     <th><?php esc_html_e( 'Titre', 'seliweb' ); ?></th>
+                    <?php if ( ! $sel_cat ) : ?>
                     <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
+                    <?php endif; ?>
                     <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
                     <th><?php esc_html_e( 'Créée le', 'seliweb' ); ?></th>
                     <th><?php esc_html_e( 'Statut', 'seliweb' ); ?></th>
                     <th style="width:80px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ( $mes_annonces as $a ) : ?>
+                <?php foreach ( $annonces_affichees as $a ) : ?>
                     <tr>
                         <td>#<?php echo intval( $a->id ); ?></td>
                         <td><?php echo esc_html( $a->titre ); ?></td>
+                        <?php if ( ! $sel_cat ) : ?>
                         <td><?php echo esc_html( $a->cat_nom ); ?></td>
+                        <?php endif; ?>
                         <td><?php echo esc_html( $a->rub_nom ?: '—' ); ?></td>
                         <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime($a->date_creation) ) ); ?></td>
                         <td>
@@ -230,6 +268,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
             // Lignes de prix : existantes ou 1 ligne vide
             $prix_lignes = ! empty( $prix_existants ) ? $prix_existants : array( '' => '' );
+
+            $tp_mc          = $wpdb->prefix . 'seliweb_parametres';
+            $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_mc WHERE cle='annonces_photos_min' LIMIT 1" );
+            $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
             ?>
 
             <div class="seliweb-compte-toolbar">
@@ -368,9 +410,9 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                                     <option value="ET" <?php selected($mc_coord,'ET'); ?>>ET</option>
                                 </select>
                             <?php endif; ?>
-                            <input type="text" name="prix[<?php echo $mc_n; ?>][montant]"
+                            <input type="number" name="prix[<?php echo $mc_n; ?>][montant]"
                                    value="<?php echo esc_attr($montant); ?>"
-                                   maxlength="10" class="seliweb-input seliweb-prix-input"
+                                   min="1" step="1" class="seliweb-input seliweb-prix-input"
                                    placeholder="<?php esc_attr_e('Montant','seliweb'); ?>">
                             <select name="prix[<?php echo $mc_n; ?>][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">
                                 <option value=""><?php esc_html_e('— Monnaie —','seliweb'); ?></option>
@@ -396,23 +438,26 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
                 <!-- Photos -->
                 <div class="seliweb-field">
-                    <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo !$is_modif ? '*' : ''; ?></label>
+                    <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 1 ) ? '*' : ''; ?></label>
                     <input type="file" name="photo1" accept="image/*"
-                           class="seliweb-file" <?php echo !$is_modif ? 'required' : ''; ?>>
+                           class="seliweb-file" <?php echo ( ! $is_modif && $photos_min >= 1 ) ? 'required' : ''; ?>>
                     <?php if ($is_modif && $edit_annonce->photo1) : ?>
                         <img src="<?php echo esc_url($edit_annonce->photo1); ?>"
                              class="seliweb-photo-preview" alt="">
-                    <?php elseif (!$is_modif) : ?>
+                    <?php elseif ( ! $is_modif && $photos_min >= 1 ) : ?>
                         <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
                     <?php endif; ?>
                 </div>
 
                 <div class="seliweb-field">
-                    <label><?php esc_html_e('Photo 2','seliweb'); ?></label>
-                    <input type="file" name="photo2" accept="image/*" class="seliweb-file">
+                    <label><?php esc_html_e('Photo 2','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 2 ) ? '*' : ''; ?></label>
+                    <input type="file" name="photo2" accept="image/*" class="seliweb-file"
+                           <?php echo ( ! $is_modif && $photos_min >= 2 ) ? 'required' : ''; ?>>
                     <?php if ($is_modif && $edit_annonce->photo2) : ?>
                         <img src="<?php echo esc_url($edit_annonce->photo2); ?>"
                              class="seliweb-photo-preview" alt="">
+                    <?php elseif ( ! $is_modif && $photos_min >= 2 ) : ?>
+                        <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
                     <?php endif; ?>
                 </div>
 
@@ -710,18 +755,21 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     $ecritures_txn = array();
     if ( ! empty( $txn_ids ) ) {
         $ids_ph = implode( ',', array_map( 'intval', $txn_ids ) );
+        $my_id  = intval( $membre->id );
+        // Une seule ligne par transaction : l'écriture du membre courant + nom de la contrepartie
         $ecritures_txn = $wpdb->get_results(
-            "SELECT e.id AS ecriture_id, t.id AS txn_id, t.date, t.libelle, t.montant, e.type,
-                    m.id AS membre_id, m.numero_sel,
-                    um_fn.meta_value AS prenom, um_ln.meta_value AS nom
-             FROM $te_t e
-             JOIN $tt_t t ON t.id = e.transaction_id
-             JOIN $tm_t m ON m.id = e.membre_id
-             JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
-             LEFT JOIN {$wpdb->usermeta} um_fn ON um_fn.user_id = u.ID AND um_fn.meta_key = 'first_name'
-             LEFT JOIN {$wpdb->usermeta} um_ln ON um_ln.user_id = u.ID AND um_ln.meta_key = 'last_name'
-             WHERE e.transaction_id IN ($ids_ph)
-             ORDER BY t.id DESC, e.type ASC"
+            "SELECT e_me.transaction_id AS txn_id, t.date, t.libelle, t.montant, e_me.type AS my_type,
+                    m_ctr.numero_sel AS ctr_numero,
+                    um_fn_ctr.meta_value AS ctr_prenom, um_ln_ctr.meta_value AS ctr_nom
+             FROM $te_t e_me
+             JOIN $tt_t t ON t.id = e_me.transaction_id
+             LEFT JOIN $te_t e_ctr ON e_ctr.transaction_id = e_me.transaction_id AND e_ctr.membre_id != $my_id
+             LEFT JOIN $tm_t m_ctr ON m_ctr.id = e_ctr.membre_id
+             LEFT JOIN {$wpdb->users} u_ctr ON u_ctr.ID = m_ctr.wp_user_id
+             LEFT JOIN {$wpdb->usermeta} um_fn_ctr ON um_fn_ctr.user_id = u_ctr.ID AND um_fn_ctr.meta_key = 'first_name'
+             LEFT JOIN {$wpdb->usermeta} um_ln_ctr ON um_ln_ctr.user_id = u_ctr.ID AND um_ln_ctr.meta_key = 'last_name'
+             WHERE e_me.membre_id = $my_id AND e_me.transaction_id IN ($ids_ph)
+             ORDER BY t.id DESC"
         );
     }
 
@@ -756,8 +804,13 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         <tr>
             <td><?php esc_html_e( 'Découvert max autorisé', 'seliweb' ); ?></td>
             <td>
-                <?php if ( $membre->decouvert_max !== null ) : ?>
-                    <strong><?php echo intval( $membre->decouvert_max ) . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?></strong>
+                <?php
+                $dec_val = $membre->decouvert_max !== null
+                    ? intval( $membre->decouvert_max )
+                    : ( $sel_info['decouvert_possible'] ? intval( $sel_info['decouvert_max'] ) : null );
+                ?>
+                <?php if ( $dec_val !== null ) : ?>
+                    <strong><?php echo $dec_val . ( $symbole_txn ? ' ' . esc_html( $symbole_txn ) : '' ); ?></strong>
                 <?php else : ?>
                     <em style="color:#888;"><?php esc_html_e( 'Aucun', 'seliweb' ); ?></em>
                 <?php endif; ?>
@@ -791,22 +844,21 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
                 <th style="width:76px;text-align:right;"><?php esc_html_e( 'Débit', 'seliweb' ); ?></th>
                 <th style="width:76px;text-align:right;"><?php esc_html_e( 'Crédit', 'seliweb' ); ?></th>
-                <th style="width:60px;text-align:center;"><?php esc_html_e( 'N° Mbr', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Prénom Nom', 'seliweb' ); ?></th>
+                <th style="width:60px;text-align:center;"><?php esc_html_e( 'N°', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Contrepartie', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
-            <?php $prev_txn_id = null; foreach ( $ecritures_txn as $e_row ) :
-                $is_debit   = ( $e_row->type === 'debit' );
-                $is_new_txn = ( $e_row->txn_id !== $prev_txn_id );
-                $nom_prenom = intval( $e_row->numero_sel ) === 1
+            <?php foreach ( $ecritures_txn as $e_row ) :
+                $is_debit    = ( $e_row->my_type === 'debit' );
+                $ctr_label   = intval( $e_row->ctr_numero ) === 1
                     ? __( 'Compte du SEL', 'seliweb' )
-                    : trim( ( $e_row->prenom ?? '' ) . ' ' . ( $e_row->nom ?? '' ) );
+                    : trim( ( $e_row->ctr_prenom ?? '' ) . ' ' . ( $e_row->ctr_nom ?? '' ) );
                 $montant_fmt = intval( $e_row->montant ) . ( $symbole_txn ? ' ' . $symbole_txn : '' );
             ?>
-            <tr<?php if ( $is_new_txn && $prev_txn_id !== null ) echo ' style="border-top:2px solid #e0e0e0;"'; ?>>
-                <td><?php if ( $is_new_txn ) echo '#' . intval( $e_row->txn_id ); ?></td>
-                <td><?php if ( $is_new_txn ) echo esc_html( date_i18n( get_option('date_format'), strtotime( $e_row->date ) ) ); ?></td>
-                <td><?php if ( $is_new_txn ) echo esc_html( $e_row->libelle ); ?></td>
+            <tr>
+                <td><?php echo '#' . intval( $e_row->txn_id ); ?></td>
+                <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime( $e_row->date ) ) ); ?></td>
+                <td><?php echo esc_html( $e_row->libelle ); ?></td>
                 <td style="text-align:right;">
                     <?php if ( $is_debit ) : ?>
                         <span style="color:#c0392b;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
@@ -817,10 +869,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                         <span style="color:#27ae60;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
                     <?php endif; ?>
                 </td>
-                <td style="text-align:center;"><?php echo esc_html( $e_row->numero_sel ); ?></td>
-                <td><?php echo esc_html( $nom_prenom ); ?></td>
+                <td style="text-align:center;"><?php echo esc_html( $e_row->ctr_numero ); ?></td>
+                <td><?php echo esc_html( $ctr_label ); ?></td>
             </tr>
-            <?php $prev_txn_id = $e_row->txn_id; endforeach; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
         </div>
@@ -867,6 +919,9 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         $membres_credit = array_values( array_filter( $membres_sel, function( $m ) use ( $membre ) {
             return intval( $m->numero_sel ) !== 1 && intval( $m->id ) !== intval( $membre->id );
         } ) );
+        $ac_credit = array_map( function( $m ) {
+            return array( 'id' => intval( $m->id ), 'label' => Seliweb_Transactions::membre_label( $m ) );
+        }, $membres_credit );
         ?>
 
         <p style="margin-bottom:20px;font-size:15px;">
@@ -881,14 +936,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
             <div class="seliweb-field">
                 <label><?php esc_html_e( 'Membre à créditer', 'seliweb' ); ?> *</label>
-                <select name="membre_credit_id" class="seliweb-select" required>
-                    <option value=""><?php esc_html_e( '— Choisir un membre —', 'seliweb' ); ?></option>
-                    <?php foreach ( $membres_credit as $m ) : ?>
-                        <option value="<?php echo intval( $m->id ); ?>">
-                            <?php echo esc_html( Seliweb_Transactions::membre_label( $m ) ); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <div class="swv-ac-wrap" id="swv_wrap_fe_credit" data-value="" data-label=""></div>
             </div>
 
             <div class="seliweb-field">
@@ -921,6 +969,59 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 </a>
             </div>
         </form>
+        <style>
+        .swv-ac-wrap{position:relative;display:block;width:100%;}
+        .swv-ac-input{width:100%;padding:8px 12px;font-size:15px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;font-family:inherit;}
+        .swv-ac-input:focus{border-color:#1d6a4a;outline:none;box-shadow:0 0 0 2px rgba(29,106,74,.15);}
+        .swv-ac-list{position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1px solid #ccc;border-top:0;border-radius:0 0 6px 6px;list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);}
+        .swv-ac-list li{padding:9px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid #f0f0f0;}
+        .swv-ac-list li:hover{background:#e0ede7;}
+        </style>
+        <script>
+        (function() {
+            function swvAc(wrapId, hiddenName, items, placeholder) {
+                var wrap = document.getElementById(wrapId);
+                if (!wrap) return;
+                var txt = document.createElement('input');
+                txt.type = 'text'; txt.placeholder = placeholder || ''; txt.autocomplete = 'off'; txt.className = 'swv-ac-input';
+                var hid = document.createElement('input');
+                hid.type = 'hidden'; hid.name = hiddenName; hid.value = wrap.dataset.value || '';
+                var list = document.createElement('ul');
+                list.className = 'swv-ac-list'; list.hidden = true;
+                wrap.appendChild(txt); wrap.appendChild(hid); wrap.appendChild(list);
+                function render(matches) {
+                    list.innerHTML = '';
+                    if (!matches.length) { list.hidden = true; return; }
+                    matches.slice(0, 15).forEach(function(item) {
+                        var li = document.createElement('li');
+                        li.textContent = item.label;
+                        li.addEventListener('mousedown', function(e) { e.preventDefault(); txt.value = item.label; hid.value = item.id; list.hidden = true; });
+                        list.appendChild(li);
+                    });
+                    list.hidden = false;
+                }
+                txt.addEventListener('input', function() {
+                    hid.value = '';
+                    var q = this.value.toLowerCase().trim();
+                    if (!q) { list.hidden = true; return; }
+                    render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('focus', function() {
+                    var q = this.value.toLowerCase().trim();
+                    if (q) render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('blur', function() { setTimeout(function() { list.hidden = true; }, 200); });
+            }
+            swvAc('swv_wrap_fe_credit', 'membre_credit_id',
+                <?php echo wp_json_encode( $ac_credit ); ?>,
+                '<?php echo esc_js( __( 'Taper un nom ou un N°…', 'seliweb' ) ); ?>'
+            );
+            document.querySelector('.seliweb-form').addEventListener('submit', function(e) {
+                if (!document.querySelector('[name="membre_credit_id"]').value)
+                    { e.preventDefault(); alert('<?php echo esc_js( __( 'Veuillez choisir le membre à créditer.', 'seliweb' ) ); ?>'); }
+            });
+        })();
+        </script>
 
     <?php elseif ( $action === 'confirmer_transaction' ) :
 
@@ -1069,7 +1170,7 @@ function selMCAddPrix(){
     row.className='seliweb-prix-row';
     row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
     row.innerHTML='<select name="prix['+idx+'][coordination]" style="width:65px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
-                 +'<input type="text" name="prix['+idx+'][montant]" maxlength="10" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
+                 +'<input type="number" name="prix['+idx+'][montant]" min="1" step="1" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
                  +'<select name="prix['+idx+'][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">'+opts+'</select>'
                  +'<button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" onclick="this.closest(\'.seliweb-prix-row\').remove()">✕</button>';
     document.getElementById('mc_prix_container').appendChild(row);

@@ -80,7 +80,11 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
             $erreurs_modif[] = __( 'Les mots de passe ne correspondent pas.', 'seliweb' );
         }
         // Validation numéro SEL
-        if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
+        $te = $wpdb->prefix . 'seliweb_ecritures';
+        $membre_a_transactions = (bool) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM $te WHERE membre_id=%d LIMIT 1", $mid
+        ) );
+        if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id && ! $membre_a_transactions ) {
             $numero_check = isset( $_POST['numero_sel'] ) ? intval( $_POST['numero_sel'] ) : 0;
             if ( $numero_check === 1 ) {
                 $erreurs_modif[] = __( 'Le numéro 1 est réservé au compte du SEL et ne peut pas être attribué à un membre.', 'seliweb' );
@@ -115,12 +119,14 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
 
         // Numérotation et découvert SEL
         if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
-            $numero_sel_input = isset( $_POST['numero_sel'] ) ? intval( $_POST['numero_sel'] ) : 0;
-            if ( $numero_sel_input > 0 ) {
-                $wpdb->update( $tm, array( 'numero_sel' => $numero_sel_input ), array( 'id' => $mid ) );
-            } elseif ( $membre_modif->numero_sel === null ) {
-                $max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT GREATEST(COALESCE(MAX(numero_sel),1),1) FROM $tm WHERE groupe_id=%d", $sel_groupe_id ) );
-                $wpdb->update( $tm, array( 'numero_sel' => $max + 1 ), array( 'id' => $mid ) );
+            if ( ! $membre_a_transactions ) {
+                $numero_sel_input = isset( $_POST['numero_sel'] ) ? intval( $_POST['numero_sel'] ) : 0;
+                if ( $numero_sel_input > 0 ) {
+                    $wpdb->update( $tm, array( 'numero_sel' => $numero_sel_input ), array( 'id' => $mid ) );
+                } elseif ( $membre_modif->numero_sel === null ) {
+                    $max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT GREATEST(COALESCE(MAX(numero_sel),1),1) FROM $tm WHERE groupe_id=%d", $sel_groupe_id ) );
+                    $wpdb->update( $tm, array( 'numero_sel' => $max + 1 ), array( 'id' => $mid ) );
+                }
             }
             $decouvert_input = ( isset( $_POST['decouvert_max'] ) && $_POST['decouvert_max'] !== '' )
                 ? intval( $_POST['decouvert_max'] ) : null;
@@ -599,14 +605,26 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                     </select>
                 </td>
             </tr>
-            <?php if ( $sel_groupe_id > 0 && (int)$m_edit->groupe_id === $sel_groupe_id ) : ?>
+            <?php if ( $sel_groupe_id > 0 && (int)$m_edit->groupe_id === $sel_groupe_id ) :
+                $te_disp = $wpdb->prefix . 'seliweb_ecritures';
+                $num_locked = (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM $te_disp WHERE membre_id=%d LIMIT 1", $m_edit->id
+                ) );
+            ?>
             <tr>
                 <th><?php esc_html_e('N° membre SEL','seliweb'); ?></th>
                 <td>
-                    <input type="number" name="numero_sel" class="small-text" min="1" max="999999"
-                           value="<?php echo $m_edit->numero_sel ? intval($m_edit->numero_sel) : ''; ?>"
-                           style="width:100px;">
-                    <p class="description"><?php esc_html_e('Laissez vide pour attribution automatique (dernier numéro + 1).','seliweb'); ?></p>
+                    <?php if ( $num_locked ) : ?>
+                        <span style="font-weight:600;"><?php echo intval( $m_edit->numero_sel ); ?></span>
+                        <p class="description" style="color:#b32d2e;">
+                            <?php esc_html_e( 'Ce numéro ne peut plus être modifié car ce membre a des transactions enregistrées.', 'seliweb' ); ?>
+                        </p>
+                    <?php else : ?>
+                        <input type="number" name="numero_sel" class="small-text" min="1" max="999999"
+                               value="<?php echo $m_edit->numero_sel ? intval($m_edit->numero_sel) : ''; ?>"
+                               style="width:100px;">
+                        <p class="description"><?php esc_html_e('Laissez vide pour attribution automatique (dernier numéro + 1).','seliweb'); ?></p>
+                    <?php endif; ?>
                 </td>
             </tr>
             <tr>
@@ -810,8 +828,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <?php foreach ($membres as $m) : ?>
             <tr>
                 <td style="text-align:center;color:#888;font-size:12px;font-weight:600;">
-                    <?php echo ( $sel_groupe_id > 0 && (int)$m->groupe_id === $sel_groupe_id && !empty($m->numero_sel) )
-                        ? intval( $m->numero_sel ) : '—'; ?>
+                    <?php echo ! empty( $m->numero_sel ) ? intval( $m->numero_sel ) : '—'; ?>
                 </td>
                 <td><?php echo esc_html( $m->prenom ?? '' ); ?></td>
                 <td>
