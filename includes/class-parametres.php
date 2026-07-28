@@ -152,6 +152,10 @@ class Seliweb_Parametres {
                     $row   = $GLOBALS['wpdb']->get_row( $GLOBALS['wpdb']->prepare( "SELECT est_defaut FROM $table WHERE id=%d", $id ) );
                     if ( $row && ! $row->est_defaut ) $GLOBALS['wpdb']->delete( $table, array('id'=>$id) );
                     break;
+                case 'cotisations':
+                    $GLOBALS['wpdb']->delete( $GLOBALS['wpdb']->prefix . 'seliweb_exercices', array( 'id' => $id ) );
+                    wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=cotisations&subtab=exercices&deleted=1' ) );
+                    exit;
             }
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=' . $tab . '&deleted=1' ) );
             exit;
@@ -164,6 +168,17 @@ class Seliweb_Parametres {
             $table = $GLOBALS['wpdb']->prefix . 'seliweb_monnaies';
             $GLOBALS['wpdb']->update( $table, array('est_defaut'=>0), array('est_defaut'=>1) );
             $GLOBALS['wpdb']->update( $table, array('est_defaut'=>1), array('id'=>$id) );
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies' ) );
+            exit;
+        }
+
+        // Définir monnaie légale (euro)
+        if ( isset( $_GET['set_legale'] ) ) {
+            $id    = intval( $_GET['set_legale'] );
+            if ( ! check_admin_referer( 'seliweb_legale_' . $id ) ) return;
+            $table = $GLOBALS['wpdb']->prefix . 'seliweb_monnaies';
+            $GLOBALS['wpdb']->update( $table, array('est_legale'=>0), array('est_legale'=>1) );
+            $GLOBALS['wpdb']->update( $table, array('est_legale'=>1), array('id'=>$id) );
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies' ) );
             exit;
         }
@@ -181,8 +196,9 @@ class Seliweb_Parametres {
             'categories' => __( 'Catégories',  'seliweb' ),
             'rubriques'  => __( 'Rubriques',   'seliweb' ),
             'statuts'    => __( 'Statuts',     'seliweb' ),
-            'sel'        => __( 'SEL',         'seliweb' ),
-            'mails'      => __( 'Mails',       'seliweb' ),
+            'sel'         => __( 'SEL',          'seliweb' ),
+            'mails'       => __( 'Mails',        'seliweb' ),
+            'cotisations' => __( 'Cotisations',  'seliweb' ),
         );
 
         echo '<div class="wrap">';
@@ -202,9 +218,10 @@ class Seliweb_Parametres {
             case 'monnaies':  self::tab_monnaies();  break;
             case 'rubriques': self::tab_rubriques(); break;
             case 'statuts':   self::tab_statuts();   break;
-            case 'sel':       self::tab_sel();        break;
-            case 'mails':     self::tab_mails();      break;
-            default:          self::tab_categories(); break;
+            case 'sel':          self::tab_sel();                         break;
+            case 'mails':        self::tab_mails();                       break;
+            case 'cotisations':  Seliweb_Cotisations::tab_cotisations();  break;
+            default:             self::tab_categories();                   break;
         }
 
         echo '</div></div>';
@@ -232,8 +249,9 @@ class Seliweb_Parametres {
             case 'rubriques':  self::handle_rubriques( $action );  break;
             case 'statuts':    self::handle_statuts( $action );    break;
             case 'monnaies':   self::handle_monnaies( $action );   break;
-            case 'sel':        self::handle_sel( $action );        break;
-            case 'mails':      self::handle_mails( $action );      break;
+            case 'sel':          self::handle_sel( $action );                       break;
+            case 'mails':        self::handle_mails( $action );                     break;
+            case 'cotisations':  Seliweb_Cotisations::handle_cotisations( $action ); break;
         }
     }
 
@@ -720,6 +738,7 @@ class Seliweb_Parametres {
                 <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Symbole', 'seliweb' ); ?></th>
                 <th style="width:80px;text-align:center;"><?php esc_html_e( 'Par défaut', 'seliweb' ); ?></th>
+                <th style="width:90px;text-align:center;"><?php esc_html_e( 'Légale (€)', 'seliweb' ); ?></th>
                 <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
@@ -734,6 +753,16 @@ class Seliweb_Parametres {
                             <a href="<?php echo esc_url( wp_nonce_url(
                                 admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&set_defaut=' . $row->id ),
                                 'seliweb_defaut_' . $row->id
+                            ) ); ?>" style="font-size:11px;"><?php esc_html_e( 'Définir', 'seliweb' ); ?></a>
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align:center;">
+                        <?php if ( $row->est_legale ) : ?>
+                            <span style="color:#0073aa;font-weight:700;" title="<?php esc_attr_e( 'Monnaie légale', 'seliweb' ); ?>">€</span>
+                        <?php else : ?>
+                            <a href="<?php echo esc_url( wp_nonce_url(
+                                admin_url( 'admin.php?page=seliweb_parametres&tab=monnaies&set_legale=' . $row->id ),
+                                'seliweb_legale_' . $row->id
                             ) ); ?>" style="font-size:11px;"><?php esc_html_e( 'Définir', 'seliweb' ); ?></a>
                         <?php endif; ?>
                     </td>

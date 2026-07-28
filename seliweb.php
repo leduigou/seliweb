@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.7.3
+ * Version: 0.7.4
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.7.3' );
+define( 'SELIWEB_VERSION', '0.7.4' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 
@@ -21,6 +21,7 @@ require_once SELIWEB_DIR . 'includes/class-parametres.php';
 require_once SELIWEB_DIR . 'includes/class-groupes.php';
 require_once SELIWEB_DIR . 'includes/class-annonces.php';
 require_once SELIWEB_DIR . 'includes/class-transactions.php';
+require_once SELIWEB_DIR . 'includes/class-cotisations.php';
 require_once SELIWEB_DIR . 'includes/class-updater.php';
 require_once SELIWEB_DIR . 'includes/class-front.php';
 
@@ -28,6 +29,7 @@ Seliweb_Groupes::init();
 Seliweb_Annonces::init();
 Seliweb_Parametres::init();
 Seliweb_Transactions::init();
+Seliweb_Cotisations::init();
 Seliweb_Updater::init();
 
 class Seliweb {
@@ -102,6 +104,9 @@ class Seliweb {
         add_submenu_page( 'seliweb', __('Membres','seliweb'),         __('Membres','seliweb'),         'manage_options', 'seliweb_membres',    array($this,'display_membres') );
         if ( Seliweb_Transactions::sel_actif() ) {
             add_submenu_page( 'seliweb', __('Transactions','seliweb'), __('Transactions','seliweb'), 'manage_options', 'seliweb_transactions', array('Seliweb_Transactions','display') );
+        }
+        if ( Seliweb_Cotisations::cotisations_actif() ) {
+            add_submenu_page( 'seliweb', __('Cotisations','seliweb'), __('Cotisations','seliweb'), 'manage_options', 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
         }
     }
 
