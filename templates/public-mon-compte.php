@@ -149,6 +149,12 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
+        <?php if ( class_exists('Seliweb_Cotisations') && Seliweb_Cotisations::cotisations_actif() ) : ?>
+        <a href="<?php echo esc_url( add_query_arg('sel_action','cotisations',$page_url) ); ?>"
+           class="seliweb-tab <?php echo $action==='cotisations' ? 'seliweb-tab-active' : ''; ?>">
+            <?php esc_html_e( 'Cotisations', 'seliweb' ); ?>
+        </a>
+        <?php endif; ?>
     </div>
 
     <?php if ( in_array( $action, array( 'liste', 'creer', 'modifier' ) ) ) : ?>
@@ -1124,6 +1130,87 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php endif; // transactions vs creer_transaction vs confirmer_transaction ?>
 
     <?php endif; // is_sel_membre ?>
+
+    <?php elseif ( $action === 'cotisations' ) : ?>
+
+    <?php
+    $tc_cot  = $wpdb->prefix . 'seliweb_cotisations';
+    $tc_regl = $wpdb->prefix . 'seliweb_cotisations_reglements';
+    $mes_cots = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM $tc_cot WHERE wp_user_id=%d AND statut='paye' ORDER BY date_paiement DESC",
+        $wp_user_id
+    ) );
+    ?>
+
+    <h3><?php esc_html_e( 'Mes cotisations', 'seliweb' ); ?></h3>
+
+    <?php if ( empty( $mes_cots ) ) : ?>
+        <p class="seliweb-empty"><?php esc_html_e( "Vous n'avez pas encore de cotisation enregistrée.", 'seliweb' ); ?></p>
+    <?php else : ?>
+    <div style="overflow-x:auto;">
+    <table class="seliweb-table">
+        <thead><tr>
+            <th style="width:90px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+            <th style="width:110px;"><?php esc_html_e( 'Exercice', 'seliweb' ); ?></th>
+            <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
+            <th style="width:100px;text-align:right;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
+            <th style="width:120px;"><?php esc_html_e( 'Règlement', 'seliweb' ); ?></th>
+        </tr></thead>
+        <tbody>
+        <?php
+        $modes = array(
+            'especes'   => __( 'Espèces', 'seliweb' ),
+            'cheque'    => __( 'Chèque', 'seliweb' ),
+            'virement'  => __( 'Virement', 'seliweb' ),
+            'helloasso' => __( 'HelloAsso', 'seliweb' ),
+        );
+        foreach ( $mes_cots as $cot ) :
+            $reglements_cot = $wpdb->get_results( $wpdb->prepare(
+                "SELECT r.montant, r.mode_paiement, mo.nom AS monnaie_nom, mo.symbole AS monnaie_symbole
+                 FROM $tc_regl r
+                 LEFT JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
+                 WHERE r.cotisation_id = %d ORDER BY r.id ASC",
+                $cot->id
+            ) );
+            $date_fmt  = date_i18n( get_option('date_format'), strtotime( $cot->date_paiement ) );
+            $exercice  = $cot->exercice ?: '—';
+            $libelle   = $cot->libelle  ?: '—';
+            $border    = 'border-top:2px solid #e0e0e0;';
+
+            if ( empty( $reglements_cot ) ) :
+        ?>
+        <tr>
+            <td style="<?php echo $border; ?>"><?php echo esc_html( $date_fmt ); ?></td>
+            <td style="<?php echo $border; ?>"><?php echo esc_html( $exercice ); ?></td>
+            <td style="<?php echo $border; ?>"><?php echo esc_html( $libelle ); ?></td>
+            <td style="<?php echo $border; ?>text-align:right;font-weight:600;">—</td>
+            <td style="<?php echo $border; ?>"><em style="color:#aaa;">—</em></td>
+        </tr>
+        <?php
+            else :
+                foreach ( $reglements_cot as $i => $rg ) :
+                    $symbole_rg = $rg->monnaie_symbole ?: $rg->monnaie_nom;
+                    $montant_rg = number_format( $rg->montant / 100, 2, ',', ' ' );
+                    $mode_label = $modes[ $rg->mode_paiement ] ?? ucfirst( $rg->mode_paiement );
+                    $row_border = ( $i === 0 ) ? $border : '';
+        ?>
+        <tr>
+            <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $date_fmt ) : ''; ?></td>
+            <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $exercice ) : ''; ?></td>
+            <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $libelle ) : ''; ?></td>
+            <td style="<?php echo $row_border; ?>text-align:right;font-weight:600;">
+                <?php echo esc_html( $montant_rg . ' ' . $symbole_rg ); ?>
+            </td>
+            <td style="<?php echo $row_border; ?>"><?php echo esc_html( $mode_label ); ?></td>
+        </tr>
+        <?php
+                endforeach;
+            endif;
+        endforeach; ?>
+        </tbody>
+    </table>
+    </div>
+    <?php endif; ?>
 
     <?php  endif; ?>
 

@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '1.3';
+    const DB_VERSION     = '1.8';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -176,6 +176,46 @@ class Seliweb_Database {
             KEY membre_id (membre_id)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_cotisations (
+            id                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wp_user_id            INT UNSIGNED NOT NULL DEFAULT 0,
+            exercice              VARCHAR(20)   DEFAULT NULL,
+            libelle               VARCHAR(200)  DEFAULT NULL,
+            montant               INT UNSIGNED NOT NULL DEFAULT 0,
+            date_paiement         DATE         NOT NULL,
+            statut                ENUM('en_attente','paye','echec') NOT NULL DEFAULT 'en_attente',
+            helloasso_order_id    VARCHAR(100)  DEFAULT NULL,
+            helloasso_payer_email VARCHAR(200)  DEFAULT NULL,
+            helloasso_payer_nom   VARCHAR(200)  DEFAULT NULL,
+            paheko_synced         TINYINT(1)   NOT NULL DEFAULT 0,
+            created_at            DATETIME     NOT NULL,
+            PRIMARY KEY (id),
+            KEY wp_user_id (wp_user_id),
+            KEY statut (statut),
+            KEY exercice (exercice),
+            KEY helloasso_order_id (helloasso_order_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_exercices (
+            id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            libelle    VARCHAR(100) NOT NULL,
+            date_debut DATE         DEFAULT NULL,
+            date_fin   DATE         DEFAULT NULL,
+            est_actif  TINYINT(1)  NOT NULL DEFAULT 0,
+            PRIMARY KEY (id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_cotisations_reglements (
+            id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            cotisation_id  INT UNSIGNED NOT NULL,
+            montant        INT          NOT NULL DEFAULT 0,
+            monnaie_id     INT UNSIGNED NOT NULL DEFAULT 0,
+            mode_paiement  VARCHAR(30)  NOT NULL DEFAULT 'especes',
+            coordination   ENUM('ET','OU') DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY cotisation_id (cotisation_id)
+        ) $charset;";
+
         foreach ( $sql as $query ) {
             dbDelta( $query );
         }
@@ -212,6 +252,26 @@ class Seliweb_Database {
         if ( $col_info && strpos( strtolower( $col_info->Type ), 'decimal' ) !== false ) {
             $wpdb->query( "ALTER TABLE `$tm` MODIFY COLUMN `decouvert_max` INT UNSIGNED DEFAULT NULL" );
         }
+
+        // Migration v1.5 : nouvelles colonnes seliweb_cotisations
+        $t_cot = $wpdb->prefix . 'seliweb_cotisations';
+        self::maybe_add_column( $t_cot, 'exercice', "VARCHAR(20)  DEFAULT NULL AFTER wp_user_id" );
+        self::maybe_add_column( $t_cot, 'libelle',  "VARCHAR(200) DEFAULT NULL AFTER exercice" );
+
+        // Migration v1.7 : colonnes sync Paheko par cotisation
+        self::maybe_add_column( $t_cot, 'paheko_id_year', "INT DEFAULT NULL" );
+        self::maybe_add_column( $t_cot, 'paheko_id_fee',  "INT DEFAULT NULL" );
+
+        // Migration v1.8 : statuts de synchronisation SEL + exclusion
+        self::maybe_add_column( $t_cot, 'sel_synced',  "TINYINT(1) NOT NULL DEFAULT 0" );
+        self::maybe_add_column( $t_cot, 'sync_exclu',  "TINYINT(1) NOT NULL DEFAULT 0" );
+
+        // Migration v1.8 : monnaie légale (euro)
+        self::maybe_add_column(
+            $wpdb->prefix . 'seliweb_monnaies',
+            'est_legale',
+            "TINYINT(1) NOT NULL DEFAULT 0 AFTER est_defaut"
+        );
 
         self::insert_defaults();
     }

@@ -271,6 +271,7 @@ $filtre_ville  = isset( $_GET['filtre_ville'] )  ? sanitize_text_field( $_GET['f
 $villes_dispo  = $wpdb->get_col( "SELECT DISTINCT ville FROM $tm WHERE ville != '' AND ville IS NOT NULL ORDER BY ville ASC" );
 
 $allowed_orderby = array(
+    'id'     => 'm.id',
     'numero' => 'ISNULL(m.numero_sel), m.numero_sel',
     'prenom' => 'um_p.meta_value',
     'nom'    => 'um_n.meta_value',
@@ -788,6 +789,15 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         </span>
     </form>
 
+    <!-- ===== RECHERCHE ===== -->
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <input type="text" id="mbr-search"
+               placeholder="<?php esc_attr_e('Rechercher ID, N°, prénom, nom, email…','seliweb'); ?>"
+               style="width:320px;padding:5px 8px;font-size:13px;" autocomplete="off">
+        <button type="button" id="mbr-search-clear" class="button" style="padding:4px 8px;" title="<?php esc_attr_e('Effacer','seliweb'); ?>">✕</button>
+        <span id="mbr-search-count" style="font-size:13px;color:#555;"></span>
+    </div>
+
     <!-- ===== LISTE ===== -->
     <?php
     $base_args = array( 'page' => 'seliweb_membres', 'per_page' => $per_page );
@@ -812,6 +822,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
     ?>
     <table class="wp-list-table widefat fixed striped">
         <thead><tr>
+            <th style="width:50px;"><a href="<?php echo esc_url($sort_url('id')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('ID','seliweb'); echo $sort_icon('id'); ?></a></th>
             <th style="width:30px;"><a href="<?php echo esc_url($sort_url('numero')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('N°','seliweb'); echo $sort_icon('numero'); ?></a></th>
             <th style="width:100px;"><a href="<?php echo esc_url($sort_url('prenom')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('Prénom','seliweb'); echo $sort_icon('prenom'); ?></a></th>
             <th style="width:100px;"><a href="<?php echo esc_url($sort_url('nom')); ?>" style="text-decoration:none;color:inherit;"><?php esc_html_e('Nom','seliweb'); echo $sort_icon('nom'); ?></a></th>
@@ -821,12 +832,24 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <th><?php esc_html_e('Groupe','seliweb'); ?></th>
             <th style="width:140px;"><?php esc_html_e('Actions','seliweb'); ?></th>
         </tr></thead>
-        <tbody>
+        <tbody id="mbr-tbody">
         <?php if (empty($membres)) : ?>
-            <tr><td colspan="8"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
+            <tr><td colspan="9"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
         <?php else : ?>
+            <tr id="mbr-no-results" style="display:none;">
+                <td colspan="9" style="text-align:center;color:#888;font-style:italic;">
+                    <?php esc_html_e('Aucun résultat pour cette recherche.','seliweb'); ?>
+                </td>
+            </tr>
             <?php foreach ($membres as $m) : ?>
-            <tr>
+            <tr data-s="<?php echo esc_attr( implode( ' ', array(
+                $m->id,
+                $m->numero_sel ?: '',
+                $m->prenom ?? '',
+                $m->nom ?? '',
+                $m->user_email,
+            ) ) ); ?>">
+                <td style="text-align:center;color:#888;font-size:12px;"><?php echo intval( $m->id ); ?></td>
                 <td style="text-align:center;color:#888;font-size:12px;font-weight:600;">
                     <?php echo ! empty( $m->numero_sel ) ? intval( $m->numero_sel ) : '—'; ?>
                 </td>
@@ -892,5 +915,36 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         <?php endif; ?>
     </div>
     <?php endif; ?>
+
+    <script>
+    (function() {
+        function normalise(s) {
+            return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        }
+        var input   = document.getElementById('mbr-search');
+        var btnClr  = document.getElementById('mbr-search-clear');
+        var countEl = document.getElementById('mbr-search-count');
+        var noRes   = document.getElementById('mbr-no-results');
+        var tbody   = document.getElementById('mbr-tbody');
+
+        function doSearch() {
+            var q     = normalise(input.value.trim());
+            var words = q ? q.split(/\s+/) : [];
+            var rows  = tbody ? tbody.querySelectorAll('tr[data-s]') : [];
+            var count = 0;
+            rows.forEach(function(tr) {
+                var txt   = normalise(tr.getAttribute('data-s'));
+                var match = !words.length || words.every(function(w) { return txt.indexOf(w) !== -1; });
+                tr.style.display = match ? '' : 'none';
+                if (match) count++;
+            });
+            if (noRes) noRes.style.display = (count === 0 && words.length > 0) ? '' : 'none';
+            if (countEl) countEl.textContent = words.length ? count + ' / ' + rows.length : '';
+        }
+
+        if (input)  input.addEventListener('input', doSearch);
+        if (btnClr) btnClr.addEventListener('click', function() { input.value = ''; doSearch(); input.focus(); });
+    })();
+    </script>
     <?php endif; ?>
 </div>
