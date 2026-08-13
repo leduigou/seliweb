@@ -321,11 +321,12 @@ if ( ! function_exists( 'swv_render_search' ) ) {
                     </select>
                     <?php endif; ?>
 
-                    <button type="submit" class="swv-search-btn">
+                    <button type="submit" class="swv-search-btn"
+                            title="<?php esc_attr_e('Cliquer pour valider la recherche','seliweb'); ?>">
                         <?php esc_html_e('Rechercher','seliweb'); ?>
                     </button>
                     <button type="button" class="swv-reset-btn"
-                            onclick="window.location=<?php echo wp_json_encode($page_url); ?>">
+                            onclick="window.location=<?php echo esc_attr( wp_json_encode( $page_url ) ); ?>">
                         <?php esc_html_e('Réinitialiser','seliweb'); ?>
                     </button>
 
