@@ -349,6 +349,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                     <label><?php esc_html_e("Date d'expiration",'seliweb'); ?></label>
                     <input type="date" name="date_expiration" class="seliweb-input"
                            value="<?php echo $is_modif ? esc_attr($edit_annonce->date_expiration) : ''; ?>">
+                    <p class="seliweb-hint"><?php esc_html_e('Ne pas remplir si annonce permanente', 'seliweb'); ?></p>
                 </div>
 
                 <!-- Don -->

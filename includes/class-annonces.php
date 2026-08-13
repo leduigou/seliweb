@@ -643,7 +643,7 @@ class Seliweb_Annonces {
                     <td>
                         <input type="date" id="date_expiration" name="date_expiration"
                                value="<?php echo $item ? esc_attr( $item->date_expiration ) : ''; ?>">
-                        <p class="description"><?php esc_html_e( 'Laisser vide pour sans limite.', 'seliweb' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'Ne pas remplir si annonce permanente', 'seliweb' ); ?></p>
                     </td>
                 </tr>
                 <tr>
