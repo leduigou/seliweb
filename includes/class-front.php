@@ -81,6 +81,22 @@ if ( ! function_exists( 'swv_annonces_page_url' ) ) {
 }
 
 // ================================================================
+// URL DE LA PAGE DE CONNEXION (page contenant [seliweb_login])
+// ================================================================
+if ( ! function_exists( 'swv_login_page_url' ) ) {
+    function swv_login_page_url( $redirect = '' ) {
+        global $wpdb;
+        $id = $wpdb->get_var(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_status='publish' AND post_type='page'
+             AND post_content LIKE '%seliweb_login%' LIMIT 1"
+        );
+        $base = $id ? get_permalink( $id ) : wp_login_url();
+        return $redirect ? add_query_arg( 'redirect_to', urlencode( $redirect ), $base ) : $base;
+    }
+}
+
+// ================================================================
 // URL D'UNE PAGE DE PAGINATION
 // ================================================================
 if ( ! function_exists( 'swv_page_url' ) ) {
@@ -421,4 +437,36 @@ if ( ! function_exists( 'swv_render_card' ) ) {
             </div>
         <?php endif;
     }
+}
+
+// ================================================================
+// MODÈLE DE PAGE "ANNONCES SEL" — fourni par le plugin
+//
+// La mise en page des annonces est désormais indépendante du thème actif :
+// le plugin propose et fournit son propre modèle de page (templates/page-annonces.php),
+// au lieu de dépendre d'un fichier template-annonces.php présent dans le thème.
+//
+// On réutilise volontairement la même clé ('template-annonces.php') qu'utilisait
+// l'ancien fichier du thème, afin que les pages déjà assignées à ce modèle
+// continuent de fonctionner sans ré-affectation manuelle dans l'admin.
+// ================================================================
+if ( ! function_exists( 'swv_register_page_template' ) ) {
+    function swv_register_page_template( $templates ) {
+        $templates['template-annonces.php'] = __( 'Annonces SEL', 'seliweb' );
+        return $templates;
+    }
+    add_filter( 'theme_page_templates', 'swv_register_page_template' );
+}
+
+if ( ! function_exists( 'swv_load_page_template' ) ) {
+    function swv_load_page_template( $template ) {
+        if ( is_page() && get_page_template_slug() === 'template-annonces.php' ) {
+            $plugin_template = SELIWEB_DIR . 'templates/page-annonces.php';
+            if ( file_exists( $plugin_template ) ) {
+                return $plugin_template;
+            }
+        }
+        return $template;
+    }
+    add_filter( 'template_include', 'swv_load_page_template' );
 }
