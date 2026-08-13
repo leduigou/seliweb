@@ -1092,6 +1092,11 @@ class Seliweb_Parametres {
         // valeur en dur ici figerait ces membres à la valeur du jour, au lieu
         // de continuer à suivre les changements futurs du paramètre général.
 
+        // Le compte N°1 doit exister dès que le mode SEL est actif.
+        if ( $sel_actif ) {
+            self::auto_creer_compte_sel_si_absent( $sel_groupe_id );
+        }
+
         self::$sel_saved = true;
     }
 
@@ -1147,6 +1152,25 @@ class Seliweb_Parametres {
             return;
         }
 
+        $error = self::creer_compte_sel_user( $email, $sel_groupe_id );
+        if ( $error ) {
+            self::$compte_sel_message = sprintf( __( 'Erreur création utilisateur : %s', 'seliweb' ), $error );
+            self::$compte_sel_error   = true;
+            return;
+        }
+
+        self::$compte_sel_message = __( 'Compte SEL N°1 créé avec succès.', 'seliweb' );
+    }
+
+    // ----------------------------------------------------------------
+    // Crée (ou rattache) le compte du SEL N°1 avec l'email donné.
+    // Prénom/nom fixés à "Compte du" / "SEL" pour l'identifier clairement
+    // dans les listes de membres. Retourne un message d'erreur, ou '' si OK.
+    // ----------------------------------------------------------------
+    private static function creer_compte_sel_user( $email, $sel_groupe_id ) {
+        global $wpdb;
+        $tm = $wpdb->prefix . 'seliweb_membres';
+
         // Utiliser un WP user existant ou en créer un nouveau
         $wp_user = get_user_by( 'email', $email );
         if ( $wp_user ) {
@@ -1159,13 +1183,13 @@ class Seliweb_Parametres {
             }
             $user_id = wp_create_user( $login, wp_generate_password( 24, true, true ), $email );
             if ( is_wp_error( $user_id ) ) {
-                self::$compte_sel_message = sprintf( __( 'Erreur création utilisateur : %s', 'seliweb' ), $user_id->get_error_message() );
-                self::$compte_sel_error   = true;
-                return;
+                return $user_id->get_error_message();
             }
             wp_update_user( array(
                 'ID'           => $user_id,
                 'display_name' => __( 'Compte SEL', 'seliweb' ),
+                'first_name'   => __( 'Compte du', 'seliweb' ),
+                'last_name'    => __( 'SEL', 'seliweb' ),
                 'role'         => 'subscriber',
             ) );
         }
@@ -1181,7 +1205,36 @@ class Seliweb_Parametres {
             $wpdb->insert( $tm, array( 'wp_user_id' => $user_id, 'numero_sel' => 1, 'groupe_id' => $sel_groupe_id ) );
         }
 
-        self::$compte_sel_message = __( 'Compte SEL N°1 créé avec succès.', 'seliweb' );
+        return '';
+    }
+
+    // ----------------------------------------------------------------
+    // Création automatique du compte N°1 dès que le mode SEL est actif
+    // avec un groupe défini et qu'aucun compte N°1 n'existe encore.
+    // Email provisoire dérivé du domaine du site — modifiable ensuite
+    // via la section "Compte du SEL N°1".
+    // ----------------------------------------------------------------
+    private static function auto_creer_compte_sel_si_absent( $sel_groupe_id ) {
+        global $wpdb;
+        $tm = $wpdb->prefix . 'seliweb_membres';
+
+        if ( ! $sel_groupe_id ) return;
+        if ( $wpdb->get_var( "SELECT id FROM $tm WHERE numero_sel = 1 LIMIT 1" ) ) return;
+
+        $domain = wp_parse_url( home_url(), PHP_URL_HOST ) ?: 'example.com';
+        $email  = 'sel-compte@' . $domain;
+        $i = 1;
+        while ( email_exists( $email ) ) {
+            $email = 'sel-compte' . ( ++$i ) . '@' . $domain;
+        }
+
+        $error = self::creer_compte_sel_user( $email, $sel_groupe_id );
+        if ( ! $error ) {
+            self::$compte_sel_message = sprintf(
+                __( 'Compte SEL N°1 créé automatiquement avec l\'email provisoire %s — pensez à le modifier ci-dessous.', 'seliweb' ),
+                $email
+            );
+        }
     }
 
     // ================================================================

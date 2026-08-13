@@ -526,6 +526,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             $m_edit->prenom    = $_wp_edit ? $_wp_edit->first_name : '';
             $m_edit->organisme = get_user_meta( $m_edit->wp_user_id, 'seliweb_organisme', true );
         }
+        $is_compte_sel_edit = $m_edit && (int) $m_edit->numero_sel === 1;
     ?>
 
     <!-- ===== FORMULAIRE MODIFICATION ===== -->
@@ -604,14 +605,25 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <tr>
                 <th><?php esc_html_e('Groupe','seliweb'); ?></th>
                 <td>
-                    <select name="groupe_id_modif">
-                        <option value=""><?php esc_html_e('— Aucun —','seliweb'); ?></option>
-                        <?php foreach ($groupes as $g) : ?>
-                            <option value="<?php echo intval($g->id); ?>" <?php selected($m_edit->groupe_id,$g->id); ?>>
-                                <?php echo esc_html($g->nom); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?php if ( $is_compte_sel_edit ) :
+                        $groupe_nom_edit = '';
+                        foreach ( $groupes as $g ) {
+                            if ( (int) $g->id === (int) $m_edit->groupe_id ) { $groupe_nom_edit = $g->nom; break; }
+                        }
+                    ?>
+                        <span style="font-weight:600;"><?php echo esc_html( $groupe_nom_edit ); ?></span>
+                        <input type="hidden" name="groupe_id_modif" value="<?php echo intval( $m_edit->groupe_id ); ?>">
+                        <p class="description"><?php esc_html_e( 'Le groupe du compte du SEL ne peut pas être modifié.', 'seliweb' ); ?></p>
+                    <?php else : ?>
+                        <select name="groupe_id_modif">
+                            <option value=""><?php esc_html_e('— Aucun —','seliweb'); ?></option>
+                            <?php foreach ($groupes as $g) : ?>
+                                <option value="<?php echo intval($g->id); ?>" <?php selected($m_edit->groupe_id,$g->id); ?>>
+                                    <?php echo esc_html($g->nom); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
                 </td>
             </tr>
             <?php if ( $sel_groupe_id > 0 && (int)$m_edit->groupe_id === $sel_groupe_id ) :
@@ -623,10 +635,12 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <tr>
                 <th><?php esc_html_e('N° membre SEL','seliweb'); ?></th>
                 <td>
-                    <?php if ( $num_locked ) : ?>
+                    <?php if ( $is_compte_sel_edit || $num_locked ) : ?>
                         <span style="font-weight:600;"><?php echo intval( $m_edit->numero_sel ); ?></span>
                         <p class="description" style="color:#b32d2e;">
-                            <?php esc_html_e( 'Ce numéro ne peut plus être modifié car ce membre a des transactions enregistrées.', 'seliweb' ); ?>
+                            <?php echo $is_compte_sel_edit
+                                ? esc_html__( 'Ce numéro est réservé au compte du SEL.', 'seliweb' )
+                                : esc_html__( 'Ce numéro ne peut plus être modifié car ce membre a des transactions enregistrées.', 'seliweb' ); ?>
                         </p>
                     <?php else : ?>
                         <input type="number" name="numero_sel" class="small-text" min="1" max="999999"
@@ -639,25 +653,30 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <tr>
                 <th><?php esc_html_e('Découvert max autorisé','seliweb'); ?></th>
                 <td>
-                    <input type="number" name="decouvert_max" class="small-text" min="0" step="1"
-                           value="<?php echo $m_edit->decouvert_max !== null ? intval($m_edit->decouvert_max) : ''; ?>"
-                           style="width:100px;">
-                    <?php if ( $sel_info['decouvert_possible'] ) : ?>
-                        <p class="description">
-                            <?php printf( esc_html__( 'Paramètre général actuel : découvert max autorisé %d', 'seliweb' ), $sel_info['decouvert_max'] ); ?>
-                        </p>
-                        <p class="description">
-                            <?php esc_html_e( 'Vous pouvez autoriser un montant différent pour ce membre, ou saisir 0 pour bloquer tout découvert pour ce membre.', 'seliweb' ); ?>
-                        </p>
+                    <?php if ( $is_compte_sel_edit ) : ?>
+                        <input type="hidden" name="decouvert_max" value="<?php echo $m_edit->decouvert_max !== null ? intval($m_edit->decouvert_max) : ''; ?>">
+                        <p class="description"><?php esc_html_e( "Le compte du SEL n'est jamais limité par le découvert, quel que soit ce paramètre.", 'seliweb' ); ?></p>
                     <?php else : ?>
-                        <p class="description">
-                            <?php esc_html_e( 'Paramètre général actuel : aucun découvert autorisé', 'seliweb' ); ?>
-                        </p>
-                        <p class="description">
-                            <?php esc_html_e( 'Vous pouvez cependant autoriser un découvert pour ce membre en saisissant un montant.', 'seliweb' ); ?>
-                        </p>
+                        <input type="number" name="decouvert_max" class="small-text" min="0" step="1"
+                               value="<?php echo $m_edit->decouvert_max !== null ? intval($m_edit->decouvert_max) : ''; ?>"
+                               style="width:100px;">
+                        <?php if ( $sel_info['decouvert_possible'] ) : ?>
+                            <p class="description">
+                                <?php printf( esc_html__( 'Paramètre général actuel : découvert max autorisé %d', 'seliweb' ), $sel_info['decouvert_max'] ); ?>
+                            </p>
+                            <p class="description">
+                                <?php esc_html_e( 'Vous pouvez autoriser un montant différent pour ce membre, ou saisir 0 pour bloquer tout découvert pour ce membre.', 'seliweb' ); ?>
+                            </p>
+                        <?php else : ?>
+                            <p class="description">
+                                <?php esc_html_e( 'Paramètre général actuel : aucun découvert autorisé', 'seliweb' ); ?>
+                            </p>
+                            <p class="description">
+                                <?php esc_html_e( 'Vous pouvez cependant autoriser un découvert pour ce membre en saisissant un montant.', 'seliweb' ); ?>
+                            </p>
+                        <?php endif; ?>
+                        <p class="description"><em><?php esc_html_e( 'Laisser vide : ce membre suit le paramètre général.', 'seliweb' ); ?></em></p>
                     <?php endif; ?>
-                    <p class="description"><em><?php esc_html_e( 'Laisser vide : ce membre suit le paramètre général.', 'seliweb' ); ?></em></p>
                 </td>
             </tr>
             <?php endif; ?>
