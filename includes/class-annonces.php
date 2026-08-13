@@ -65,6 +65,15 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo2' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ) . '</p></div>';
         }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_bad_format' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
+        }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ) . '</p></div>';
+        }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_upload_error' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) . '</p></div>';
+        }
 
         switch ( $action ) {
             case 'new':
@@ -154,8 +163,18 @@ class Seliweb_Annonces {
         );
 
         // Gestion photos
-        $photo1 = self::handle_upload( 'photo1' );
-        $photo2 = self::handle_upload( 'photo2' );
+        list( $photo1, $photo1_err ) = self::handle_photo_upload( 'photo1' );
+        list( $photo2, $photo2_err ) = self::handle_photo_upload( 'photo2' );
+
+        if ( $photo1_err || $photo2_err ) {
+            wp_safe_redirect( add_query_arg( array(
+                'page'   => 'seliweb_annonces',
+                'action' => $action === 'add_annonce' ? 'new' : 'edit',
+                'id'     => intval( $_POST['id'] ?? 0 ),
+                'error'  => $photo1_err ?: $photo2_err,
+            ), admin_url('admin.php') ) );
+            exit;
+        }
 
         // Validation photos obligatoires (création uniquement)
         if ( $action === 'add_annonce' ) {
@@ -221,20 +240,48 @@ class Seliweb_Annonces {
     }
 
     // ----------------------------------------------------------------
-    // Upload photo via médiathèque WP
+    // Upload photo via médiathèque WP, avec contrôle format/taille.
+    // Retourne [ url|null, code_erreur|null ] — un fichier absent n'est
+    // pas une erreur (les deux valeurs sont alors null).
     // ----------------------------------------------------------------
-    private static function handle_upload( $field ) {
-        if ( empty( $_FILES[ $field ]['name'] ) || $_FILES[ $field ]['error'] !== UPLOAD_ERR_OK ) {
-            return null;
+    const PHOTO_EXTENSIONS_AUTORISEES = array( 'jpg', 'jpeg', 'png', 'gif', 'webp' );
+    const PHOTO_TAILLE_MAX            = 5 * MB_IN_BYTES;
+
+    public static function handle_photo_upload( $field ) {
+        if ( empty( $_FILES[ $field ]['name'] ) ) {
+            return array( null, null );
         }
+
+        $file = $_FILES[ $field ];
+
+        if ( in_array( $file['error'], array( UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ), true ) ) {
+            return array( null, 'photo_too_large' );
+        }
+        if ( $file['error'] !== UPLOAD_ERR_OK ) {
+            return array( null, 'photo_upload_error' );
+        }
+        if ( $file['size'] > self::PHOTO_TAILLE_MAX ) {
+            return array( null, 'photo_too_large' );
+        }
+
+        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( ! in_array( $ext, self::PHOTO_EXTENSIONS_AUTORISEES, true ) ) {
+            return array( null, 'photo_bad_format' );
+        }
+        // Le type MIME réel doit correspondre — une extension renommée ne suffit pas.
+        $filetype = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'] );
+        if ( empty( $filetype['ext'] ) || ! in_array( strtolower( $filetype['ext'] ), self::PHOTO_EXTENSIONS_AUTORISEES, true ) ) {
+            return array( null, 'photo_bad_format' );
+        }
+
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
         $attachment_id = media_handle_upload( $field, 0 );
         if ( is_wp_error( $attachment_id ) ) {
-            return null;
+            return array( null, 'photo_upload_error' );
         }
-        return wp_get_attachment_url( $attachment_id );
+        return array( wp_get_attachment_url( $attachment_id ), null );
     }
 
     // ----------------------------------------------------------------
@@ -347,6 +394,9 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' )    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo1' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'La photo 1 est obligatoire.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo2' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_bad_format' )  echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_upload_error' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) . '</p></div>';
 
         // Tri par colonne
         $allowed_orderby = [
@@ -714,8 +764,9 @@ class Seliweb_Annonces {
                 <tr>
                     <th><label for="photo1"><?php esc_html_e( 'Photo 1', 'seliweb' ); ?></label></th>
                     <td>
-                        <input type="file" id="photo1" name="photo1" accept="image/*"
+                        <input type="file" id="photo1" name="photo1" accept="image/jpeg,image/png,image/gif,image/webp"
                                <?php echo ( ! $item && $photos_min >= 1 ) ? 'required' : ''; ?>>
+                        <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
                         <?php if ( $item && $item->photo1 ) : ?>
                             <br><img src="<?php echo esc_url( $item->photo1 ); ?>"
                                      style="max-height:80px;margin-top:6px;border-radius:3px;border:1px solid #ddd;">
@@ -727,8 +778,9 @@ class Seliweb_Annonces {
                 <tr>
                     <th><label for="photo2"><?php esc_html_e( 'Photo 2', 'seliweb' ); ?></label></th>
                     <td>
-                        <input type="file" id="photo2" name="photo2" accept="image/*"
+                        <input type="file" id="photo2" name="photo2" accept="image/jpeg,image/png,image/gif,image/webp"
                                <?php echo ( ! $item && $photos_min >= 2 ) ? 'required' : ''; ?>>
+                        <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
                         <?php if ( $item && $item->photo2 ) : ?>
                             <br><img src="<?php echo esc_url( $item->photo2 ); ?>"
                                      style="max-height:80px;margin-top:6px;border-radius:3px;border:1px solid #ddd;">

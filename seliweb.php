@@ -1003,18 +1003,19 @@ class Seliweb {
             );
 
             // Upload photos
-            require_once ABSPATH . 'wp-admin/includes/file.php';
-            require_once ABSPATH . 'wp-admin/includes/media.php';
-            require_once ABSPATH . 'wp-admin/includes/image.php';
+            list( $photo1_f, $photo1_err_f ) = Seliweb_Annonces::handle_photo_upload( 'photo1' );
+            list( $photo2_f, $photo2_err_f ) = Seliweb_Annonces::handle_photo_upload( 'photo2' );
 
-            if ( ! empty($_FILES['photo1']['name']) && $_FILES['photo1']['error'] === UPLOAD_ERR_OK ) {
-                $att_id = media_handle_upload('photo1', 0);
-                if ( ! is_wp_error($att_id) ) $data['photo1'] = wp_get_attachment_url($att_id);
+            if ( $photo1_err_f || $photo2_err_f ) {
+                wp_safe_redirect( add_query_arg( array(
+                    'sel_action' => $id_post ? 'modifier' : 'creer',
+                    'sel_id'     => $id_post ?: '',
+                    'sel_error'  => $photo1_err_f ?: $photo2_err_f,
+                ), get_permalink() ) );
+                exit;
             }
-            if ( ! empty($_FILES['photo2']['name']) && $_FILES['photo2']['error'] === UPLOAD_ERR_OK ) {
-                $att_id = media_handle_upload('photo2', 0);
-                if ( ! is_wp_error($att_id) ) $data['photo2'] = wp_get_attachment_url($att_id);
-            }
+            if ( $photo1_f ) $data['photo1'] = $photo1_f;
+            if ( $photo2_f ) $data['photo2'] = $photo2_f;
 
             // Validation photos obligatoires (création uniquement)
             if ( $is_new ) {

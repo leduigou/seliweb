@@ -112,6 +112,21 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ); ?>
         </div>
     <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'photo_bad_format' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( "Format d'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.", 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'photo_too_large' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'photo_upload_error' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
     <?php if ( isset( $_GET['sel_deleted'] ) ) : ?>
         <div class="seliweb-notice seliweb-notice-ok"><?php esc_html_e( 'Annonce supprimée.', 'seliweb' ); ?></div>
     <?php endif; ?>
@@ -418,8 +433,9 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 <!-- Photos -->
                 <div class="seliweb-field">
                     <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 1 ) ? '*' : ''; ?></label>
-                    <input type="file" name="photo1" accept="image/*"
+                    <input type="file" name="photo1" accept="image/jpeg,image/png,image/gif,image/webp"
                            class="seliweb-file" <?php echo ( ! $is_modif && $photos_min >= 1 ) ? 'required' : ''; ?>>
+                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
                     <?php if ($is_modif && $edit_annonce->photo1) : ?>
                         <img src="<?php echo esc_url($edit_annonce->photo1); ?>"
                              class="seliweb-photo-preview" alt="">
@@ -430,8 +446,9 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
                 <div class="seliweb-field">
                     <label><?php esc_html_e('Photo 2','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 2 ) ? '*' : ''; ?></label>
-                    <input type="file" name="photo2" accept="image/*" class="seliweb-file"
+                    <input type="file" name="photo2" accept="image/jpeg,image/png,image/gif,image/webp" class="seliweb-file"
                            <?php echo ( ! $is_modif && $photos_min >= 2 ) ? 'required' : ''; ?>>
+                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
                     <?php if ($is_modif && $edit_annonce->photo2) : ?>
                         <img src="<?php echo esc_url($edit_annonce->photo2); ?>"
                              class="seliweb-photo-preview" alt="">
