@@ -19,6 +19,21 @@ class Seliweb_Updater {
         add_filter( 'pre_set_site_transient_update_themes',  array( __CLASS__, 'check_theme_update'  ) );
         add_filter( 'plugins_api',                           array( __CLASS__, 'plugin_info' ), 10, 3 );
         add_filter( 'upgrader_post_install',                 array( __CLASS__, 'post_install' ), 10, 3 );
+
+        // Le bouton "Vérifier à nouveau" de WordPress vide les transients
+        // update_plugins / update_themes — on en profite pour vider aussi
+        // notre propre cache de 6h, sinon un "force-check" peut continuer
+        // à renvoyer une ancienne réponse GitHub pendant jusqu'à 6h.
+        add_action( 'delete_site_transient_update_plugins', array( __CLASS__, 'clear_plugin_release_cache' ) );
+        add_action( 'delete_site_transient_update_themes',  array( __CLASS__, 'clear_theme_release_cache'  ) );
+    }
+
+    public static function clear_plugin_release_cache() {
+        delete_transient( 'seliweb_gh_release_' . self::GH_REPO_PLUGIN );
+    }
+
+    public static function clear_theme_release_cache() {
+        delete_transient( 'seliweb_gh_release_' . self::GH_REPO_THEME );
     }
 
     // ----------------------------------------------------------------
