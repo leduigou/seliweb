@@ -693,6 +693,37 @@
     box-shadow: 0 0 0 2px rgba(34,113,177,0.12);
 }
 
+.seliweb-pwd-wrap {
+    position: relative;
+    max-width: 420px;
+}
+
+.seliweb-pwd-wrap .seliweb-input {
+    padding-right: 38px;
+}
+
+.seliweb-pwd-toggle {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #888;
+}
+
+.seliweb-pwd-toggle:hover {
+    color: #333;
+}
+
+.seliweb-pwd-toggle-active {
+    color: var(--color-primary, #1d6a4a);
+}
+
 .seliweb-field-row {
     display: flex;
     gap: 24px;

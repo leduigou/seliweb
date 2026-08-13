@@ -227,7 +227,15 @@ class Seliweb {
                     </div>
                     <div class="seliweb-field">
                         <label for="sel_login_pwd"><?php esc_html_e( 'Mot de passe', 'seliweb' ); ?></label>
-                        <input type="password" id="sel_login_pwd" name="pwd" class="seliweb-input" required autocomplete="current-password">
+                        <div class="seliweb-pwd-wrap">
+                            <input type="password" id="sel_login_pwd" name="pwd" class="seliweb-input" required autocomplete="current-password">
+                            <button type="button" class="seliweb-pwd-toggle"
+                                    aria-label="<?php esc_attr_e( 'Afficher le mot de passe', 'seliweb' ); ?>"
+                                    aria-pressed="false"
+                                    onclick="var i=document.getElementById('sel_login_pwd'),show=i.type==='password';i.type=show?'text':'password';this.setAttribute('aria-pressed',show?'true':'false');this.classList.toggle('seliweb-pwd-toggle-active',show);">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="seliweb-field">
                         <label>
