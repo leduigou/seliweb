@@ -323,6 +323,17 @@ class Seliweb_Transactions {
         return intval( $num ) === 1;
     }
 
+    // ----------------------------------------------------------------
+    // Découvert autorisé pour un débit :
+    // - Le compte N°1 (compte du SEL) n'a jamais de limite, quel que
+    //   soit le paramètre général — c'est le compte de régulation.
+    // - Si le membre a une valeur propre (decouvert_max non NULL en
+    //   base, y compris 0), elle prime toujours sur le paramètre
+    //   général — que celui-ci soit activé ou non. 0 bloque donc
+    //   explicitement tout découvert pour ce membre.
+    // - Sinon (valeur membre NULL = "suit le paramètre général"),
+    //   le maximum est celui du paramètre général si activé, 0 sinon.
+    // ----------------------------------------------------------------
     public static function can_debit( $membre_id, $montant, $sel_info, &$error ) {
         if ( self::is_compte_sel( $membre_id ) ) return true;
 
@@ -330,25 +341,28 @@ class Seliweb_Transactions {
         $balance     = self::get_balance( $membre_id );
         $new_balance = $balance - $montant;
 
-        if ( ! $sel_info['decouvert_possible'] ) {
-            if ( $new_balance < 0 ) {
-                $error = sprintf(
+        $tm = $wpdb->prefix . 'seliweb_membres';
+        $dm = $wpdb->get_var( $wpdb->prepare( "SELECT decouvert_max FROM $tm WHERE id=%d", $membre_id ) );
+
+        if ( $dm !== null ) {
+            $max = intval( $dm );
+        } elseif ( $sel_info['decouvert_possible'] ) {
+            $max = $sel_info['decouvert_max'];
+        } else {
+            $max = 0;
+        }
+
+        if ( $new_balance < -$max ) {
+            $error = $max > 0
+                ? sprintf(
+                    __( 'Découvert maximum dépassé. Solde actuel : %d, découvert autorisé : %d, montant demandé : %d.', 'seliweb' ),
+                    $balance, $max, $montant
+                )
+                : sprintf(
                     __( 'Solde insuffisant. Solde actuel : %d, montant demandé : %d.', 'seliweb' ),
                     $balance, $montant
                 );
-                return false;
-            }
-        } else {
-            $tm  = $wpdb->prefix . 'seliweb_membres';
-            $dm  = $wpdb->get_var( $wpdb->prepare( "SELECT decouvert_max FROM $tm WHERE id=%d", $membre_id ) );
-            $max = ( $dm !== null ) ? intval( $dm ) : $sel_info['decouvert_max'];
-            if ( $new_balance < -$max ) {
-                $error = sprintf(
-                    __( 'Découvert maximum dépassé. Solde actuel : %d, découvert autorisé : %d, montant demandé : %d.', 'seliweb' ),
-                    $balance, $max, $montant
-                );
-                return false;
-            }
+            return false;
         }
         return true;
     }

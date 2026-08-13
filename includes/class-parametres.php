@@ -1086,14 +1086,11 @@ class Seliweb_Parametres {
             }
         }
 
-        // Appliquer le montant découvert aux membres du groupe SEL dont le champ est NULL
-        if ( $sel_decouvert_possible && $sel_groupe_id && $sel_decouvert_max > 0 ) {
-            $tm = $wpdb->prefix . 'seliweb_membres';
-            $wpdb->query( $wpdb->prepare(
-                "UPDATE `$tm` SET decouvert_max = %d WHERE groupe_id = %d AND decouvert_max IS NULL",
-                $sel_decouvert_max, $sel_groupe_id
-            ) );
-        }
+        // Note : on ne propage plus ce montant vers les membres dont le champ
+        // est NULL — NULL signifie désormais "suit le paramètre général" de
+        // façon dynamique (voir Seliweb_Transactions::can_debit()). Écrire la
+        // valeur en dur ici figerait ces membres à la valeur du jour, au lieu
+        // de continuer à suivre les changements futurs du paramètre général.
 
         self::$sel_saved = true;
     }

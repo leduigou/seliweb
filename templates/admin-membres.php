@@ -10,6 +10,7 @@ $tp = $wpdb->prefix . 'seliweb_parametres';
 
 // Groupe SEL configuré (0 si module SEL non activé)
 $sel_groupe_id = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='sel_groupe_id' LIMIT 1" );
+$sel_info      = Seliweb_Transactions::get_sel_info();
 
 $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
 $edit_id   = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
@@ -641,7 +642,22 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                     <input type="number" name="decouvert_max" class="small-text" min="0" step="1"
                            value="<?php echo $m_edit->decouvert_max !== null ? intval($m_edit->decouvert_max) : ''; ?>"
                            style="width:100px;">
-                    <p class="description"><?php esc_html_e("Laissez vide pour aucun découvert autorisé.",'seliweb'); ?></p>
+                    <?php if ( $sel_info['decouvert_possible'] ) : ?>
+                        <p class="description">
+                            <?php printf( esc_html__( 'Paramètre général actuel : découvert max autorisé %d', 'seliweb' ), $sel_info['decouvert_max'] ); ?>
+                        </p>
+                        <p class="description">
+                            <?php esc_html_e( 'Vous pouvez autoriser un montant différent pour ce membre, ou saisir 0 pour bloquer tout découvert pour ce membre.', 'seliweb' ); ?>
+                        </p>
+                    <?php else : ?>
+                        <p class="description">
+                            <?php esc_html_e( 'Paramètre général actuel : aucun découvert autorisé', 'seliweb' ); ?>
+                        </p>
+                        <p class="description">
+                            <?php esc_html_e( 'Vous pouvez cependant autoriser un découvert pour ce membre en saisissant un montant.', 'seliweb' ); ?>
+                        </p>
+                    <?php endif; ?>
+                    <p class="description"><em><?php esc_html_e( 'Laisser vide : ce membre suit le paramètre général.', 'seliweb' ); ?></em></p>
                 </td>
             </tr>
             <?php endif; ?>
