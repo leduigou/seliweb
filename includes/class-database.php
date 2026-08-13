@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '1.8';
+    const DB_VERSION     = '1.9';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -272,6 +272,9 @@ class Seliweb_Database {
             'est_legale',
             "TINYINT(1) NOT NULL DEFAULT 0 AFTER est_defaut"
         );
+
+        // Migration v1.9 : blocage de compte membre
+        self::maybe_add_column( $tm, 'bloque', "TINYINT(1) NOT NULL DEFAULT 0" );
 
         self::insert_defaults();
     }

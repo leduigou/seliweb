@@ -22,7 +22,10 @@ if ( isset( $_POST['seliweb_nonce'] )
      && isset( $_POST['membre_id'] ) ) {
     $membre_id = intval( $_POST['membre_id'] );
     $groupe_id = ! empty( $_POST['groupe_id'] ) ? intval( $_POST['groupe_id'] ) : null;
-    $wpdb->update( $tm, array( 'groupe_id' => $groupe_id ), array( 'id' => $membre_id ) );
+    $wpdb->update( $tm, array(
+        'groupe_id' => $groupe_id,
+        'bloque'    => isset( $_POST['bloque'] ) ? 1 : 0,
+    ), array( 'id' => $membre_id ) );
     // Auto-numérotation SEL lors d'un changement rapide de groupe
     if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
         $current_num = $wpdb->get_var( $wpdb->prepare( "SELECT numero_sel FROM $tm WHERE id=%d", $membre_id ) );
@@ -268,6 +271,8 @@ $groupes = $wpdb->get_results( "SELECT * FROM $tg ORDER BY nom ASC" );
 // ----------------------------------------------------------------
 $filtre_groupe = isset( $_GET['filtre_groupe'] ) ? intval( $_GET['filtre_groupe'] ) : 0;
 $filtre_ville  = isset( $_GET['filtre_ville'] )  ? sanitize_text_field( $_GET['filtre_ville'] ) : '';
+$filtre_bloque = isset( $_GET['filtre_bloque'] ) && in_array( $_GET['filtre_bloque'], array('bloques','actifs'), true )
+    ? $_GET['filtre_bloque'] : '';
 $villes_dispo  = $wpdb->get_col( "SELECT DISTINCT ville FROM $tm WHERE ville != '' AND ville IS NOT NULL ORDER BY ville ASC" );
 
 $allowed_orderby = array(
@@ -291,6 +296,8 @@ $offset       = ( $paged - 1 ) * $per_page;
 $where  = array('1=1'); $values = array();
 if ( $filtre_groupe ) { $where[] = 'm.groupe_id = %d'; $values[] = $filtre_groupe; }
 if ( $filtre_ville )  { $where[] = 'm.ville = %s';     $values[] = $filtre_ville; }
+if ( $filtre_bloque === 'bloques' ) { $where[] = 'm.bloque = 1'; }
+if ( $filtre_bloque === 'actifs' )  { $where[] = 'm.bloque = 0'; }
 $where_sql = implode(' AND ', $where);
 
 $joins = "FROM $tm m
@@ -773,6 +780,14 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         </div>
         <?php endif; ?>
         <div>
+            <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Comptes bloqués','seliweb'); ?></label>
+            <select name="filtre_bloque">
+                <option value=""><?php esc_html_e('Tous','seliweb'); ?></option>
+                <option value="bloques" <?php selected($filtre_bloque,'bloques'); ?>><?php esc_html_e('Bloqués uniquement','seliweb'); ?></option>
+                <option value="actifs"  <?php selected($filtre_bloque,'actifs'); ?>><?php esc_html_e('Actifs uniquement','seliweb'); ?></option>
+            </select>
+        </div>
+        <div>
             <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Par page','seliweb'); ?></label>
             <select name="per_page">
                 <?php foreach ( $per_page_allowed as $pp ) : ?>
@@ -803,6 +818,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
     $base_args = array( 'page' => 'seliweb_membres', 'per_page' => $per_page );
     if ( $filtre_groupe ) $base_args['filtre_groupe'] = $filtre_groupe;
     if ( $filtre_ville )  $base_args['filtre_ville']  = $filtre_ville;
+    if ( $filtre_bloque ) $base_args['filtre_bloque'] = $filtre_bloque;
 
     $sort_url = function( $col ) use ( $orderby_key, $order, $base_args ) {
         $new_order = ( $orderby_key === $col && $order === 'ASC' ) ? 'desc' : 'asc';
@@ -831,13 +847,14 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <th style="width:100px;"><?php esc_html_e('Ville','seliweb'); ?></th>
             <th><?php esc_html_e('Groupe','seliweb'); ?></th>
             <th style="width:140px;"><?php esc_html_e('Actions','seliweb'); ?></th>
+            <th style="width:70px;text-align:center;"><?php esc_html_e('Bloqué','seliweb'); ?></th>
         </tr></thead>
         <tbody id="mbr-tbody">
         <?php if (empty($membres)) : ?>
-            <tr><td colspan="9"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
+            <tr><td colspan="10"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
         <?php else : ?>
             <tr id="mbr-no-results" style="display:none;">
-                <td colspan="9" style="text-align:center;color:#888;font-style:italic;">
+                <td colspan="10" style="text-align:center;color:#888;font-style:italic;">
                     <?php esc_html_e('Aucun résultat pour cette recherche.','seliweb'); ?>
                 </td>
             </tr>
@@ -868,7 +885,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                 </td>
                 <td><?php echo esc_html($m->ville?:'—'); ?></td>
                 <td>
-                    <form method="post" style="display:inline;">
+                    <form method="post" id="mbr-form-<?php echo intval($m->id); ?>" style="display:inline;">
                         <?php wp_nonce_field('seliweb_membres','seliweb_nonce'); ?>
                         <input type="hidden" name="membre_id" value="<?php echo intval($m->id); ?>">
                         <select name="groupe_id" onchange="this.form.submit()" style="max-width:160px;">
@@ -889,6 +906,12 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                     <a href="<?php echo esc_url(get_edit_user_link($m->wp_user_id)); ?>" target="_blank">
                         <?php esc_html_e('Profil WP','seliweb'); ?>
                     </a>
+                </td>
+                <td style="text-align:center;">
+                    <input type="checkbox" name="bloque" value="1" form="mbr-form-<?php echo intval($m->id); ?>"
+                           <?php checked( ! empty( $m->bloque ) ); ?>
+                           onchange="this.form.submit()"
+                           title="<?php esc_attr_e('Bloquer ce compte (empêche la connexion)','seliweb'); ?>">
                 </td>
             </tr>
             <?php endforeach; ?>

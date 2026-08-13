@@ -54,6 +54,11 @@ class Seliweb {
         add_filter( 'login_redirect',        array( $this, 'redirect_apres_connexion' ), 10, 3 );
         add_action( 'wp_logout',             array( $this, 'redirect_apres_deconnexion' ) );
 
+        // Blocage de compte membre : refuse l'authentification, puis renvoie
+        // vers la page de connexion front-end avec un message dédié.
+        add_filter( 'authenticate',    array( $this, 'refuser_membre_bloque' ), 30 );
+        add_action( 'wp_login_failed', array( $this, 'redirect_echec_connexion' ), 10, 2 );
+
         add_shortcode( 'seliweb_mon_compte',     array( $this, 'shortcode_mon_compte' ) );
         add_shortcode( 'seliweb_login',          array( $this, 'shortcode_login' ) );
         add_shortcode( 'seliweb_inscription',    array( $this, 'shortcode_inscription' ) );
@@ -164,6 +169,41 @@ class Seliweb {
     }
 
     // ----------------------------------------------------------------
+    // Refuse l'authentification si le membre est marqué "bloqué"
+    // ----------------------------------------------------------------
+    public function refuser_membre_bloque( $user ) {
+        if ( ! ( $user instanceof WP_User ) ) {
+            return $user; // identifiants déjà invalides, ou pas encore résolus
+        }
+        global $wpdb;
+        $tm     = $wpdb->prefix . 'seliweb_membres';
+        $bloque = (int) $wpdb->get_var( $wpdb->prepare( "SELECT bloque FROM $tm WHERE wp_user_id=%d", $user->ID ) );
+        if ( $bloque ) {
+            return new WP_Error( 'seliweb_bloque', __( 'Compte bloqué.', 'seliweb' ) );
+        }
+        return $user;
+    }
+
+    // ----------------------------------------------------------------
+    // Échec de connexion depuis la page de connexion front-end : on y
+    // reste plutôt que de tomber sur l'écran wp-login.php par défaut.
+    // ----------------------------------------------------------------
+    public function redirect_echec_connexion( $username, $error = null ) {
+        $login_url = $this->get_page_url_par_shortcode( 'seliweb_login' );
+        if ( ! $login_url ) return;
+
+        $referer = wp_get_referer();
+        if ( ! $referer || strpos( $referer, untrailingslashit( $login_url ) ) === false ) {
+            return; // ne concerne pas notre formulaire (ex. wp-admin)
+        }
+
+        $code   = ( $error instanceof WP_Error ) ? $error->get_error_code() : '';
+        $motif  = ( $code === 'seliweb_bloque' ) ? 'blocked' : 'failed';
+        wp_safe_redirect( add_query_arg( 'login', $motif, $login_url ) );
+        exit;
+    }
+
+    // ----------------------------------------------------------------
     // Utilitaire : trouver l'URL d'une page contenant un shortcode
     // ----------------------------------------------------------------
     private function get_page_url_par_shortcode( $shortcode ) {
@@ -195,7 +235,11 @@ class Seliweb {
         ob_start(); ?>
         <div class="seliweb-wrap">
 
-            <?php if ( isset( $_GET['login'] ) && $_GET['login'] === 'failed' ) : ?>
+            <?php if ( isset( $_GET['login'] ) && $_GET['login'] === 'blocked' ) : ?>
+                <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:16px;color:#b32d2e;">
+                    <?php esc_html_e( 'Compte bloqué. Veuillez contacter l\'administrateur.', 'seliweb' ); ?>
+                </div>
+            <?php elseif ( isset( $_GET['login'] ) && $_GET['login'] === 'failed' ) : ?>
                 <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:16px;color:#b32d2e;">
                     <?php esc_html_e( 'Identifiant ou mot de passe incorrect.', 'seliweb' ); ?>
                 </div>
