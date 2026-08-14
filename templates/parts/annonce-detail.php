@@ -134,14 +134,19 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
                     <button type="button" class="swv-carousel-prev" aria-label="<?php esc_attr_e( 'Photo précédente', 'seliweb-view' ); ?>">&lsaquo;</button>
                     <button type="button" class="swv-carousel-next" aria-label="<?php esc_attr_e( 'Photo suivante', 'seliweb-view' ); ?>">&rsaquo;</button>
                 </div>
+                <p class="swv-carousel-count" id="swv-carousel-count">
+                    <?php printf( esc_html__( '1 / %d photos', 'seliweb-view' ), count( $photos_detail ) ); ?>
+                </p>
                 <script>
                 (function(){
                     var car = document.getElementById('swv-carousel');
                     if (!car) return;
                     var slides = car.querySelectorAll('.swv-carousel-slide');
+                    var compteur = document.getElementById('swv-carousel-count');
                     var idx = 0;
                     function montrer(i) {
                         slides.forEach(function(s, j){ s.style.display = (j === i) ? '' : 'none'; });
+                        if (compteur) compteur.textContent = (i + 1) + ' / ' + slides.length + ' photos';
                     }
                     car.querySelector('.swv-carousel-prev').addEventListener('click', function(){
                         idx = (idx - 1 + slides.length) % slides.length; montrer(idx);
