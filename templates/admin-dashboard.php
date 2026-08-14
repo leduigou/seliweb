@@ -80,6 +80,15 @@ if ( $sel_info && $sel_info['actif'] ) {
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres' ) ); ?>" class="button">
             <?php esc_html_e( 'Paramètres', 'seliweb' ); ?>
         </a>
+        <?php
+        $doc_file = SELIWEB_DIR . 'docs/Manuel-Utilisateur-Seliweb-WP.odt';
+        if ( file_exists( $doc_file ) ) :
+        ?>
+        &nbsp;
+        <a href="<?php echo esc_url( SELIWEB_URL . 'docs/Manuel-Utilisateur-Seliweb-WP.odt' ); ?>" class="button" download>
+            <?php esc_html_e( 'Télécharger le manuel utilisateur', 'seliweb' ); ?>
+        </a>
+        <?php endif; ?>
     </p>
 
     <h2><?php esc_html_e( 'Informations système', 'seliweb' ); ?></h2>
