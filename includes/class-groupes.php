@@ -45,6 +45,7 @@ class Seliweb_Groupes {
             'nom'             => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             'limite_annonces' => ( $_POST['limite_annonces'] !== '' ) ? intval( $_POST['limite_annonces'] ) : null,
             'est_defaut'      => $est_defaut,
+            'photos_max'      => max( 1, min( 10, intval( $_POST['photos_max'] ?? 1 ) ) ),
         );
 
         $action = sanitize_key( $_POST['seliweb_action'] );
@@ -112,12 +113,13 @@ class Seliweb_Groupes {
                 <th><?php esc_html_e( 'Nom du groupe', 'seliweb' ); ?></th>
                 <th style="width:90px;"><?php esc_html_e( 'Par défaut', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Limite annonces', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Photos max', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Monnaies', 'seliweb' ); ?></th>
                 <th style="width:140px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
             <?php if ( empty( $items ) ) : ?>
-                <tr><td colspan="6"><em><?php esc_html_e( 'Aucun groupe créé.', 'seliweb' ); ?></em></td></tr>
+                <tr><td colspan="7"><em><?php esc_html_e( 'Aucun groupe créé.', 'seliweb' ); ?></em></td></tr>
             <?php else : ?>
                 <?php foreach ( $items as $row ) :
                     $monnaies = $wpdb->get_col( $wpdb->prepare(
@@ -134,6 +136,7 @@ class Seliweb_Groupes {
                         <?php endif; ?>
                     </td>
                     <td><?php echo $row->limite_annonces ? intval( $row->limite_annonces ) : '<em>' . esc_html__( 'Illimitée', 'seliweb' ) . '</em>'; ?></td>
+                    <td><?php echo intval( $row->photos_max ); ?></td>
                     <td><?php echo ! empty( $monnaies ) ? esc_html( implode( ', ', $monnaies ) ) : '<em>' . esc_html__( 'Aucune', 'seliweb' ) . '</em>'; ?></td>
                     <td>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
@@ -207,6 +210,15 @@ class Seliweb_Groupes {
                         <input type="number" id="limite_annonces" name="limite_annonces" min="0" class="small-text"
                                value="<?php echo $item && $item->limite_annonces ? intval( $item->limite_annonces ) : ''; ?>">
                         <p class="description"><?php esc_html_e( 'Laisser vide pour illimitée.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="photos_max"><?php esc_html_e( 'Nombre de photos max de l\'annonce', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="number" id="photos_max" name="photos_max" min="1" max="10" class="small-text"
+                               value="<?php echo $item ? intval( $item->photos_max ) : 1; ?>">
+                        <p class="description"><?php esc_html_e( 'Entre 1 et 10. Nombre maximum de photos qu\'un membre de ce groupe peut ajouter à une annonce.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
 

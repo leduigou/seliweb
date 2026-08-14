@@ -264,9 +264,6 @@ class Seliweb_Parametres {
         $par_page = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_par_page' LIMIT 1" );
         if ( $par_page < 1 ) $par_page = 12;
 
-        $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_photos_min' LIMIT 1" );
-        $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
-
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
         }
@@ -283,17 +280,6 @@ class Seliweb_Parametres {
                         <p class="description"><?php esc_html_e( 'Nombre d\'annonces affichées par page sur le site. La dernière page affiche le reste.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
-                <tr>
-                    <th><label for="annonces_photos_min"><?php esc_html_e( 'Photos obligatoires par annonce', 'seliweb' ); ?></label></th>
-                    <td>
-                        <select id="annonces_photos_min" name="annonces_photos_min">
-                            <option value="0" <?php selected( $photos_min, 0 ); ?>><?php esc_html_e( '0 — Aucune photo obligatoire', 'seliweb' ); ?></option>
-                            <option value="1" <?php selected( $photos_min, 1 ); ?>><?php esc_html_e( '1 — Photo 1 obligatoire', 'seliweb' ); ?></option>
-                            <option value="2" <?php selected( $photos_min, 2 ); ?>><?php esc_html_e( '2 — Photos 1 et 2 obligatoires', 'seliweb' ); ?></option>
-                        </select>
-                        <p class="description"><?php esc_html_e( 'Nombre de photos requises à la création d\'une annonce (frontend et backend).', 'seliweb' ); ?></p>
-                    </td>
-                </tr>
             </table>
             <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
         </form>
@@ -304,9 +290,8 @@ class Seliweb_Parametres {
         global $wpdb;
         $tp         = $wpdb->prefix . 'seliweb_parametres';
         $par_page   = max( 1, intval( $_POST['annonces_par_page'] ?? 12 ) );
-        $photos_min = max( 0, min( 2, intval( $_POST['annonces_photos_min'] ?? 1 ) ) );
 
-        foreach ( array( 'annonces_par_page' => $par_page, 'annonces_photos_min' => $photos_min ) as $cle => $valeur ) {
+        foreach ( array( 'annonces_par_page' => $par_page ) as $cle => $valeur ) {
             $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
             if ( $exists ) {
                 $wpdb->update( $tp, array( 'valeur' => $valeur ), array( 'cle' => $cle ) );
@@ -489,6 +474,7 @@ class Seliweb_Parametres {
                 <?php if ( ! $cat_filter ) : ?>
                 <th><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></th>
                 <?php endif; ?>
+                <th style="width:60px;"><?php esc_html_e( 'Image', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></th>
                 <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
@@ -498,6 +484,13 @@ class Seliweb_Parametres {
                     <?php if ( ! $cat_filter ) : ?>
                     <td><?php echo esc_html( $row->cat_nom ); ?></td>
                     <?php endif; ?>
+                    <td>
+                        <?php if ( $row->image ) : ?>
+                            <img src="<?php echo esc_url( $row->image ); ?>" style="width:40px;height:40px;object-fit:cover;border-radius:3px;border:1px solid #ddd;">
+                        <?php else : ?>
+                            <span style="color:#ccc;">—</span>
+                        <?php endif; ?>
+                    </td>
                     <td><?php echo esc_html( $row->nom ); ?></td>
                     <td>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
@@ -509,7 +502,7 @@ class Seliweb_Parametres {
                 </tr>
             <?php endforeach; ?>
             <?php if ( empty( $items ) ) : ?>
-                <tr><td colspan="<?php echo $cat_filter ? 2 : 3; ?>"><em><?php esc_html_e( 'Aucune rubrique.', 'seliweb' ); ?></em></td></tr>
+                <tr><td colspan="<?php echo $cat_filter ? 3 : 4; ?>"><em><?php esc_html_e( 'Aucune rubrique.', 'seliweb' ); ?></em></td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -526,7 +519,17 @@ class Seliweb_Parametres {
         ?>
         <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
         <h2><?php echo $item ? esc_html__( 'Modifier la rubrique', 'seliweb' ) : esc_html__( 'Ajouter une rubrique', 'seliweb' ); ?></h2>
-        <form method="post">
+        <?php
+        $img_errors = array(
+            'photo_bad_format'   => __( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ),
+            'photo_too_large'    => __( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ),
+            'photo_upload_error' => __( 'Erreur lors de l\'envoi de l\'image, merci de réessayer.', 'seliweb' ),
+        );
+        if ( isset( $_GET['error'] ) && isset( $img_errors[ $_GET['error'] ] ) ) :
+        ?>
+            <div class="notice notice-error is-dismissible"><p><?php echo esc_html( $img_errors[ $_GET['error'] ] ); ?></p></div>
+        <?php endif; ?>
+        <form method="post" enctype="multipart/form-data">
             <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
             <input type="hidden" name="seliweb_action" value="<?php echo $item ? 'update_rubrique' : 'add_rubrique'; ?>">
             <?php if ( $item ) : ?><input type="hidden" name="id" value="<?php echo intval( $item->id ); ?>"><?php endif; ?>
@@ -548,6 +551,22 @@ class Seliweb_Parametres {
                     <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
                     <td><input type="text" name="nom" class="regular-text" value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
                 </tr>
+                <tr>
+                    <th><?php esc_html_e( 'Image de la rubrique', 'seliweb' ); ?></th>
+                    <td>
+                        <?php if ( $item && $item->image ) : ?>
+                            <img src="<?php echo esc_url( $item->image ); ?>" style="max-height:100px;display:block;margin-bottom:8px;border-radius:3px;border:1px solid #ddd;">
+                            <label style="display:block;margin-bottom:8px;">
+                                <input type="checkbox" name="supprimer_image" value="1">
+                                <?php esc_html_e( 'Supprimer l\'image actuelle', 'seliweb' ); ?>
+                            </label>
+                        <?php endif; ?>
+                        <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp">
+                        <p class="description">
+                            <?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum. Affichée sur la page des annonces quand le membre n\'ajoute pas de photo à son annonce (ou choisit de l\'utiliser).', 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
             </table>
             <p>
                 <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
@@ -560,22 +579,32 @@ class Seliweb_Parametres {
     private static function handle_rubriques( $action ) {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_rubriques';
+
+        if ( ! in_array( $action, array( 'add_rubrique', 'update_rubrique' ), true ) ) return;
+
+        list( $image_url, $image_err ) = class_exists( 'Seliweb_Annonces' )
+            ? Seliweb_Annonces::handle_photo_upload( 'image' )
+            : array( null, null );
+        if ( $image_err ) {
+            $redir_action = $action === 'add_rubrique' ? 'new' : 'edit';
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=' . $redir_action . '&id=' . intval( $_POST['id'] ?? 0 ) . '&error=' . $image_err ) );
+            exit;
+        }
+
+        $data = array(
+            'categorie_id' => intval( $_POST['categorie_id'] ),
+            'nom'          => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
+        );
+        if ( $image_url ) $data['image'] = $image_url;
+
         if ( $action === 'add_rubrique' ) {
-            $wpdb->insert( $table, array(
-                'categorie_id' => intval( $_POST['categorie_id'] ),
-                'nom'          => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
-            ) );
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&updated=1' ) );
-            exit;
+            $wpdb->insert( $table, $data );
+        } else {
+            if ( isset( $_POST['supprimer_image'] ) ) $data['image'] = null;
+            $wpdb->update( $table, $data, array( 'id' => intval( $_POST['id'] ) ) );
         }
-        if ( $action === 'update_rubrique' ) {
-            $wpdb->update( $table, array(
-                'categorie_id' => intval( $_POST['categorie_id'] ),
-                'nom'          => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
-            ), array( 'id' => intval( $_POST['id'] ) ) );
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&updated=1' ) );
-            exit;
-        }
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&updated=1' ) );
+        exit;
     }
 
     // ================================================================

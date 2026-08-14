@@ -102,16 +102,6 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ); ?>
         </div>
     <?php endif; ?>
-    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_photo1' ) : ?>
-        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
-            <?php esc_html_e( 'La photo 1 est obligatoire.', 'seliweb' ); ?>
-        </div>
-    <?php endif; ?>
-    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_photo2' ) : ?>
-        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
-            <?php esc_html_e( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ); ?>
-        </div>
-    <?php endif; ?>
     <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'photo_bad_format' ) : ?>
         <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
             <?php esc_html_e( "Format d'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.", 'seliweb' ); ?>
@@ -262,9 +252,23 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             // Lignes de prix : existantes ou 1 ligne vide
             $prix_lignes = ! empty( $prix_existants ) ? $prix_existants : array( '' => '' );
 
-            $tp_mc          = $wpdb->prefix . 'seliweb_parametres';
-            $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_mc WHERE cle='annonces_photos_min' LIMIT 1" );
-            $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
+            // Plafond de photos du groupe du membre
+            $photos_max = 1;
+            if ( $membre->groupe_id ) {
+                $photos_max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT photos_max FROM $tg WHERE id=%d", $membre->groupe_id ) ) ?: 1;
+            }
+
+            // Photos existantes de l'annonce en modification
+            $tap_photos_mc     = $wpdb->prefix . 'seliweb_annonces_photos';
+            $photos_existantes = $is_modif
+                ? $wpdb->get_results( $wpdb->prepare( "SELECT id, url FROM $tap_photos_mc WHERE annonce_id=%d ORDER BY ordre ASC, id ASC", $annonce_id ) )
+                : array();
+
+            // Image de chaque rubrique, pour l'aperçu de l'option "Utiliser l'image de la rubrique"
+            $rubrique_images_mc = array();
+            foreach ( $rubriques as $rub ) {
+                $rubrique_images_mc[ $rub->id ] = $rub->image ?: '';
+            }
             ?>
 
             <div class="seliweb-compte-toolbar">
@@ -328,7 +332,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
                 <div class="seliweb-field">
                     <label><?php esc_html_e('Rubrique','seliweb'); ?></label>
-                    <select name="rubrique_id" id="sel_rub_mc" class="seliweb-select">
+                    <select name="rubrique_id" id="sel_rub_mc" class="seliweb-select" onchange="selMCUpdateRubriqueImage(this.value)">
                         <option value=""><?php esc_html_e('— Choisir —','seliweb'); ?></option>
                         <?php foreach ($rubriques as $rub) : ?>
                             <option value="<?php echo intval($rub->id); ?>"
@@ -432,29 +436,54 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
                 <!-- Photos -->
                 <div class="seliweb-field">
-                    <label><?php esc_html_e('Photo 1','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 1 ) ? '*' : ''; ?></label>
-                    <input type="file" name="photo1" accept="image/jpeg,image/png,image/gif,image/webp"
-                           class="seliweb-file" <?php echo ( ! $is_modif && $photos_min >= 1 ) ? 'required' : ''; ?>>
-                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
-                    <?php if ($is_modif && $edit_annonce->photo1) : ?>
-                        <img src="<?php echo esc_url($edit_annonce->photo1); ?>"
-                             class="seliweb-photo-preview" alt="">
-                    <?php elseif ( ! $is_modif && $photos_min >= 1 ) : ?>
-                        <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
-                    <?php endif; ?>
-                </div>
+                    <label><?php esc_html_e('Photos','seliweb'); ?></label>
+                    <p class="seliweb-hint">
+                        <?php printf( esc_html__( 'Photos actuelles : %1$d / %2$d autorisées pour votre groupe.', 'seliweb' ), count( $photos_existantes ), $photos_max ); ?>
+                    </p>
 
-                <div class="seliweb-field">
-                    <label><?php esc_html_e('Photo 2','seliweb'); ?> <?php echo ( ! $is_modif && $photos_min >= 2 ) ? '*' : ''; ?></label>
-                    <input type="file" name="photo2" accept="image/jpeg,image/png,image/gif,image/webp" class="seliweb-file"
-                           <?php echo ( ! $is_modif && $photos_min >= 2 ) ? 'required' : ''; ?>>
-                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
-                    <?php if ($is_modif && $edit_annonce->photo2) : ?>
-                        <img src="<?php echo esc_url($edit_annonce->photo2); ?>"
-                             class="seliweb-photo-preview" alt="">
-                    <?php elseif ( ! $is_modif && $photos_min >= 2 ) : ?>
-                        <span class="seliweb-hint"><?php esc_html_e('Obligatoire','seliweb'); ?></span>
+                    <?php if ( $photos_existantes ) : ?>
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+                            <?php foreach ( $photos_existantes as $p ) : ?>
+                                <div style="text-align:center;">
+                                    <img src="<?php echo esc_url( $p->url ); ?>" class="seliweb-photo-preview" alt="">
+                                    <label style="display:block;font-size:12px;margin-top:2px;">
+                                        <input type="radio" name="photo_principale" value="existing_<?php echo intval( $p->id ); ?>"
+                                               <?php checked( $edit_annonce && (int) $edit_annonce->photo_principale_id === (int) $p->id ); ?>>
+                                        <?php esc_html_e('Principale','seliweb'); ?>
+                                    </label>
+                                    <label style="display:block;font-size:12px;color:#b32d2e;">
+                                        <input type="checkbox" name="supprimer_photo[]" value="<?php echo intval( $p->id ); ?>">
+                                        <?php esc_html_e('Supprimer','seliweb'); ?>
+                                    </label>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
                     <?php endif; ?>
+
+                    <div id="mc_photos_slots">
+                        <?php for ( $i = 1; $i <= 10; $i++ ) : ?>
+                            <div class="mc-photo-slot" data-slot="<?php echo $i; ?>"
+                                 style="<?php echo $i <= max( 0, $photos_max - count( $photos_existantes ) ) ? '' : 'display:none;'; ?>margin-bottom:6px;">
+                                <input type="file" name="photo_new_<?php echo $i; ?>" accept="image/jpeg,image/png,image/gif,image/webp" class="seliweb-file">
+                                <label style="font-size:12px;">
+                                    <input type="radio" name="photo_principale" value="new_<?php echo $i; ?>">
+                                    <?php esc_html_e('Principale','seliweb'); ?>
+                                </label>
+                            </div>
+                        <?php endfor; ?>
+                    </div>
+
+                    <p style="margin-top:6px;">
+                        <label>
+                            <input type="radio" name="photo_principale" value="rubrique"
+                                   <?php checked( ! $edit_annonce || $edit_annonce->photo_principale_id === null ); ?>>
+                            <?php esc_html_e('Utiliser l\'image de la rubrique','seliweb'); ?>
+                        </label>
+                        <img id="mc_rubrique_apercu" alt=""
+                             src="<?php echo esc_url( $is_modif && $edit_annonce->rubrique_id ? ( $rubrique_images_mc[ $edit_annonce->rubrique_id ] ?? '' ) : '' ); ?>"
+                             style="max-height:36px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $is_modif && $edit_annonce->rubrique_id && ! empty( $rubrique_images_mc[ $edit_annonce->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
+                    </p>
+                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
                 </div>
 
                 <div class="seliweb-form-footer">
@@ -1212,6 +1241,14 @@ var selMCMonnaies = <?php echo wp_json_encode(array_map(function($m){
     return array('id'=>$m->id,'label'=>$m->nom.($m->symbole?' ('.$m->symbole.')':''));
 }, $monnaies_dispo)); ?>;
 var prixMCNextIdx = <?php echo isset($prix_lignes) ? count($prix_lignes) : 1; ?>;
+
+var selMCRubriqueImages = <?php echo wp_json_encode( $rubrique_images_mc ?? array() ); ?>;
+function selMCUpdateRubriqueImage(rubriqueId){
+    var img = document.getElementById('mc_rubrique_apercu');
+    var url = selMCRubriqueImages[rubriqueId] || '';
+    if (url) { img.src = url; img.style.display = ''; }
+    else { img.style.display = 'none'; }
+}
 
 function selMCRub(catId){
     var opts=document.querySelectorAll('#sel_rub_mc option[data-categorie]');

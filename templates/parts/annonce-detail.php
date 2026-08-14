@@ -15,16 +15,22 @@ $tr     = $wpdb->prefix . 'seliweb_rubriques';
 $ts     = $wpdb->prefix . 'seliweb_statuts';
 $tm     = $wpdb->prefix . 'seliweb_membres';
 $tp_sel = $wpdb->prefix . 'seliweb_parametres';
+$tap    = $wpdb->prefix . 'seliweb_annonces_photos';
 
 $detail           = $wpdb->get_row( $wpdb->prepare( "SELECT a.* FROM $ta a WHERE a.id=%d", $annonce_id ) );
 $membre           = null;
 $is_sel_annonceur = false;
+$photos_detail    = array();
+$rubrique_image   = '';
 
 if ( $detail ) {
     $cat_row = $wpdb->get_row( $wpdb->prepare( "SELECT nom, slug FROM $tc WHERE id=%d", intval( $detail->categorie_id ) ) );
     $detail->cat_nom    = $cat_row ? $cat_row->nom  : '';
     $detail->cat_slug   = $cat_row ? $cat_row->slug : '';
-    $detail->rub_nom    = $wpdb->get_var( $wpdb->prepare( "SELECT nom FROM $tr WHERE id=%d", intval( $detail->rubrique_id ) ) );
+    $rub_row  = $wpdb->get_row( $wpdb->prepare( "SELECT nom, image FROM $tr WHERE id=%d", intval( $detail->rubrique_id ) ) );
+    $detail->rub_nom = $rub_row ? $rub_row->nom : '';
+    $rubrique_image  = $rub_row ? $rub_row->image : '';
+    $photos_detail   = $wpdb->get_results( $wpdb->prepare( "SELECT id, url FROM $tap WHERE annonce_id=%d ORDER BY ordre ASC, id ASC", $annonce_id ) );
     $st_row = $detail->statut_id ? $wpdb->get_row( $wpdb->prepare( "SELECT slug, nom FROM $ts WHERE id=%d", intval( $detail->statut_id ) ) ) : null;
     $detail->statut_slug = $st_row ? $st_row->slug : null;
     $detail->statut_nom  = $st_row ? $st_row->nom  : null;
@@ -111,11 +117,45 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
                 <?php endif; ?>
             </div>
 
-            <?php if ( $detail->photo1 || $detail->photo2 ) : ?>
-            <div class="swv-detail-photos">
-                <?php if ( $detail->photo1 ) echo '<img src="' . esc_url( $detail->photo1 ) . '" alt="">'; ?>
-                <?php if ( $detail->photo2 ) echo '<img src="' . esc_url( $detail->photo2 ) . '" alt="">'; ?>
-            </div>
+            <?php if ( $photos_detail ) : ?>
+                <?php if ( count( $photos_detail ) === 1 ) : ?>
+                <div class="swv-detail-photos">
+                    <img src="<?php echo esc_url( $photos_detail[0]->url ); ?>" alt="">
+                </div>
+                <?php else : ?>
+                <div class="swv-carousel" id="swv-carousel">
+                    <div class="swv-carousel-track">
+                        <?php foreach ( $photos_detail as $i => $p ) : ?>
+                            <div class="swv-carousel-slide"<?php echo $i === 0 ? '' : ' style="display:none;"'; ?>>
+                                <img src="<?php echo esc_url( $p->url ); ?>" alt="">
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="swv-carousel-prev" aria-label="<?php esc_attr_e( 'Photo précédente', 'seliweb-view' ); ?>">&lsaquo;</button>
+                    <button type="button" class="swv-carousel-next" aria-label="<?php esc_attr_e( 'Photo suivante', 'seliweb-view' ); ?>">&rsaquo;</button>
+                </div>
+                <script>
+                (function(){
+                    var car = document.getElementById('swv-carousel');
+                    if (!car) return;
+                    var slides = car.querySelectorAll('.swv-carousel-slide');
+                    var idx = 0;
+                    function montrer(i) {
+                        slides.forEach(function(s, j){ s.style.display = (j === i) ? '' : 'none'; });
+                    }
+                    car.querySelector('.swv-carousel-prev').addEventListener('click', function(){
+                        idx = (idx - 1 + slides.length) % slides.length; montrer(idx);
+                    });
+                    car.querySelector('.swv-carousel-next').addEventListener('click', function(){
+                        idx = (idx + 1) % slides.length; montrer(idx);
+                    });
+                })();
+                </script>
+                <?php endif; ?>
+            <?php elseif ( $rubrique_image ) : ?>
+                <div class="swv-detail-photos">
+                    <img src="<?php echo esc_url( $rubrique_image ); ?>" alt="">
+                </div>
             <?php endif; ?>
 
             <div class="swv-detail-texte">

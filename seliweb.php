@@ -1046,35 +1046,11 @@ class Seliweb {
                 'est_don'         => isset($_POST['est_don']) ? 1 : 0,
             );
 
-            // Upload photos
-            list( $photo1_f, $photo1_err_f ) = Seliweb_Annonces::handle_photo_upload( 'photo1' );
-            list( $photo2_f, $photo2_err_f ) = Seliweb_Annonces::handle_photo_upload( 'photo2' );
-
-            if ( $photo1_err_f || $photo2_err_f ) {
-                wp_safe_redirect( add_query_arg( array(
-                    'sel_action' => $id_post ? 'modifier' : 'creer',
-                    'sel_id'     => $id_post ?: '',
-                    'sel_error'  => $photo1_err_f ?: $photo2_err_f,
-                ), get_permalink() ) );
-                exit;
-            }
-            if ( $photo1_f ) $data['photo1'] = $photo1_f;
-            if ( $photo2_f ) $data['photo2'] = $photo2_f;
-
-            // Validation photos obligatoires (création uniquement)
-            if ( $is_new ) {
-                $tp_sv          = $wpdb->prefix . 'seliweb_parametres';
-                $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_sv WHERE cle='annonces_photos_min' LIMIT 1" );
-                $photos_min_sv  = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
-                if ( $photos_min_sv >= 1 && empty( $data['photo1'] ) ) {
-                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'creer', 'sel_error' => 'no_photo1' ), get_permalink() ) );
-                    exit;
-                }
-                if ( $photos_min_sv >= 2 && empty( $data['photo2'] ) ) {
-                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'creer', 'sel_error' => 'no_photo2' ), get_permalink() ) );
-                    exit;
-                }
-            }
+            // Plafond de photos = celui du groupe du membre (1 par défaut)
+            $photos_max_f = $membre->groupe_id
+                ? (int) $wpdb->get_var( $wpdb->prepare( "SELECT photos_max FROM {$wpdb->prefix}seliweb_groupes WHERE id=%d", $membre->groupe_id ) )
+                : 1;
+            if ( ! $photos_max_f ) $photos_max_f = 1;
 
             if ( $is_new ) {
                 $data['membre_id']     = $membre->id;
@@ -1082,14 +1058,23 @@ class Seliweb {
                 $data = array_filter($data, fn($v) => $v !== null);
                 $wpdb->insert($ta, $data);
                 $id_post = $wpdb->insert_id;
+
+                $photo_err_f = Seliweb_Annonces::save_annonce_photos( $id_post, $photos_max_f );
+                if ( $photo_err_f ) {
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'modifier', 'sel_id' => $id_post, 'sel_error' => $photo_err_f ), get_permalink() ) );
+                    exit;
+                }
                 Seliweb_Annonces::notify_membres($id_post);
             } else {
                 $proprio = (int) $wpdb->get_var($wpdb->prepare("SELECT membre_id FROM $ta WHERE id=%d",$id_post));
                 if ($proprio !== (int)$membre->id) return;
-                // Ne pas écraser les photos existantes si aucune nouvelle
-                if ( empty($data['photo1']) ) unset($data['photo1']);
-                if ( empty($data['photo2']) ) unset($data['photo2']);
                 $wpdb->update($ta, $data, array('id'=>$id_post));
+
+                $photo_err_f = Seliweb_Annonces::save_annonce_photos( $id_post, $photos_max_f );
+                if ( $photo_err_f ) {
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'modifier', 'sel_id' => $id_post, 'sel_error' => $photo_err_f ), get_permalink() ) );
+                    exit;
+                }
                 if (isset($_POST['notifier_membres'])) Seliweb_Annonces::notify_membres($id_post);
             }
 

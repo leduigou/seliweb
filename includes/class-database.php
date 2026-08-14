@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '1.9';
+    const DB_VERSION     = '2.0';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -145,6 +145,15 @@ class Seliweb_Database {
             KEY statut_id    (statut_id)
         ) $charset;";
 
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_annonces_photos (
+            id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            annonce_id  INT UNSIGNED NOT NULL,
+            url         VARCHAR(255) NOT NULL,
+            ordre       TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            KEY annonce_id (annonce_id)
+        ) $charset;";
+
         $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_annonces_prix (
             id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
             annonce_id    INT UNSIGNED NOT NULL,
@@ -276,7 +285,79 @@ class Seliweb_Database {
         // Migration v1.9 : blocage de compte membre
         self::maybe_add_column( $tm, 'bloque', "TINYINT(1) NOT NULL DEFAULT 0" );
 
+        // Migration v2.0 : photos multiples par annonce (liées au groupe),
+        // image de rubrique utilisée par défaut si l'annonce n'en a pas.
+        $ta = $wpdb->prefix . 'seliweb_annonces';
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_rubriques', 'image', "VARCHAR(255) DEFAULT NULL" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_groupes',   'photos_max', "TINYINT UNSIGNED NOT NULL DEFAULT 1" );
+        self::maybe_add_column( $ta, 'photo_principale_id', "INT UNSIGNED DEFAULT NULL AFTER est_don" );
+        self::maybe_migrate_photos_v2();
+        self::seed_rubrique_images_defaut();
+
         self::insert_defaults();
+    }
+
+    /**
+     * Migration v2.0 : reprend les photo1/photo2 existantes de chaque annonce
+     * dans la nouvelle table seliweb_annonces_photos (ordre 0/1), la photo1
+     * devenant la photo principale (comportement inchangé pour les annonces
+     * déjà publiées). Ne s'exécute que si les colonnes existent encore
+     * (migration déjà faite sinon).
+     */
+    private static function maybe_migrate_photos_v2() {
+        global $wpdb;
+        $ta  = $wpdb->prefix . 'seliweb_annonces';
+        $tap = $wpdb->prefix . 'seliweb_annonces_photos';
+
+        $cols = $wpdb->get_col( "DESCRIBE `$ta`", 0 );
+        if ( ! in_array( 'photo1', $cols, true ) ) return; // déjà migré
+
+        $rows = $wpdb->get_results( "SELECT id, photo1, photo2 FROM `$ta` WHERE photo1 IS NOT NULL OR photo2 IS NOT NULL" );
+        foreach ( $rows as $row ) {
+            $principale_id = null;
+            if ( ! empty( $row->photo1 ) ) {
+                $wpdb->insert( $tap, array( 'annonce_id' => $row->id, 'url' => $row->photo1, 'ordre' => 0 ) );
+                $principale_id = $wpdb->insert_id;
+            }
+            if ( ! empty( $row->photo2 ) ) {
+                $wpdb->insert( $tap, array( 'annonce_id' => $row->id, 'url' => $row->photo2, 'ordre' => 1 ) );
+            }
+            if ( $principale_id ) {
+                $wpdb->update( $ta, array( 'photo_principale_id' => $principale_id ), array( 'id' => $row->id ) );
+            }
+        }
+
+        self::maybe_drop_column( $ta, 'photo1' );
+        self::maybe_drop_column( $ta, 'photo2' );
+    }
+
+    /**
+     * Associe à chaque rubrique sans image une image par défaut bundlée
+     * dans assets/img/rubriques/{Nom de la rubrique}.{jpg|jpeg|png|gif|webp},
+     * si le fichier existe. Idempotent — ne touche jamais une rubrique qui a
+     * déjà une image (personnalisée ou déjà seedée), donc peut être rappelée
+     * sans risque à chaque fois que de nouvelles images par défaut sont
+     * ajoutées au plugin.
+     */
+    public static function seed_rubrique_images_defaut() {
+        global $wpdb;
+        $tr  = $wpdb->prefix . 'seliweb_rubriques';
+        $dir = SELIWEB_DIR . 'assets/img/rubriques/';
+        if ( ! is_dir( $dir ) ) return;
+
+        $rubriques = $wpdb->get_results( "SELECT id, nom FROM `$tr` WHERE image IS NULL" );
+        $ext_autorisees = array( 'jpg', 'jpeg', 'png', 'gif', 'webp' );
+
+        foreach ( $rubriques as $r ) {
+            foreach ( $ext_autorisees as $ext ) {
+                $fichier = $dir . $r->nom . '.' . $ext;
+                if ( file_exists( $fichier ) ) {
+                    $url = SELIWEB_URL . 'assets/img/rubriques/' . rawurlencode( $r->nom . '.' . $ext );
+                    $wpdb->update( $tr, array( 'image' => $url ), array( 'id' => $r->id ) );
+                    break;
+                }
+            }
+        }
     }
 
     /**

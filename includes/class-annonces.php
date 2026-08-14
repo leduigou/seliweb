@@ -59,12 +59,6 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
         }
-        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo1' ) {
-            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'La photo 1 est obligatoire.', 'seliweb' ) . '</p></div>';
-        }
-        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo2' ) {
-            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ) . '</p></div>';
-        }
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_bad_format' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
         }
@@ -162,57 +156,41 @@ class Seliweb_Annonces {
             'est_don'         => isset( $_POST['est_don'] ) ? 1 : 0,
         );
 
-        // Gestion photos
-        list( $photo1, $photo1_err ) = self::handle_photo_upload( 'photo1' );
-        list( $photo2, $photo2_err ) = self::handle_photo_upload( 'photo2' );
-
-        if ( $photo1_err || $photo2_err ) {
-            wp_safe_redirect( add_query_arg( array(
-                'page'   => 'seliweb_annonces',
-                'action' => $action === 'add_annonce' ? 'new' : 'edit',
-                'id'     => intval( $_POST['id'] ?? 0 ),
-                'error'  => $photo1_err ?: $photo2_err,
-            ), admin_url('admin.php') ) );
-            exit;
-        }
-
-        // Validation photos obligatoires (création uniquement)
-        if ( $action === 'add_annonce' ) {
-            $tp_table       = $wpdb->prefix . 'seliweb_parametres';
-            $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_table WHERE cle='annonces_photos_min' LIMIT 1" );
-            $photos_min_sv  = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
-            if ( $photos_min_sv >= 1 && ! $photo1 ) {
-                wp_safe_redirect( add_query_arg( array( 'page' => 'seliweb_annonces', 'action' => 'new', 'error' => 'no_photo1' ), admin_url('admin.php') ) );
-                exit;
-            }
-            if ( $photos_min_sv >= 2 && ! $photo2 ) {
-                wp_safe_redirect( add_query_arg( array( 'page' => 'seliweb_annonces', 'action' => 'new', 'error' => 'no_photo2' ), admin_url('admin.php') ) );
-                exit;
-            }
+        // Plafond de photos = celui du groupe du membre sélectionné (1 par défaut)
+        $membre_id  = ! empty( $_POST['membre_id'] ) ? intval( $_POST['membre_id'] ) : self::get_or_create_membre( get_current_user_id() );
+        $photos_max = 1;
+        $groupe_id_membre = $wpdb->get_var( $wpdb->prepare( "SELECT groupe_id FROM {$wpdb->prefix}seliweb_membres WHERE id=%d", $membre_id ) );
+        if ( $groupe_id_membre ) {
+            $photos_max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT photos_max FROM {$wpdb->prefix}seliweb_groupes WHERE id=%d", $groupe_id_membre ) ) ?: 1;
         }
 
         if ( $action === 'add_annonce' ) {
-            // En backend, le membre est choisi dans le formulaire
-            $membre_id = ! empty($_POST['membre_id']) ? intval($_POST['membre_id']) : self::get_or_create_membre(get_current_user_id());
             $data['membre_id']     = $membre_id;
             $data['date_creation'] = current_time( 'mysql' );
-            if ( $photo1 ) $data['photo1'] = $photo1;
-            if ( $photo2 ) $data['photo2'] = $photo2;
             $data = array_filter( $data, function($v){ return $v !== null; } );
             $wpdb->insert( $ta, $data );
             $annonce_id = $wpdb->insert_id;
             self::save_prix_from_post( $annonce_id, $_POST );
+
+            $photo_err = self::save_annonce_photos( $annonce_id, $photos_max );
+            if ( $photo_err ) {
+                wp_safe_redirect( add_query_arg( array( 'page' => 'seliweb_annonces', 'action' => 'edit', 'id' => $annonce_id, 'error' => $photo_err ), admin_url('admin.php') ) );
+                exit;
+            }
             self::notify_membres( $annonce_id );
 
         } elseif ( $action === 'update_annonce' ) {
             $annonce_id = intval( $_POST['id'] );
-            if ( $photo1 ) $data['photo1'] = $photo1;
-            if ( $photo2 ) $data['photo2'] = $photo2;
             // Ne pas filtrer statut_id et date_expiration (null = vider le champ)
-            // On retire uniquement les photos non envoyées
             $wpdb->update( $ta, $data, array( 'id' => $annonce_id ) );
             $wpdb->delete( $tap, array( 'annonce_id' => $annonce_id ) );
             self::save_prix_from_post( $annonce_id, $_POST );
+
+            $photo_err = self::save_annonce_photos( $annonce_id, $photos_max );
+            if ( $photo_err ) {
+                wp_safe_redirect( add_query_arg( array( 'page' => 'seliweb_annonces', 'action' => 'edit', 'id' => $annonce_id, 'error' => $photo_err ), admin_url('admin.php') ) );
+                exit;
+            }
         }
 
         // Alerte si statut Expiré
@@ -282,6 +260,67 @@ class Seliweb_Annonces {
             return array( null, 'photo_upload_error' );
         }
         return array( wp_get_attachment_url( $attachment_id ), null );
+    }
+
+    // ----------------------------------------------------------------
+    // Sauvegarde des photos d'une annonce (création ET modification,
+    // frontend ET backend) : suppression des photos cochées, upload des
+    // nouvelles dans la limite du plafond du groupe, résolution de la
+    // photo principale choisie (photo_principale = "existing_{id}",
+    // "new_{slot}" ou "rubrique"). $_FILES attendu : photo_new_1..10.
+    // Retourne un code d'erreur (format/taille), ou null si OK.
+    // ----------------------------------------------------------------
+    public static function save_annonce_photos( $annonce_id, $photos_max ) {
+        global $wpdb;
+        $tap = $wpdb->prefix . 'seliweb_annonces_photos';
+        $ta  = $wpdb->prefix . 'seliweb_annonces';
+
+        // 1. Suppressions demandées
+        $a_supprimer = array_map( 'intval', (array) ( $_POST['supprimer_photo'] ?? array() ) );
+        foreach ( $a_supprimer as $pid ) {
+            $wpdb->delete( $tap, array( 'id' => $pid, 'annonce_id' => $annonce_id ) );
+        }
+
+        // 2. État courant après suppressions
+        $existantes    = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM $tap WHERE annonce_id=%d", $annonce_id ) );
+        $ordre_suivant = count( $existantes );
+        $nouvelles_ids = array(); // slot => id nouvellement créé
+
+        // 3. Nouveaux uploads, dans la limite du plafond du groupe
+        for ( $i = 1; $i <= 10; $i++ ) {
+            if ( ( count( $existantes ) + count( $nouvelles_ids ) ) >= $photos_max ) break;
+            $field = 'photo_new_' . $i;
+            if ( empty( $_FILES[ $field ]['name'] ) ) continue;
+            list( $url, $err ) = self::handle_photo_upload( $field );
+            if ( $err ) return $err;
+            if ( $url ) {
+                $wpdb->insert( $tap, array( 'annonce_id' => $annonce_id, 'url' => $url, 'ordre' => $ordre_suivant++ ) );
+                $nouvelles_ids[ $i ] = $wpdb->insert_id;
+            }
+        }
+
+        // 4. Résolution de la photo principale choisie
+        $choix         = sanitize_text_field( $_POST['photo_principale'] ?? '' );
+        $principale_id = null;
+        if ( strpos( $choix, 'existing_' ) === 0 ) {
+            $cid = intval( substr( $choix, 9 ) );
+            $ok  = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tap WHERE id=%d AND annonce_id=%d", $cid, $annonce_id ) );
+            if ( $ok ) $principale_id = (int) $ok;
+        } elseif ( strpos( $choix, 'new_' ) === 0 ) {
+            $slot = intval( substr( $choix, 4 ) );
+            if ( isset( $nouvelles_ids[ $slot ] ) ) $principale_id = $nouvelles_ids[ $slot ];
+        }
+        // Si aucun choix valide (ou "rubrique" explicite), retomber sur la
+        // première photo disponible ; sinon aucune (image de rubrique).
+        if ( ! $principale_id && $choix !== 'rubrique' ) {
+            $premiere = $wpdb->get_var( $wpdb->prepare(
+                "SELECT id FROM $tap WHERE annonce_id=%d ORDER BY ordre ASC, id ASC LIMIT 1", $annonce_id
+            ) );
+            $principale_id = $premiere ? (int) $premiere : null;
+        }
+
+        $wpdb->update( $ta, array( 'photo_principale_id' => $principale_id ), array( 'id' => $annonce_id ) );
+        return null;
     }
 
     // ----------------------------------------------------------------
@@ -392,8 +431,6 @@ class Seliweb_Annonces {
         if ( isset( $_GET['warn_expire'] ) ) echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__( "Cette annonce ne sera pas visible car le statut est Expiré.", 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_rubrique' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Vous devez choisir une rubrique.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' )    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
-        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo1' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'La photo 1 est obligatoire.', 'seliweb' ) . '</p></div>';
-        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo2' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Les photos 1 et 2 sont obligatoires.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_bad_format' )  echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_upload_error' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) . '</p></div>';
@@ -555,7 +592,7 @@ class Seliweb_Annonces {
         $tm_table = $wpdb->prefix . 'seliweb_membres';
         $tg_table = $wpdb->prefix . 'seliweb_groupes';
         $membres_liste = $wpdb->get_results(
-            "SELECT m.id, m.groupe_id, g.limite_annonces AS groupe_limite,
+            "SELECT m.id, m.groupe_id, g.limite_annonces AS groupe_limite, g.photos_max AS groupe_photos_max,
                     u.display_name, u.ID AS wp_user_id
              FROM {$wpdb->prefix}seliweb_membres m
              LEFT JOIN {$wpdb->prefix}seliweb_groupes g ON g.id=m.groupe_id
@@ -581,18 +618,28 @@ class Seliweb_Annonces {
             ));
             $limite_eff = $ml->groupe_limite;
             $membres_data[$ml->id] = array(
-                'monnaies' => $mon_ids,
-                'nb_ann'   => $nb_ann,
-                'limite'   => (int)$limite_eff,
+                'monnaies'   => $mon_ids,
+                'nb_ann'     => $nb_ann,
+                'limite'     => (int)$limite_eff,
+                'photosMax'  => $ml->groupe_photos_max ? (int) $ml->groupe_photos_max : 1,
             );
         }
 
         // Lignes de prix à afficher : existantes ou 1 ligne vide
         $prix_lignes = ! empty( $prix_map ) ? $prix_map : array( '' => '' );
 
-        $tp_table       = $wpdb->prefix . 'seliweb_parametres';
-        $photos_min_raw = $wpdb->get_var( "SELECT valeur FROM $tp_table WHERE cle='annonces_photos_min' LIMIT 1" );
-        $photos_min     = $photos_min_raw !== null ? max( 0, min( 2, (int) $photos_min_raw ) ) : 1;
+        // Photos existantes de l'annonce (édition) + plafond du groupe du membre sélectionné
+        $tap_photos       = $wpdb->prefix . 'seliweb_annonces_photos';
+        $photos_existantes = $item
+            ? $wpdb->get_results( $wpdb->prepare( "SELECT id, url FROM $tap_photos WHERE annonce_id=%d ORDER BY ordre ASC, id ASC", $item->id ) )
+            : array();
+        $photos_max_init = isset( $membres_data[ $membre_sel_id ] ) ? $membres_data[ $membre_sel_id ]['photosMax'] : 1;
+
+        // Image de chaque rubrique, pour l'aperçu JS de l'option "Utiliser l'image de la rubrique"
+        $rubrique_images = array();
+        foreach ( $rubriques as $rub ) {
+            $rubrique_images[ $rub->id ] = $rub->image ?: '';
+        }
         ?>
         <form id="seliweb-admin-form-annonce" method="post" enctype="multipart/form-data" style="max-width:750px;">
             <?php wp_nonce_field( 'seliweb_annonces', 'seliweb_nonce' ); ?>
@@ -655,7 +702,7 @@ class Seliweb_Annonces {
                 <tr>
                     <th><label for="rubrique_id"><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></label></th>
                     <td>
-                        <select id="rubrique_id" name="rubrique_id">
+                        <select id="rubrique_id" name="rubrique_id" onchange="selAdmUpdateRubriqueImage(this.value)">
                             <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
                             <?php foreach ( $rubriques as $rub ) : ?>
                                 <option value="<?php echo intval( $rub->id ); ?>"
@@ -762,31 +809,54 @@ class Seliweb_Annonces {
 
                 <!-- Photos -->
                 <tr>
-                    <th><label for="photo1"><?php esc_html_e( 'Photo 1', 'seliweb' ); ?></label></th>
+                    <th><?php esc_html_e( 'Photos', 'seliweb' ); ?></th>
                     <td>
-                        <input type="file" id="photo1" name="photo1" accept="image/jpeg,image/png,image/gif,image/webp"
-                               <?php echo ( ! $item && $photos_min >= 1 ) ? 'required' : ''; ?>>
-                        <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
-                        <?php if ( $item && $item->photo1 ) : ?>
-                            <br><img src="<?php echo esc_url( $item->photo1 ); ?>"
-                                     style="max-height:80px;margin-top:6px;border-radius:3px;border:1px solid #ddd;">
-                        <?php elseif ( ! $item && $photos_min >= 1 ) : ?>
-                            <p class="description"><?php esc_html_e( 'Obligatoire.', 'seliweb' ); ?></p>
+                        <p class="description" id="adm_photos_info">
+                            <?php printf( esc_html__( 'Photos actuelles : %1$d / %2$d (selon le groupe du membre).', 'seliweb' ), count( $photos_existantes ), $photos_max_init ); ?>
+                        </p>
+
+                        <?php if ( $photos_existantes ) : ?>
+                            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+                                <?php foreach ( $photos_existantes as $p ) : ?>
+                                    <div style="text-align:center;">
+                                        <img src="<?php echo esc_url( $p->url ); ?>" style="max-height:80px;display:block;border-radius:3px;border:1px solid #ddd;">
+                                        <label style="display:block;font-size:11px;margin-top:2px;">
+                                            <input type="radio" name="photo_principale" value="existing_<?php echo intval( $p->id ); ?>"
+                                                   <?php checked( $item && (int) $item->photo_principale_id === (int) $p->id ); ?>>
+                                            <?php esc_html_e( 'Principale', 'seliweb' ); ?>
+                                        </label>
+                                        <label style="display:block;font-size:11px;color:#b32d2e;">
+                                            <input type="checkbox" name="supprimer_photo[]" value="<?php echo intval( $p->id ); ?>">
+                                            <?php esc_html_e( 'Supprimer', 'seliweb' ); ?>
+                                        </label>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         <?php endif; ?>
-                    </td>
-                </tr>
-                <tr>
-                    <th><label for="photo2"><?php esc_html_e( 'Photo 2', 'seliweb' ); ?></label></th>
-                    <td>
-                        <input type="file" id="photo2" name="photo2" accept="image/jpeg,image/png,image/gif,image/webp"
-                               <?php echo ( ! $item && $photos_min >= 2 ) ? 'required' : ''; ?>>
+
+                        <div id="adm_photos_slots">
+                            <?php for ( $i = 1; $i <= 10; $i++ ) : ?>
+                                <div class="seliweb-photo-slot" data-slot="<?php echo $i; ?>"
+                                     style="<?php echo $i <= max( 0, $photos_max_init - count( $photos_existantes ) ) ? '' : 'display:none;'; ?>margin-bottom:8px;">
+                                    <input type="file" name="photo_new_<?php echo $i; ?>" accept="image/jpeg,image/png,image/gif,image/webp">
+                                    <label style="font-size:11px;">
+                                        <input type="radio" name="photo_principale" value="new_<?php echo $i; ?>">
+                                        <?php esc_html_e( 'Principale', 'seliweb' ); ?>
+                                    </label>
+                                </div>
+                            <?php endfor; ?>
+                        </div>
+
+                        <p style="margin-top:8px;">
+                            <label>
+                                <input type="radio" name="photo_principale" value="rubrique"
+                                       <?php checked( ! $item || $item->photo_principale_id === null ); ?>>
+                                <?php esc_html_e( 'Utiliser l\'image de la rubrique', 'seliweb' ); ?>
+                            </label>
+                            <img id="adm_rubrique_apercu" src="<?php echo esc_url( $item && $item->rubrique_id ? ( $rubrique_images[ $item->rubrique_id ] ?? '' ) : '' ); ?>"
+                                 style="max-height:40px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $item && $item->rubrique_id && ! empty( $rubrique_images[ $item->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
+                        </p>
                         <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
-                        <?php if ( $item && $item->photo2 ) : ?>
-                            <br><img src="<?php echo esc_url( $item->photo2 ); ?>"
-                                     style="max-height:80px;margin-top:6px;border-radius:3px;border:1px solid #ddd;">
-                        <?php elseif ( ! $item && $photos_min >= 2 ) : ?>
-                            <p class="description"><?php esc_html_e( 'Obligatoire.', 'seliweb' ); ?></p>
-                        <?php endif; ?>
                     </td>
                 </tr>
             </table>
@@ -804,8 +874,29 @@ class Seliweb_Annonces {
         }, $monnaies ) ); ?>;
         var prixAdmNextIdx = <?php echo count( $prix_lignes ); ?>;
 
-        // Données par membre : monnaies autorisées, limite, nb annonces
+        // Données par membre : monnaies autorisées, limite, nb annonces, plafond photos
         var selAdmMembresData = <?php echo wp_json_encode($membres_data); ?>;
+
+        // Image de chaque rubrique (aperçu de l'option "Utiliser l'image de la rubrique")
+        var selAdmRubriqueImages = <?php echo wp_json_encode( $rubrique_images ); ?>;
+        var selAdmPhotosExistantes = <?php echo count( $photos_existantes ); ?>;
+
+        function selAdmUpdateRubriqueImage(rubriqueId) {
+            var img = document.getElementById('adm_rubrique_apercu');
+            var url = selAdmRubriqueImages[rubriqueId] || '';
+            if (url) { img.src = url; img.style.display = ''; }
+            else { img.style.display = 'none'; }
+        }
+
+        function selAdmUpdatePhotoSlots(photosMax) {
+            var restant = Math.max(0, photosMax - selAdmPhotosExistantes);
+            document.getElementById('adm_photos_info').textContent =
+                <?php echo wp_json_encode( __( 'Photos actuelles : ', 'seliweb' ) ); ?> + selAdmPhotosExistantes + ' / ' + photosMax
+                + <?php echo wp_json_encode( ' (' . __( 'selon le groupe du membre', 'seliweb' ) . ').' ); ?>;
+            document.querySelectorAll('#adm_photos_slots .seliweb-photo-slot').forEach(function(slot){
+                slot.style.display = (parseInt(slot.dataset.slot, 10) <= restant) ? '' : 'none';
+            });
+        }
 
         // Toutes les monnaies indexées par id
         var selAdmMonnaiesById = {};
@@ -820,9 +911,11 @@ class Seliweb_Annonces {
                 info.textContent = '';
                 selAdmMonnaiesFiltrees = selAdmMonnaies;
             selAdmResetPrix(selAdmMonnaies); // toutes monnaies si pas de membre
+                selAdmUpdatePhotoSlots(1);
                 return;
             }
             var d = selAdmMembresData[membreId];
+            selAdmUpdatePhotoSlots(d.photosMax);
 
             // Afficher info limite
             var msg = '';
@@ -949,14 +1042,16 @@ class Seliweb_Annonces {
 
         $sql = $wpdb->prepare(
             "SELECT a.*, c.nom AS cat_nom, c.slug AS cat_slug,
-                    r.nom AS rub_nom, s.nom AS statut_nom, s.slug AS statut_slug,
-                    m.ville, u.display_name AS membre_nom
+                    r.nom AS rub_nom, r.image AS rub_image, s.nom AS statut_nom, s.slug AS statut_slug,
+                    m.ville, u.display_name AS membre_nom,
+                    ap.url AS photo_affichee
              FROM $ta a
              LEFT JOIN $tc c ON c.id=a.categorie_id
              LEFT JOIN $tr r ON r.id=a.rubrique_id
              LEFT JOIN $ts s ON s.id=a.statut_id
              LEFT JOIN $tm m ON m.id=a.membre_id
              LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id
+             LEFT JOIN {$wpdb->prefix}seliweb_annonces_photos ap ON ap.id=a.photo_principale_id
              WHERE " . implode(' AND ', $where) . "
              ORDER BY a.date_creation DESC",
             ...$values

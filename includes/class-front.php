@@ -365,13 +365,15 @@ if ( ! function_exists( 'swv_render_card' ) ) {
         $has_statut = ( ! empty( $annonce->statut_slug ) && $annonce->statut_slug !== 'expire' );
         $url        = add_query_arg( 'seliweb_annonce', $annonce->id, swv_annonces_page_url() );
         $date       = date_i18n( get_option('date_format'), strtotime( $annonce->date_creation ) );
+        // Photo choisie par le membre, sinon image de la rubrique
+        $img_url    = $annonce->photo_affichee ?: $annonce->rub_image;
 
         if ( $mode === 'grille' ) : ?>
             <div class="swv-card">
                 <div class="swv-card-photo">
-                    <?php if ($annonce->photo1): ?>
+                    <?php if ($img_url): ?>
                         <a href="<?php echo esc_url($url); ?>">
-                            <img src="<?php echo esc_url($annonce->photo1); ?>" alt="<?php echo esc_attr($annonce->titre); ?>">
+                            <img src="<?php echo esc_url($img_url); ?>" alt="<?php echo esc_attr($annonce->titre); ?>">
                         </a>
                     <?php else: ?>
                         <div class="swv-card-no-photo">&#128247;</div>
@@ -400,9 +402,9 @@ if ( ! function_exists( 'swv_render_card' ) ) {
         <?php else: // liste ?>
             <div class="swv-card">
                 <div class="swv-card-photo">
-                    <?php if ($annonce->photo1): ?>
+                    <?php if ($img_url): ?>
                         <a href="<?php echo esc_url($url); ?>">
-                            <img src="<?php echo esc_url($annonce->photo1); ?>" alt="<?php echo esc_attr($annonce->titre); ?>">
+                            <img src="<?php echo esc_url($img_url); ?>" alt="<?php echo esc_attr($annonce->titre); ?>">
                         </a>
                     <?php else: ?>
                         <div class="swv-card-no-photo"></div>
