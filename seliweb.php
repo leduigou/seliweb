@@ -377,6 +377,7 @@ class Seliweb {
              && wp_verify_nonce( $_POST['seliweb_inscription_nonce'], 'seliweb_inscription' ) ) {
 
             $civilite   = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
+            $identifiant = sanitize_user( wp_unslash( $_POST['identifiant'] ?? '' ), true );
             $nom        = sanitize_text_field( wp_unslash( $_POST['nom']        ?? '' ) );
             $prenom     = sanitize_text_field( wp_unslash( $_POST['prenom']     ?? '' ) );
             $organisme  = sanitize_text_field( wp_unslash( $_POST['organisme']  ?? '' ) );
@@ -390,6 +391,8 @@ class Seliweb {
 
             // Validation
             if ( ! $civilite )  $erreurs[] = __( 'La civilité est obligatoire.', 'seliweb' );
+            if ( ! $identifiant )                      $erreurs[] = __( "L'identifiant est obligatoire.", 'seliweb' );
+            elseif ( username_exists( $identifiant ) ) $erreurs[] = __( 'Cet identifiant est déjà utilisé.', 'seliweb' );
             if ( ! $nom )       $erreurs[] = __( 'Le nom est obligatoire.', 'seliweb' );
             if ( ! $prenom )    $erreurs[] = __( 'Le prénom est obligatoire.', 'seliweb' );
             if ( ! $email || ! is_email( $email ) ) $erreurs[] = __( "L'email est invalide.", 'seliweb' );
@@ -410,6 +413,7 @@ class Seliweb {
                     'tentatives' => 0,
                     'data'       => array(
                         'civilite'          => $civilite,
+                        'identifiant'       => $identifiant,
                         'nom'               => $nom,
                         'prenom'            => $prenom,
                         'organisme'         => $organisme,
@@ -557,6 +561,13 @@ class Seliweb {
                                 </td>
                             </tr>
                             <tr>
+                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Identifiant','seliweb'); ?></td>
+                                <td>
+                                    <input type="text" name="identifiant" value="<?php echo esc_attr($_POST['identifiant']??''); ?>" required>
+                                    <span class="sel-ins-hint"><?php esc_html_e('Ne pourra plus être modifié ensuite.','seliweb'); ?></span>
+                                </td>
+                            </tr>
+                            <tr>
                                 <td><span class="sel-ins-req">*</span> <?php esc_html_e('Nom','seliweb'); ?></td>
                                 <td><input type="text" name="nom" value="<?php echo esc_attr($_POST['nom']??''); ?>" required></td>
                             </tr>
@@ -677,11 +688,7 @@ class Seliweb {
     // ou un WP_Error.
     // ----------------------------------------------------------------
     private function creer_membre_inscription( $data ) {
-        // Créer le login à partir du prénom + nom
-        $user_login = sanitize_user( strtolower( $data['prenom'] . '.' . $data['nom'] ), true );
-        $user_login = ! username_exists( $user_login ) ? $user_login : $user_login . rand(10,99);
-
-        $user_id = wp_create_user( $user_login, wp_generate_password(), $data['email'] );
+        $user_id = wp_create_user( $data['identifiant'], wp_generate_password(), $data['email'] );
         if ( is_wp_error( $user_id ) ) {
             return $user_id;
         }

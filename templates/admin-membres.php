@@ -188,7 +188,8 @@ $creation_ok      = false;
 if ( isset( $_POST['seliweb_nonce_creation'] )
      && wp_verify_nonce( $_POST['seliweb_nonce_creation'], 'seliweb_creation_membre' ) ) {
 
-    $civilite  = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
+    $civilite    = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
+    $identifiant = sanitize_user( wp_unslash( $_POST['identifiant'] ?? '' ), true );
     $nom       = sanitize_text_field( wp_unslash( $_POST['nom']          ?? '' ) );
     $prenom    = sanitize_text_field( wp_unslash( $_POST['prenom']       ?? '' ) );
     $organisme = sanitize_text_field( wp_unslash( $_POST['organisme']    ?? '' ) );
@@ -206,6 +207,8 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
     $date_naissance = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_naissance_raw ) ? $date_naissance_raw : null;
 
     if ( ! $civilite )  $erreurs_creation[] = __( 'La civilité est obligatoire.', 'seliweb' );
+    if ( ! $identifiant )                 $erreurs_creation[] = __( "L'identifiant est obligatoire.", 'seliweb' );
+    elseif ( username_exists( $identifiant ) ) $erreurs_creation[] = __( 'Cet identifiant est déjà utilisé.', 'seliweb' );
     if ( ! $nom )       $erreurs_creation[] = __( 'Le nom est obligatoire.', 'seliweb' );
     if ( ! $prenom )    $erreurs_creation[] = __( 'Le prénom est obligatoire.', 'seliweb' );
     if ( ! is_email( $email ) )      $erreurs_creation[] = __( "L'email est invalide.", 'seliweb' );
@@ -218,10 +221,7 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
     if ( $date_naissance_raw && ! $date_naissance ) $erreurs_creation[] = __( 'La date de naissance est invalide.', 'seliweb' );
 
     if ( empty( $erreurs_creation ) ) {
-        $user_login = sanitize_user( strtolower( $prenom . '.' . $nom ), true );
-        if ( username_exists( $user_login ) ) $user_login .= rand(10,99);
-
-        $user_id = wp_create_user( $user_login, $password, $email );
+        $user_id = wp_create_user( $identifiant, $password, $email );
 
         if ( is_wp_error( $user_id ) ) {
             $erreurs_creation[] = $user_id->get_error_message();
@@ -373,6 +373,13 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                 <td>
                     <label style="margin-right:14px;"><input type="radio" name="civilite" value="Mr" <?php checked($_POST['civilite']??'','Mr'); ?> required> M.</label>
                     <label><input type="radio" name="civilite" value="Mme" <?php checked($_POST['civilite']??'','Mme'); ?>> Mme</label>
+                </td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e('Identifiant','seliweb'); ?> *</th>
+                <td>
+                    <input type="text" name="identifiant" class="regular-text" value="<?php echo esc_attr($_POST['identifiant']??''); ?>" required>
+                    <p class="description"><?php esc_html_e('Choisi par le membre, ne pourra plus être modifié ensuite.','seliweb'); ?></p>
                 </td>
             </tr>
             <tr>
