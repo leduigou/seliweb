@@ -21,6 +21,7 @@ class Seliweb_Parametres {
         add_filter( 'retrieve_password_title',        array( __CLASS__, 'filter_reset_pw_title'    ), 10, 3 );
         add_filter( 'retrieve_password_message',      array( __CLASS__, 'filter_reset_pw_message'  ), 10, 4 );
         add_filter( 'wp_new_user_notification_email', array( __CLASS__, 'filter_inscription_email' ), 10, 3 );
+        add_filter( 'wp_password_change_notification_email', array( __CLASS__, 'filter_password_changed_email' ), 10, 3 );
     }
 
     // ----------------------------------------------------------------
@@ -65,6 +66,25 @@ class Seliweb_Parametres {
         $subject    = $cfg['mail_inscription_subject']           ?? '';
         $intro      = trim( $cfg['mail_inscription_intro']       ?? '' );
         $sig        = trim( $cfg['mail_inscription_signature']   ?? '' );
+        if ( $from_email && is_email( $from_email ) ) {
+            if ( ! is_array( $email['headers'] ) ) {
+                $email['headers'] = $email['headers'] ? array( $email['headers'] ) : array();
+            }
+            $email['headers'][] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
+        }
+        if ( $subject ) $email['subject']  = $subject;
+        if ( $intro )   $email['message']  = $intro . "\r\n\r\n" . $email['message'];
+        if ( $sig )     $email['message'] .= "\r\n" . $sig;
+        return $email;
+    }
+
+    public static function filter_password_changed_email( $email, $user, $blogname ) {
+        $cfg        = self::mail_cfg();
+        $from_email = trim( $cfg['mail_pwdchange_from_email'] ?? '' );
+        $from_name  = trim( $cfg['mail_pwdchange_from_name']  ?? '' );
+        $subject    = $cfg['mail_pwdchange_subject']           ?? '';
+        $intro      = trim( $cfg['mail_pwdchange_intro']       ?? '' );
+        $sig        = trim( $cfg['mail_pwdchange_signature']   ?? '' );
         if ( $from_email && is_email( $from_email ) ) {
             if ( ! is_array( $email['headers'] ) ) {
                 $email['headers'] = $email['headers'] ? array( $email['headers'] ) : array();
@@ -1329,9 +1349,17 @@ class Seliweb_Parametres {
                 'label' => __( 'Nouvelle annonce publiée', 'seliweb' ),
                 'desc'  => __( 'Envoyé aux membres ayant activé les notifications lorsqu\'une nouvelle annonce est publiée.', 'seliweb' ),
             ),
+            'code_verification' => array(
+                'label' => __( 'Code de vérification', 'seliweb' ),
+                'desc'  => __( 'Envoyé lors de l\'inscription, avant la création du compte, avec le code à saisir pour confirmer l\'adresse email.', 'seliweb' ),
+            ),
             'inscription' => array(
-                'label' => __( 'Confirmation d\'inscription', 'seliweb' ),
-                'desc'  => __( 'Envoyé au nouveau membre lors de son inscription sur le site.', 'seliweb' ),
+                'label' => __( 'Détails de connexion', 'seliweb' ),
+                'desc'  => __( 'Envoyé au nouveau membre une fois le code de vérification validé et son compte créé (identifiant + lien pour définir son mot de passe).', 'seliweb' ),
+            ),
+            'mot_de_passe_change' => array(
+                'label' => __( 'Mot de passe changé', 'seliweb' ),
+                'desc'  => __( 'Envoyé automatiquement par WordPress lorsqu\'un membre définit ou change son mot de passe (notamment juste après l\'inscription).', 'seliweb' ),
             ),
             'contact_annonce' => array(
                 'label' => __( 'Message à l\'annonceur', 'seliweb' ),
@@ -1410,6 +1438,14 @@ class Seliweb_Parametres {
                 $key_sig         = 'mail_annonce_signature';
                 $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle annonce : {titre}', 'seliweb' ) );
                 break;
+            case 'code_verification':
+                $key_from_email  = 'mail_verif_from_email';
+                $key_from_name   = 'mail_verif_from_name';
+                $key_subject     = 'mail_verif_subject';
+                $key_intro       = 'mail_verif_intro';
+                $key_sig         = 'mail_verif_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Code de vérification', 'seliweb' ) );
+                break;
             case 'inscription':
                 $key_from_email  = 'mail_inscription_from_email';
                 $key_from_name   = 'mail_inscription_from_name';
@@ -1417,6 +1453,14 @@ class Seliweb_Parametres {
                 $key_intro       = 'mail_inscription_intro';
                 $key_sig         = 'mail_inscription_signature';
                 $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Confirmation d\'inscription', 'seliweb' ) );
+                break;
+            case 'mot_de_passe_change':
+                $key_from_email  = 'mail_pwdchange_from_email';
+                $key_from_name   = 'mail_pwdchange_from_name';
+                $key_subject     = 'mail_pwdchange_subject';
+                $key_intro       = 'mail_pwdchange_intro';
+                $key_sig         = 'mail_pwdchange_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Mot de passe changé', 'seliweb' ) );
                 break;
             case 'contact_annonce':
                 $key_from_email  = 'mail_contact_from_email';
@@ -1658,12 +1702,26 @@ class Seliweb_Parametres {
                 $key_intro      = 'mail_annonce_intro';
                 $key_sig        = 'mail_annonce_signature';
                 break;
+            case 'code_verification':
+                $key_from_email = 'mail_verif_from_email';
+                $key_from_name  = 'mail_verif_from_name';
+                $key_subject    = 'mail_verif_subject';
+                $key_intro      = 'mail_verif_intro';
+                $key_sig        = 'mail_verif_signature';
+                break;
             case 'inscription':
                 $key_from_email = 'mail_inscription_from_email';
                 $key_from_name  = 'mail_inscription_from_name';
                 $key_subject    = 'mail_inscription_subject';
                 $key_intro      = 'mail_inscription_intro';
                 $key_sig        = 'mail_inscription_signature';
+                break;
+            case 'mot_de_passe_change':
+                $key_from_email = 'mail_pwdchange_from_email';
+                $key_from_name  = 'mail_pwdchange_from_name';
+                $key_subject    = 'mail_pwdchange_subject';
+                $key_intro      = 'mail_pwdchange_intro';
+                $key_sig        = 'mail_pwdchange_signature';
                 break;
             case 'contact_annonce':
                 $key_from_email = 'mail_contact_from_email';

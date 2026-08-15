@@ -428,14 +428,31 @@ class Seliweb {
                     ),
                 ), 15 * MINUTE_IN_SECONDS );
 
-                wp_mail(
-                    $email,
-                    sprintf( __( '[%s] Code de vérification', 'seliweb' ), get_bloginfo( 'name' ) ),
-                    sprintf(
-                        __( "Bonjour,\n\nVoici votre code de vérification pour finaliser votre inscription : %s\n\nCe code est valable 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.", 'seliweb' ),
-                        $code
-                    )
+                // Réglages configurables depuis Paramètres > Mails > Code de vérification
+                global $wpdb;
+                $cfg_rows = $wpdb->get_results( "SELECT cle, valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle LIKE 'mail\_verif\_%'" );
+                $cfg_verif = array();
+                foreach ( $cfg_rows as $r ) $cfg_verif[ $r->cle ] = $r->valeur;
+
+                $verif_from_email = trim( $cfg_verif['mail_verif_from_email'] ?? '' );
+                $verif_from_name  = trim( $cfg_verif['mail_verif_from_name']  ?? '' );
+                $verif_subject    = trim( $cfg_verif['mail_verif_subject']    ?? '' )
+                    ?: sprintf( '[%s] %s', get_bloginfo( 'name' ), __( 'Code de vérification', 'seliweb' ) );
+                $verif_intro      = trim( $cfg_verif['mail_verif_intro']      ?? '' );
+                $verif_sig        = trim( $cfg_verif['mail_verif_signature']  ?? '' );
+
+                $verif_corps = sprintf(
+                    __( "Bonjour,\n\nVoici votre code de vérification pour finaliser votre inscription : %s\n\nCe code est valable 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.", 'seliweb' ),
+                    $code
                 );
+                $verif_corps = trim( ( $verif_intro ? $verif_intro . "\n\n" : '' ) . $verif_corps . ( $verif_sig ? "\n\n" . $verif_sig : '' ) );
+
+                $verif_headers = array();
+                if ( $verif_from_email && is_email( $verif_from_email ) ) {
+                    $verif_headers[] = 'From: ' . ( $verif_from_name ? $verif_from_name . ' <' . $verif_from_email . '>' : $verif_from_email );
+                }
+
+                wp_mail( $email, $verif_subject, $verif_corps, $verif_headers );
 
                 $attente_code  = true;
                 $email_attente = $email;
