@@ -59,7 +59,9 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
     $ville     = sanitize_text_field( wp_unslash( $_POST['ville']        ?? '' ) );
     $cp        = sanitize_text_field( wp_unslash( $_POST['code_postal']  ?? '' ) );
     $groupe_id = ! empty( $_POST['groupe_id_modif'] ) ? intval( $_POST['groupe_id_modif'] ) : null;
-    $notif     = isset( $_POST['notif_annonces'] ) ? 1 : 0;
+    $notif_groupes_post = isset( $_POST['notif_groupes'] ) && is_array( $_POST['notif_groupes'] )
+        ? array_filter( array_map( 'intval', $_POST['notif_groupes'] ) ) : array();
+    $notif_groupes = $notif_groupes_post ? implode( ',', $notif_groupes_post ) : null;
     $new_pwd   = $_POST['new_password'] ?? '';
     $new_pwd2  = $_POST['new_password_confirm'] ?? '';
     $date_naissance_raw = sanitize_text_field( wp_unslash( $_POST['date_naissance'] ?? '' ) );
@@ -119,7 +121,7 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
             'tel_portable'   => $tel_port,   'tel_fixe'     => $tel_fixe,
             'adresse1'       => $adresse1,   'adresse2'     => $adresse2,
             'ville'          => $ville,      'code_postal'  => $cp,
-            'groupe_id'          => $groupe_id,  'notif_annonces'    => $notif,
+            'groupe_id'          => $groupe_id,  'notif_groupes'    => $notif_groupes,
             'show_email'         => isset( $_POST['show_email'] )        ? 1 : 0,
             'show_tel_portable'  => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
             'show_tel_fixe'      => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
@@ -203,6 +205,9 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
     $password  = $_POST['password']         ?? '';
     $password2 = $_POST['password_confirm'] ?? '';
     $groupe_id = ! empty( $_POST['groupe_id_creation'] ) ? intval( $_POST['groupe_id_creation'] ) : null;
+    $notif_groupes_post = isset( $_POST['notif_groupes'] ) && is_array( $_POST['notif_groupes'] )
+        ? array_filter( array_map( 'intval', $_POST['notif_groupes'] ) ) : array();
+    $notif_groupes = $notif_groupes_post ? implode( ',', $notif_groupes_post ) : null;
     $date_naissance_raw = sanitize_text_field( wp_unslash( $_POST['date_naissance'] ?? '' ) );
     $date_naissance = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_naissance_raw ) ? $date_naissance_raw : null;
 
@@ -248,6 +253,7 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
             // on met à jour plutôt qu'insérer pour éviter l'échec sur la UNIQUE KEY wp_user_id.
             $wpdb->update( $tm, array(
                 'groupe_id'         => $groupe_id,
+                'notif_groupes'     => $notif_groupes,
                 'civilite'          => $civilite,
                 'tel_portable'      => $tel_port,  'tel_fixe'          => $tel_fixe,
                 'adresse1'          => $adresse1,  'adresse2'          => $adresse2,
@@ -491,10 +497,16 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <tr>
                 <th></th>
                 <td>
-                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-                        <input type="checkbox" name="notif_annonces" value="1" checked>
-                        <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
-                    </label>
+                    <p style="font-weight:600;font-size:13px;margin:0 0 6px;"><?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?></p>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        <?php foreach ($groupes as $g) : ?>
+                            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                                <input type="checkbox" name="notif_groupes[]" value="<?php echo intval($g->id); ?>">
+                                <?php echo esc_html($g->nom); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <p class="description"><?php esc_html_e('Seules les annonces des groupes cochés seront envoyées par mail à ce membre.','seliweb'); ?></p>
                 </td>
             </tr>
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Confidentialité','seliweb'); ?></th></tr>
@@ -729,13 +741,20 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                 </td>
             </tr>
             <?php endif; ?>
+            <?php $notif_groupes_edit = array_filter( array_map( 'intval', explode( ',', $m_edit->notif_groupes ?? '' ) ) ); ?>
             <tr>
                 <th><?php esc_html_e('Notifications','seliweb'); ?></th>
                 <td>
-                    <label>
-                        <input type="checkbox" name="notif_annonces" value="1" <?php checked($m_edit->notif_annonces??1); ?>>
-                        <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
-                    </label>
+                    <p style="font-weight:600;font-size:13px;margin:0 0 6px;"><?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?></p>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        <?php foreach ($groupes as $g) : ?>
+                            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                                <input type="checkbox" name="notif_groupes[]" value="<?php echo intval($g->id); ?>" <?php checked( in_array( (int) $g->id, $notif_groupes_edit, true ) ); ?>>
+                                <?php echo esc_html($g->nom); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <p class="description"><?php esc_html_e('Seules les annonces des groupes cochés seront envoyées par mail à ce membre.','seliweb'); ?></p>
                 </td>
             </tr>
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Confidentialité','seliweb'); ?></th></tr>

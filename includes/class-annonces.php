@@ -370,8 +370,18 @@ class Seliweb_Annonces {
         $tp = $wpdb->prefix . 'seliweb_parametres';
 
         $annonce = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $ta WHERE id=%d", $annonce_id ) );
-        $membres = $wpdb->get_results( "SELECT wp_user_id FROM $tm WHERE notif_annonces=1" );
-        if ( ! $annonce || empty( $membres ) ) return;
+        if ( ! $annonce ) return;
+
+        // Groupe de l'annonceur : seuls les membres ayant coché ce groupe
+        // dans leurs notifications reçoivent le mail.
+        $groupe_id = $wpdb->get_var( $wpdb->prepare( "SELECT groupe_id FROM $tm WHERE id=%d", $annonce->membre_id ) );
+        if ( ! $groupe_id ) return;
+
+        $membres = $wpdb->get_results( $wpdb->prepare(
+            "SELECT wp_user_id FROM $tm WHERE notif_groupes IS NOT NULL AND FIND_IN_SET(%d, notif_groupes)",
+            $groupe_id
+        ) );
+        if ( empty( $membres ) ) return;
 
         // Charger la config mail (clés mail_annonce_*)
         $rows = $wpdb->get_results( "SELECT cle, valeur FROM $tp WHERE cle LIKE 'mail\_annonce\_%'" );

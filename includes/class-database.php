@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.1';
+    const DB_VERSION     = '2.2';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -106,7 +106,7 @@ class Seliweb_Database {
             id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
             wp_user_id       BIGINT UNSIGNED NOT NULL,
             groupe_id        INT UNSIGNED DEFAULT NULL,
-            notif_annonces   TINYINT(1)   NOT NULL DEFAULT 1,
+            notif_groupes    VARCHAR(255) DEFAULT NULL,
             civilite         ENUM('Mr','Mme') DEFAULT NULL,
             tel_portable     VARCHAR(30),
             tel_fixe         VARCHAR(30),
@@ -297,6 +297,11 @@ class Seliweb_Database {
         // Migration v2.1 : date de naissance du membre (facultative)
         self::maybe_add_column( $tm, 'date_naissance', "DATE DEFAULT NULL" );
 
+        // Migration v2.2 : notifications d'annonces par groupe (remplace le
+        // booléen global notif_annonces par une liste de groupes cochés).
+        self::maybe_add_column( $tm, 'notif_groupes', "VARCHAR(255) DEFAULT NULL AFTER groupe_id" );
+        self::maybe_migrate_notif_groupes();
+
         self::insert_defaults();
     }
 
@@ -361,6 +366,28 @@ class Seliweb_Database {
                 }
             }
         }
+    }
+
+    /**
+     * Migration v2.2 : les membres qui recevaient déjà les annonces par mail
+     * (notif_annonces=1) basculent sur notif_groupes = leur propre groupe,
+     * ce qui reproduit le principal cas d'usage réel (recevoir les annonces
+     * de son groupe) sans notifier tous les autres groupes comme avant.
+     */
+    private static function maybe_migrate_notif_groupes() {
+        global $wpdb;
+        $tm   = $wpdb->prefix . 'seliweb_membres';
+        $cols = $wpdb->get_col( "DESCRIBE `$tm`", 0 );
+        if ( ! in_array( 'notif_annonces', $cols, true ) ) return; // déjà migré
+
+        $membres = $wpdb->get_results( "SELECT id, groupe_id, notif_annonces FROM `$tm`" );
+        foreach ( $membres as $m ) {
+            if ( (int) $m->notif_annonces === 1 && $m->groupe_id ) {
+                $wpdb->update( $tm, array( 'notif_groupes' => (string) intval( $m->groupe_id ) ), array( 'id' => $m->id ) );
+            }
+        }
+
+        self::maybe_drop_column( $tm, 'notif_annonces' );
     }
 
     /**

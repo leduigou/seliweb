@@ -671,6 +671,8 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     $nom_groupe = $membre->groupe_id
         ? $wpdb->get_var( $wpdb->prepare( "SELECT nom FROM $tg WHERE id=%d", $membre->groupe_id ) )
         : '';
+    $tous_groupes       = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
+    $notif_groupes_pref = array_filter( array_map( 'intval', explode( ',', $membre->notif_groupes ?? '' ) ) );
     ?>
 
     <h3><?php esc_html_e( 'Préférences', 'seliweb' ); ?></h3>
@@ -700,12 +702,16 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <legend style="font-weight:600;font-size:13px;color:#1d6a4a;text-transform:uppercase;letter-spacing:.04em;padding:0 6px;">
                 <?php esc_html_e( 'Notifications', 'seliweb' ); ?>
             </legend>
-            <div class="sel-prf-pref-row" style="margin-top:8px;">
-                <label>
-                    <input type="checkbox" name="notif_annonces" value="1" <?php checked( $membre->notif_annonces ?? 1 ); ?>>
-                    <?php esc_html_e( 'Recevoir un mail à chaque nouvelle annonce', 'seliweb' ); ?>
-                </label>
+            <p style="font-weight:600;font-size:14px;margin:0 0 8px;"><?php esc_html_e( 'Recevoir un mail à chaque nouvelle annonce', 'seliweb' ); ?></p>
+            <div class="sel-prf-pref-row" style="margin-top:0;">
+                <?php foreach ( $tous_groupes as $g ) : ?>
+                    <label>
+                        <input type="checkbox" name="notif_groupes[]" value="<?php echo intval( $g->id ); ?>" <?php checked( in_array( (int) $g->id, $notif_groupes_pref, true ) ); ?>>
+                        <?php echo esc_html( $g->nom ); ?>
+                    </label>
+                <?php endforeach; ?>
             </div>
+            <p class="sel-prf-pref-hint" style="margin-left:0;"><?php esc_html_e( 'Seules les annonces des groupes cochés vous seront envoyées par mail.', 'seliweb' ); ?></p>
         </fieldset>
 
         <fieldset style="border:1px solid #e0e0e0;border-radius:6px;padding:14px 18px;margin-bottom:18px;">

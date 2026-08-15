@@ -424,7 +424,6 @@ class Seliweb {
                         'adresse2'          => $adresse2,
                         'ville'             => $ville,
                         'code_postal'       => $cp,
-                        'notif_annonces'    => isset( $_POST['notif_annonces'] )    ? 1 : 0,
                         'show_email'        => isset( $_POST['show_email'] )        ? 1 : 0,
                         'show_tel_portable' => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
                         'show_tel_fixe'     => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
@@ -612,19 +611,6 @@ class Seliweb {
                             </tr>
                             <tr>
                                 <td colspan="2" style="padding-top:14px;border-top:1px solid #e0e0e0;font-weight:600;color:#1d6a4a;font-size:13px;text-transform:uppercase;letter-spacing:.04em;text-align:left;white-space:normal;width:auto;">
-                                    <?php esc_html_e('Notifications','seliweb'); ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td colspan="2" style="padding:4px 0;text-align:left;white-space:normal;width:auto;">
-                                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
-                                        <input type="checkbox" name="notif_annonces" value="1" <?php checked(true); ?>>
-                                        <?php esc_html_e('Recevoir un mail à chaque nouvelle annonce','seliweb'); ?>
-                                    </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td colspan="2" style="padding-top:14px;border-top:1px solid #e0e0e0;font-weight:600;color:#1d6a4a;font-size:13px;text-transform:uppercase;letter-spacing:.04em;text-align:left;white-space:normal;width:auto;">
                                     <?php esc_html_e('Confidentialité','seliweb'); ?>
                                 </td>
                             </tr>
@@ -732,6 +718,9 @@ class Seliweb {
         // Créer/rattacher le membre (crée la ligne dans seliweb_membres)
         $this->rattacher_groupe_defaut( $user_id );
 
+        // Notifications : abonné par défaut aux annonces de son groupe d'inscription
+        $groupe_defaut_id = Seliweb_Groupes::get_groupe_defaut_id();
+
         // Mettre à jour les données SEL du membre
         $tm = $wpdb->prefix . 'seliweb_membres';
         $membre_data = array(
@@ -742,7 +731,7 @@ class Seliweb {
             'adresse2'          => $data['adresse2'],
             'ville'             => $data['ville'],
             'code_postal'       => $data['code_postal'],
-            'notif_annonces'    => $data['notif_annonces'],
+            'notif_groupes'     => $groupe_defaut_id ? (string) $groupe_defaut_id : null,
             'show_email'        => $data['show_email'],
             'show_tel_portable' => $data['show_tel_portable'],
             'show_tel_fixe'     => $data['show_tel_fixe'],
@@ -1026,7 +1015,6 @@ class Seliweb {
                 'adresse2'       => $adresse2,
                 'ville'          => $ville,
                 'code_postal'    => $cp,
-                'notif_annonces' => isset( $_POST['notif_annonces'] ) ? 1 : 0,
                 'date_naissance' => $date_naissance,
             );
             $existe_membre = $wpdb->get_var( $wpdb->prepare(
@@ -1089,8 +1077,11 @@ class Seliweb {
         if ( isset( $_POST['seliweb_nonce_prefs'] )
              && wp_verify_nonce( $_POST['seliweb_nonce_prefs'], 'seliweb_prefs_' . $wp_user_id ) ) {
 
+            $notif_groupes_post = isset( $_POST['notif_groupes'] ) && is_array( $_POST['notif_groupes'] )
+                ? array_filter( array_map( 'intval', $_POST['notif_groupes'] ) ) : array();
+
             $wpdb->update( $tm, array(
-                'notif_annonces'   => isset( $_POST['notif_annonces'] )   ? 1 : 0,
+                'notif_groupes'    => $notif_groupes_post ? implode( ',', $notif_groupes_post ) : null,
                 'show_email'       => isset( $_POST['show_email'] )       ? 1 : 0,
                 'show_tel_portable'=> isset( $_POST['show_tel_portable'] ) ? 1 : 0,
                 'show_tel_fixe'    => isset( $_POST['show_tel_fixe'] )    ? 1 : 0,
