@@ -267,7 +267,6 @@ class Seliweb {
                 <form method="post" action="<?php echo esc_url( site_url( 'wp-login.php', 'login_post' ) ); ?>">
                     <input type="hidden" name="redirect_to"
                            value="<?php echo esc_attr( $this->get_page_url_par_shortcode('seliweb_mon_compte') ?: home_url('/') ); ?>">
-                    <input type="hidden" name="testcookie" value="1">
                     <div class="seliweb-field">
                         <label for="sel_login_user"><?php esc_html_e( 'Identifiant ou email', 'seliweb' ); ?></label>
                         <input type="text" id="sel_login_user" name="log" class="seliweb-input" required autocomplete="username">
