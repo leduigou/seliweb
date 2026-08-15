@@ -662,12 +662,33 @@ class Seliweb_Cotisations {
             $params['paged'] = $p;
             return esc_url( admin_url( 'admin.php?' . http_build_query( $params ) ) );
         };
+
+        // Résumé des filtres actifs (pour l'impression)
+        $filtres_actifs = array();
+        if ( $groupe_id ) {
+            foreach ( $groupes as $g ) {
+                if ( (int) $g->id === $groupe_id ) {
+                    $filtres_actifs[] = sprintf( __( 'Groupe : %s', 'seliweb' ), $g->nom );
+                    break;
+                }
+            }
+        }
+        if ( $exercice ) { $filtres_actifs[] = sprintf( __( 'Exercice : %s', 'seliweb' ), $exercice ); }
         ?>
+        <button type="button" class="page-title-action seliweb-no-print" onclick="window.print()"><?php esc_html_e( 'Imprimer', 'seliweb' ); ?></button>
+
+        <div class="seliweb-print-header">
+            <h2><?php esc_html_e( 'Liste des cotisations', 'seliweb' ); ?></h2>
+            <p>
+                <?php echo $filtres_actifs ? esc_html( implode( ' — ', $filtres_actifs ) ) : esc_html__( 'Aucun filtre appliqué', 'seliweb' ); ?>
+            </p>
+        </div>
+
         <?php if ( isset( $_GET['saved'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Cotisation enregistrée.', 'seliweb' ); ?></p></div>
         <?php endif; ?>
 
-        <form method="get" style="display:flex;gap:12px;align-items:center;margin:16px 0;flex-wrap:wrap;">
+        <form method="get" class="seliweb-no-print" style="display:flex;gap:12px;align-items:center;margin:16px 0;flex-wrap:wrap;">
             <input type="hidden" name="page"     value="seliweb_cotisations">
             <input type="hidden" name="orderby"  value="<?php echo esc_attr( $orderby ); ?>">
             <input type="hidden" name="order"    value="<?php echo esc_attr( $order ); ?>">
@@ -716,7 +737,7 @@ class Seliweb_Cotisations {
         ) {
             $debut = $total_membres > 0 ? ( ( $paged - 1 ) * $per_page + 1 ) : 0;
             $fin   = min( $paged * $per_page, $total_membres );
-            echo '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:8px 0 6px;">';
+            echo '<div class="seliweb-no-print" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:8px 0 6px;">';
 
             // ---- Gauche : recherche (haut seulement) + sélecteur par page + compteur ----
             echo '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
@@ -781,9 +802,9 @@ class Seliweb_Cotisations {
                 <th style="width:180px;"><?php esc_html_e( 'Règlement', 'seliweb' ); ?></th>
                 <th style="width:80px;"><?php esc_html_e( 'Paiement', 'seliweb' ); ?></th>
                 <?php if ( $paheko_actif ) : ?>
-                <th style="width:130px;"><?php esc_html_e( 'Sync', 'seliweb' ); ?></th>
+                <th class="seliweb-no-print" style="width:130px;"><?php esc_html_e( 'Sync', 'seliweb' ); ?></th>
                 <?php endif; ?>
-                <th style="width:100px;"><?php esc_html_e( 'Action', 'seliweb' ); ?></th>
+                <th class="seliweb-no-print" style="width:100px;"><?php esc_html_e( 'Action', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
             <?php foreach ( $membres as $m ) :
@@ -817,7 +838,7 @@ class Seliweb_Cotisations {
                     <?php endif; ?>
                 </td>
                 <?php if ( $paheko_actif ) : ?>
-                <td>
+                <td class="seliweb-no-print">
                     <?php if ( $cot ) :
                         if ( $cot->sync_exclu ) : ?>
                             <em style="color:#999;"><?php esc_html_e( 'Aucune action', 'seliweb' ); ?></em>
@@ -843,7 +864,7 @@ class Seliweb_Cotisations {
                     <?php endif; ?>
                 </td>
                 <?php endif; ?>
-                <td>
+                <td class="seliweb-no-print">
                     <?php if ( $cot ) : ?>
                         <a href="<?php echo esc_url( admin_url(
                             'admin.php?page=seliweb_cotisations&sel_action=modifier&id=' . $cot->id

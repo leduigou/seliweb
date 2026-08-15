@@ -311,6 +311,20 @@ if ( $filtre_bloque === 'bloques' ) { $where[] = 'm.bloque = 1'; }
 if ( $filtre_bloque === 'actifs' )  { $where[] = 'm.bloque = 0'; }
 $where_sql = implode(' AND ', $where);
 
+// Résumé des filtres actifs (pour l'impression)
+$filtres_actifs = array();
+if ( $filtre_groupe ) {
+    foreach ( $groupes as $g ) {
+        if ( (int) $g->id === $filtre_groupe ) {
+            $filtres_actifs[] = sprintf( __( 'Groupe : %s', 'seliweb' ), $g->nom );
+            break;
+        }
+    }
+}
+if ( $filtre_ville )  { $filtres_actifs[] = sprintf( __( 'Ville : %s', 'seliweb' ), $filtre_ville ); }
+if ( $filtre_bloque === 'bloques' ) { $filtres_actifs[] = __( 'Comptes bloqués uniquement', 'seliweb' ); }
+if ( $filtre_bloque === 'actifs' )  { $filtres_actifs[] = __( 'Comptes actifs uniquement', 'seliweb' ); }
+
 $joins = "FROM $tm m
         LEFT JOIN $tg g ON g.id=m.groupe_id
         LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id
@@ -338,9 +352,19 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         <?php esc_html_e('Membres','seliweb'); ?>
         <?php if ($action==='list') : ?>
             <a href="<?php echo esc_url(admin_url('admin.php?page=seliweb_membres&action=new')); ?>"
-               class="page-title-action"><?php esc_html_e('+ Ajouter un membre','seliweb'); ?></a>
+               class="page-title-action seliweb-no-print"><?php esc_html_e('+ Ajouter un membre','seliweb'); ?></a>
+            <button type="button" class="page-title-action seliweb-no-print" onclick="window.print()"><?php esc_html_e('Imprimer','seliweb'); ?></button>
         <?php endif; ?>
     </h1>
+
+    <?php if ($action === 'list') : ?>
+    <div class="seliweb-print-header">
+        <h2><?php esc_html_e('Liste des membres','seliweb'); ?></h2>
+        <p>
+            <?php echo $filtres_actifs ? esc_html( implode( ' — ', $filtres_actifs ) ) : esc_html__( 'Aucun filtre appliqué', 'seliweb' ); ?>
+        </p>
+    </div>
+    <?php endif; ?>
 
     <?php if ($creation_ok) : ?>
         <div class="notice notice-success is-dismissible"><p><?php esc_html_e('Membre créé avec succès.','seliweb'); ?></p></div>
@@ -813,7 +837,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
 
     <?php else : ?>
     <!-- ===== FILTRES ===== -->
-    <form method="get" style="margin:16px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <form method="get" class="seliweb-no-print" style="margin:16px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
         <input type="hidden" name="page" value="seliweb_membres">
         <div>
             <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Groupe','seliweb'); ?></label>
@@ -865,7 +889,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
     </form>
 
     <!-- ===== RECHERCHE ===== -->
-    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <div class="seliweb-no-print" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <input type="text" id="mbr-search"
                placeholder="<?php esc_attr_e('Rechercher ID, N°, prénom, nom, email…','seliweb'); ?>"
                style="width:320px;padding:5px 8px;font-size:13px;" autocomplete="off">
@@ -906,8 +930,8 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <th style="width:100px;"><?php esc_html_e('Tél.','seliweb'); ?></th>
             <th style="width:100px;"><?php esc_html_e('Ville','seliweb'); ?></th>
             <th><?php esc_html_e('Groupe','seliweb'); ?></th>
-            <th style="width:140px;"><?php esc_html_e('Actions','seliweb'); ?></th>
-            <th style="width:70px;text-align:center;"><?php esc_html_e('Bloqué','seliweb'); ?></th>
+            <th class="seliweb-no-print" style="width:140px;"><?php esc_html_e('Actions','seliweb'); ?></th>
+            <th class="seliweb-no-print" style="width:70px;text-align:center;"><?php esc_html_e('Bloqué','seliweb'); ?></th>
         </tr></thead>
         <tbody id="mbr-tbody">
         <?php if (empty($membres)) : ?>
@@ -958,7 +982,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                         </select>
                     </form>
                 </td>
-                <td>
+                <td class="seliweb-no-print">
                     <a href="<?php echo esc_url(admin_url('admin.php?page=seliweb_membres&action=edit&id='.$m->id)); ?>">
                         <?php esc_html_e('Modifier','seliweb'); ?>
                     </a>
@@ -967,7 +991,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                         <?php esc_html_e('Profil WP','seliweb'); ?>
                     </a>
                 </td>
-                <td style="text-align:center;">
+                <td class="seliweb-no-print" style="text-align:center;">
                     <input type="checkbox" name="bloque" value="1" form="mbr-form-<?php echo intval($m->id); ?>"
                            <?php checked( ! empty( $m->bloque ) ); ?>
                            onchange="this.form.submit()"
@@ -980,7 +1004,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
     </table>
 
     <?php if ( $total_pages > 1 ) : ?>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;">
+    <div class="seliweb-no-print" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;">
         <?php if ( $paged > 1 ) : ?>
             <a href="<?php echo esc_url( $page_url( $paged - 1 ) ); ?>" class="button">&laquo; <?php esc_html_e('Précédente','seliweb'); ?></a>
         <?php else : ?>

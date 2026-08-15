@@ -279,16 +279,36 @@ $sort_icon = function( $col ) use ( $orderby_key, $order ) {
     if ( $orderby_key !== $col ) return '';
     return ' ' . ( $order === 'ASC' ? '▲' : '▼' );
 };
+
+// Résumé des filtres actifs (pour l'impression)
+$filtres_actifs = array();
+if ( $f_membre ) {
+    foreach ( $membres_sel as $mb ) {
+        if ( (int) $mb->id === $f_membre ) {
+            $filtres_actifs[] = sprintf( __( 'Membre : %s', 'seliweb' ), Seliweb_Transactions::membre_label( $mb ) );
+            break;
+        }
+    }
+}
+if ( $f_date ) { $filtres_actifs[] = sprintf( __( 'Date : %s', 'seliweb' ), $f_date ); }
 ?>
     <h1>
         <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
-        <a href="<?php echo esc_url( add_query_arg( 'action', 'ajouter', $page_url ) ); ?>" class="page-title-action">
+        <a href="<?php echo esc_url( add_query_arg( 'action', 'ajouter', $page_url ) ); ?>" class="page-title-action seliweb-no-print">
             + <?php esc_html_e( 'Ajouter une transaction', 'seliweb' ); ?>
         </a>
+        <button type="button" class="page-title-action seliweb-no-print" onclick="window.print()"><?php esc_html_e( 'Imprimer', 'seliweb' ); ?></button>
     </h1>
 
+    <div class="seliweb-print-header">
+        <h2><?php esc_html_e( 'Liste des transactions', 'seliweb' ); ?></h2>
+        <p>
+            <?php echo $filtres_actifs ? esc_html( implode( ' — ', $filtres_actifs ) ) : esc_html__( 'Aucun filtre appliqué', 'seliweb' ); ?>
+        </p>
+    </div>
+
     <!-- Filtres -->
-    <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>"
+    <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="seliweb-no-print"
           style="margin:16px 0;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
         <input type="hidden" name="page" value="seliweb_transactions">
 
@@ -326,7 +346,7 @@ $sort_icon = function( $col ) use ( $orderby_key, $order ) {
 
     <!-- Pagination haut -->
     <?php if ( $nb_pages > 1 ) : ?>
-    <div style="margin-bottom:12px;">
+    <div class="seliweb-no-print" style="margin-bottom:12px;">
         <?php if ( $page_cur > 1 ) : ?>
             <a href="<?php echo $mk_url( $page_cur - 1 ); ?>" class="button button-small">&laquo; <?php esc_html_e( 'Précédent', 'seliweb' ); ?></a>
         <?php endif; ?>
@@ -362,7 +382,7 @@ $sort_icon = function( $col ) use ( $orderby_key, $order ) {
                         <?php esc_html_e( 'Prénom Nom', 'seliweb' ); echo $sort_icon('nom'); ?>
                     </a>
                 </th>
-                <th style="width:72px;"><?php esc_html_e( 'Action', 'seliweb' ); ?></th>
+                <th class="seliweb-no-print" style="width:72px;"><?php esc_html_e( 'Action', 'seliweb' ); ?></th>
             </tr>
         </thead>
         <tbody>
@@ -391,7 +411,7 @@ $sort_icon = function( $col ) use ( $orderby_key, $order ) {
                 </td>
                 <td style="text-align:center;"><?php echo esc_html( $e->numero_sel ); ?></td>
                 <td><?php echo esc_html( $nom_prenom ); ?></td>
-                <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a></td>
+                <td class="seliweb-no-print"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a></td>
             </tr>
             <?php endforeach; ?>
         <?php endif; ?>
@@ -400,7 +420,7 @@ $sort_icon = function( $col ) use ( $orderby_key, $order ) {
 
     <!-- Pagination bas -->
     <?php if ( $nb_pages > 1 ) : ?>
-    <div style="margin-top:12px;">
+    <div class="seliweb-no-print" style="margin-top:12px;">
         <?php if ( $page_cur > 1 ) : ?>
             <a href="<?php echo $mk_url( $page_cur - 1 ); ?>" class="button">&laquo; <?php esc_html_e( 'Précédent', 'seliweb' ); ?></a>
         <?php endif; ?>

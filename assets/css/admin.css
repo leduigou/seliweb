@@ -90,3 +90,33 @@
 .seliweb-notice-ok {
     border-left-color: #1d9e75;
 }
+
+/* Impression des listes (membres, transactions, cotisations) */
+.seliweb-print-header {
+    display: none;
+}
+@media print {
+    #adminmenumain, #adminmenuback, #wpadminbar, #wpfooter,
+    #screen-meta-links, #screen-meta, .notice, .update-nag,
+    .seliweb-no-print {
+        display: none !important;
+    }
+    #wpcontent, #wpbody-content {
+        margin-left: 0 !important;
+        padding-left: 0 !important;
+    }
+    .seliweb-print-header {
+        display: block !important;
+        margin-bottom: 16px;
+    }
+    .seliweb-print-header h2 {
+        margin: 0 0 6px;
+    }
+    .seliweb-print-header p {
+        margin: 0;
+        color: #333;
+    }
+    .wp-list-table {
+        width: 100% !important;
+    }
+}
