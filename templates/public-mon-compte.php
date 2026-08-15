@@ -441,6 +441,18 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                         <?php printf( esc_html__( 'Photos actuelles : %1$d / %2$d autorisées pour votre groupe.', 'seliweb' ), count( $photos_existantes ), $photos_max ); ?>
                     </p>
 
+                    <p style="margin-top:6px;">
+                        <label>
+                            <input type="radio" name="photo_principale" value="rubrique"
+                                   <?php checked( ! $edit_annonce || $edit_annonce->photo_principale_id === null ); ?>>
+                            <?php esc_html_e('Utiliser l\'image de la rubrique','seliweb'); ?>
+                        </label>
+                        <img id="mc_rubrique_apercu" alt=""
+                             src="<?php echo esc_url( $is_modif && $edit_annonce->rubrique_id ? ( $rubrique_images_mc[ $edit_annonce->rubrique_id ] ?? '' ) : '' ); ?>"
+                             style="max-height:36px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $is_modif && $edit_annonce->rubrique_id && ! empty( $rubrique_images_mc[ $edit_annonce->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
+                    </p>
+                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
+
                     <?php if ( $photos_existantes ) : ?>
                         <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
                             <?php foreach ( $photos_existantes as $p ) : ?>
@@ -472,18 +484,6 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                             </div>
                         <?php endfor; ?>
                     </div>
-
-                    <p style="margin-top:6px;">
-                        <label>
-                            <input type="radio" name="photo_principale" value="rubrique"
-                                   <?php checked( ! $edit_annonce || $edit_annonce->photo_principale_id === null ); ?>>
-                            <?php esc_html_e('Utiliser l\'image de la rubrique','seliweb'); ?>
-                        </label>
-                        <img id="mc_rubrique_apercu" alt=""
-                             src="<?php echo esc_url( $is_modif && $edit_annonce->rubrique_id ? ( $rubrique_images_mc[ $edit_annonce->rubrique_id ] ?? '' ) : '' ); ?>"
-                             style="max-height:36px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $is_modif && $edit_annonce->rubrique_id && ! empty( $rubrique_images_mc[ $edit_annonce->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
-                    </p>
-                    <p class="seliweb-hint"><?php esc_html_e('Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb'); ?></p>
                 </div>
 
                 <div class="seliweb-form-footer">
