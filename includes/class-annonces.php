@@ -388,7 +388,7 @@ class Seliweb_Annonces {
         $cfg  = array();
         foreach ( $rows as $r ) $cfg[ $r->cle ] = $r->valeur;
 
-        $url   = home_url( '/?seliweb_annonce=' . $annonce_id );
+        $url   = add_query_arg( 'seliweb_annonce', $annonce_id, swv_annonces_page_url() );
         $titre = $annonce->titre;
 
         $sujet_tpl = $cfg['mail_annonce_subject'] ?? sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle annonce : {titre}', 'seliweb' ) );
