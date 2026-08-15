@@ -524,6 +524,7 @@ class Seliweb_Parametres {
             'photo_bad_format'   => __( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ),
             'photo_too_large'    => __( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ),
             'photo_upload_error' => __( 'Erreur lors de l\'envoi de l\'image, merci de réessayer.', 'seliweb' ),
+            'photo_requise'      => __( 'Une image est obligatoire pour créer une rubrique.', 'seliweb' ),
         );
         if ( isset( $_GET['error'] ) && isset( $img_errors[ $_GET['error'] ] ) ) :
         ?>
@@ -552,7 +553,7 @@ class Seliweb_Parametres {
                     <td><input type="text" name="nom" class="regular-text" value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Image de la rubrique', 'seliweb' ); ?></th>
+                    <th><?php esc_html_e( 'Image de la rubrique', 'seliweb' ); ?> <?php echo $item ? '' : '*'; ?></th>
                     <td>
                         <?php if ( $item && $item->image ) : ?>
                             <img src="<?php echo esc_url( $item->image ); ?>" style="max-height:100px;display:block;margin-bottom:8px;border-radius:3px;border:1px solid #ddd;">
@@ -561,10 +562,13 @@ class Seliweb_Parametres {
                                 <?php esc_html_e( 'Supprimer l\'image actuelle', 'seliweb' ); ?>
                             </label>
                         <?php endif; ?>
-                        <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp">
+                        <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" <?php echo $item ? '' : 'required'; ?>>
                         <p class="description">
                             <?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum. Affichée sur la page des annonces quand le membre n\'ajoute pas de photo à son annonce (ou choisit de l\'utiliser).', 'seliweb' ); ?>
                         </p>
+                        <?php if ( ! $item ) : ?>
+                            <p class="description"><?php esc_html_e( 'Obligatoire à la création de la rubrique.', 'seliweb' ); ?></p>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </table>
@@ -588,6 +592,13 @@ class Seliweb_Parametres {
         if ( $image_err ) {
             $redir_action = $action === 'add_rubrique' ? 'new' : 'edit';
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=' . $redir_action . '&id=' . intval( $_POST['id'] ?? 0 ) . '&error=' . $image_err ) );
+            exit;
+        }
+
+        // Image obligatoire à la création (pas en modification, pour ne pas
+        // bloquer d'autres retouches sur une rubrique existante sans image).
+        if ( $action === 'add_rubrique' && ! $image_url ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=rubriques&action=new&error=photo_requise' ) );
             exit;
         }
 
