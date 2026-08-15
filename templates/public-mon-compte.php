@@ -50,6 +50,11 @@ $sel_actif     = (bool) $wpdb->get_var( "SELECT valeur FROM $tp_sel WHERE cle='s
 $sel_gid       = (int)  $wpdb->get_var( "SELECT valeur FROM $tp_sel WHERE cle='sel_groupe_id' LIMIT 1" );
 $is_sel_membre = $sel_actif && $sel_gid > 0 && (int) $membre->groupe_id === $sel_gid;
 
+// Onglet Cotisations : uniquement pour les membres d'un groupe soumis à cotisation
+$is_cotisations_membre = class_exists( 'Seliweb_Cotisations' )
+    && Seliweb_Cotisations::cotisations_actif()
+    && Seliweb_Cotisations::groupe_soumis( $membre->groupe_id );
+
 // Monnaies autorisées par le groupe
 $monnaies_dispo = array();
 if ( $membre->groupe_id ) {
@@ -153,7 +158,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
-        <?php if ( class_exists('Seliweb_Cotisations') && Seliweb_Cotisations::cotisations_actif() ) : ?>
+        <?php if ( $is_cotisations_membre ) : ?>
         <a href="<?php echo esc_url( add_query_arg('sel_action','cotisations',$page_url) ); ?>"
            class="seliweb-tab <?php echo $action==='cotisations' ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Cotisations', 'seliweb' ); ?>
@@ -1160,7 +1165,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 
     <?php endif; // is_sel_membre ?>
 
-    <?php elseif ( $action === 'cotisations' ) : ?>
+    <?php elseif ( $action === 'cotisations' && $is_cotisations_membre ) : ?>
 
     <?php
     $tc_cot  = $wpdb->prefix . 'seliweb_cotisations';

@@ -72,6 +72,14 @@ class Seliweb_Cotisations {
         return ! empty( $cfg['cotisations_actif'] );
     }
 
+    // Le groupe indiqué est-il soumis à cotisation (Paramètres > Cotisations > Groupes) ?
+    public static function groupe_soumis( $groupe_id ) {
+        if ( ! $groupe_id ) return false;
+        $cfg         = self::cfg();
+        $groupes_ids = array_map( 'intval', explode( ',', $cfg['cotisations_groupes'] ?? '' ) );
+        return in_array( (int) $groupe_id, $groupes_ids, true );
+    }
+
     // ================================================================
     // HELLOASSO API
     // ================================================================
