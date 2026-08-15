@@ -10,9 +10,18 @@ class Seliweb_Updater {
     const GH_USER        = 'leduigou';
     const GH_REPO_PLUGIN = 'seliweb';
     const GH_REPO_THEME  = 'Seliweb-view';
-    const PLUGIN_FILE    = 'seliweb/seliweb.php';
     const PLUGIN_SLUG    = 'seliweb';
     const THEME_SLUG     = 'seliweb-view';
+
+    // Chemin réel du plugin tel qu'installé sur CE site (dossier/fichier.php).
+    // Ne pas coder en dur "seliweb/seliweb.php" : si le dossier a été
+    // installé sous un autre nom (ex. zip GitHub téléchargé avant la mise
+    // en place de cet updater), WordPress ne reconnaît jamais la mise à
+    // jour détectée comme concernant l'extension réellement active — les
+    // mises à jour ne s'affichent ni ne s'appliquent alors jamais.
+    private static function plugin_file() {
+        return defined( 'SELIWEB_PLUGIN_FILE' ) ? SELIWEB_PLUGIN_FILE : self::PLUGIN_SLUG . '/seliweb.php';
+    }
 
     public static function init() {
         add_filter( 'pre_set_site_transient_update_plugins', array( __CLASS__, 'check_plugin_update' ) );
@@ -81,19 +90,20 @@ class Seliweb_Updater {
         $release = self::get_release( self::GH_REPO_PLUGIN );
         if ( ! $release ) return $transient;
 
+        $plugin_file = self::plugin_file();
         if ( version_compare( $release['version'], SELIWEB_VERSION, '>' ) ) {
-            $transient->response[ self::PLUGIN_FILE ] = (object) array(
+            $transient->response[ $plugin_file ] = (object) array(
                 'slug'        => self::PLUGIN_SLUG,
-                'plugin'      => self::PLUGIN_FILE,
+                'plugin'      => $plugin_file,
                 'new_version' => $release['version'],
                 'url'         => $release['page_url'],
                 'package'     => $release['zip_url'],
             );
         } else {
             // Indiquer explicitement qu'il n'y a pas de mise à jour (évite faux positifs)
-            $transient->no_update[ self::PLUGIN_FILE ] = (object) array(
+            $transient->no_update[ $plugin_file ] = (object) array(
                 'slug'        => self::PLUGIN_SLUG,
-                'plugin'      => self::PLUGIN_FILE,
+                'plugin'      => $plugin_file,
                 'new_version' => $release['version'],
                 'url'         => $release['page_url'],
                 'package'     => '',
@@ -161,13 +171,17 @@ class Seliweb_Updater {
         global $wp_filesystem;
 
         // Plugin
-        if ( ( $hook_extra['plugin'] ?? '' ) === self::PLUGIN_FILE ) {
+        $plugin_file_avant = self::plugin_file();
+        if ( ( $hook_extra['plugin'] ?? '' ) === $plugin_file_avant ) {
             $dest = WP_PLUGIN_DIR . '/' . self::PLUGIN_SLUG;
+            $etait_actif = is_plugin_active( $plugin_file_avant );
             $wp_filesystem->move( $result['destination'], $dest, true );
             $result['destination'] = $dest;
             delete_transient( 'seliweb_gh_release_' . self::GH_REPO_PLUGIN );
-            if ( is_plugin_active( self::PLUGIN_FILE ) ) {
-                activate_plugin( self::PLUGIN_FILE );
+            // Le dossier vient d'être renommé en nom canonique : réactiver
+            // sous le nouveau chemin, pas l'ancien (qui n'existe plus).
+            if ( $etait_actif ) {
+                activate_plugin( self::PLUGIN_SLUG . '/seliweb.php' );
             }
             return $result;
         }

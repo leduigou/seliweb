@@ -15,6 +15,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'SELIWEB_VERSION', '0.8.0' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
+// Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
+// supposer que le dossier s'appelle "seliweb" (cf. Seliweb_Updater).
+define( 'SELIWEB_PLUGIN_FILE', plugin_basename( __FILE__ ) );
 
 require_once SELIWEB_DIR . 'includes/class-database.php';
 require_once SELIWEB_DIR . 'includes/class-parametres.php';
