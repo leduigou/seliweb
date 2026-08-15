@@ -815,6 +815,17 @@ class Seliweb_Annonces {
                             <?php printf( esc_html__( 'Photos actuelles : %1$d / %2$d (selon le groupe du membre).', 'seliweb' ), count( $photos_existantes ), $photos_max_init ); ?>
                         </p>
 
+                        <p style="margin-top:8px;">
+                            <label>
+                                <input type="radio" name="photo_principale" value="rubrique"
+                                       <?php checked( ! $item || $item->photo_principale_id === null ); ?>>
+                                <?php esc_html_e( 'Utiliser l\'image de la rubrique', 'seliweb' ); ?>
+                            </label>
+                            <img id="adm_rubrique_apercu" src="<?php echo esc_url( $item && $item->rubrique_id ? ( $rubrique_images[ $item->rubrique_id ] ?? '' ) : '' ); ?>"
+                                 style="max-height:40px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $item && $item->rubrique_id && ! empty( $rubrique_images[ $item->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
+                        </p>
+                        <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
+
                         <?php if ( $photos_existantes ) : ?>
                             <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
                                 <?php foreach ( $photos_existantes as $p ) : ?>
@@ -846,17 +857,6 @@ class Seliweb_Annonces {
                                 </div>
                             <?php endfor; ?>
                         </div>
-
-                        <p style="margin-top:8px;">
-                            <label>
-                                <input type="radio" name="photo_principale" value="rubrique"
-                                       <?php checked( ! $item || $item->photo_principale_id === null ); ?>>
-                                <?php esc_html_e( 'Utiliser l\'image de la rubrique', 'seliweb' ); ?>
-                            </label>
-                            <img id="adm_rubrique_apercu" src="<?php echo esc_url( $item && $item->rubrique_id ? ( $rubrique_images[ $item->rubrique_id ] ?? '' ) : '' ); ?>"
-                                 style="max-height:40px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $item && $item->rubrique_id && ! empty( $rubrique_images[ $item->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
-                        </p>
-                        <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
             </table>
