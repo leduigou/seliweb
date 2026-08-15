@@ -582,6 +582,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 <td><?php esc_html_e("Organisme",'seliweb'); ?></td>
                 <td><input type="text" name="organisme" value="<?php echo esc_attr($membre_organisme); ?>"></td>
             </tr>
+            <tr>
+                <td><?php esc_html_e('Date de naissance','seliweb'); ?></td>
+                <td><input type="date" name="date_naissance" value="<?php echo esc_attr($membre->date_naissance ?? ''); ?>"></td>
+            </tr>
 
             <!-- Contact -->
             <tr class="sel-prf-sep"><td colspan="2"><?php esc_html_e('Contact','seliweb'); ?></td></tr>

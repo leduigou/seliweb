@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.0';
+    const DB_VERSION     = '2.1';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -293,6 +293,9 @@ class Seliweb_Database {
         self::maybe_add_column( $ta, 'photo_principale_id', "INT UNSIGNED DEFAULT NULL AFTER est_don" );
         self::maybe_migrate_photos_v2();
         self::seed_rubrique_images_defaut();
+
+        // Migration v2.1 : date de naissance du membre (facultative)
+        self::maybe_add_column( $tm, 'date_naissance', "DATE DEFAULT NULL" );
 
         self::insert_defaults();
     }

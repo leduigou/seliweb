@@ -62,6 +62,8 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
     $notif     = isset( $_POST['notif_annonces'] ) ? 1 : 0;
     $new_pwd   = $_POST['new_password'] ?? '';
     $new_pwd2  = $_POST['new_password_confirm'] ?? '';
+    $date_naissance_raw = sanitize_text_field( wp_unslash( $_POST['date_naissance'] ?? '' ) );
+    $date_naissance = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_naissance_raw ) ? $date_naissance_raw : null;
 
     // Récupérer le wp_user_id du membre
     $membre_modif = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tm WHERE id=%d", $mid ) );
@@ -82,6 +84,9 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
         }
         if ( $new_pwd && $new_pwd !== $new_pwd2 ) {
             $erreurs_modif[] = __( 'Les mots de passe ne correspondent pas.', 'seliweb' );
+        }
+        if ( $date_naissance_raw && ! $date_naissance ) {
+            $erreurs_modif[] = __( 'La date de naissance est invalide.', 'seliweb' );
         }
         // Validation numéro SEL
         $te = $wpdb->prefix . 'seliweb_ecritures';
@@ -119,6 +124,7 @@ if ( isset( $_POST['seliweb_nonce_modif'] )
             'show_tel_portable'  => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
             'show_tel_fixe'      => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
             'show_adresse'       => isset( $_POST['show_adresse'] )      ? 1 : 0,
+            'date_naissance'     => $date_naissance,
         ), array( 'id' => $mid ) );
 
         // Numérotation et découvert SEL
@@ -196,6 +202,8 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
     $password  = $_POST['password']         ?? '';
     $password2 = $_POST['password_confirm'] ?? '';
     $groupe_id = ! empty( $_POST['groupe_id_creation'] ) ? intval( $_POST['groupe_id_creation'] ) : null;
+    $date_naissance_raw = sanitize_text_field( wp_unslash( $_POST['date_naissance'] ?? '' ) );
+    $date_naissance = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_naissance_raw ) ? $date_naissance_raw : null;
 
     if ( ! $civilite )  $erreurs_creation[] = __( 'La civilité est obligatoire.', 'seliweb' );
     if ( ! $nom )       $erreurs_creation[] = __( 'Le nom est obligatoire.', 'seliweb' );
@@ -207,6 +215,7 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
     if ( ! $cp )        $erreurs_creation[] = __( 'Le code postal est obligatoire.', 'seliweb' );
     if ( strlen($password) < 6 )     $erreurs_creation[] = __( 'Le mot de passe doit comporter au moins 6 caractères.', 'seliweb' );
     if ( $password !== $password2 )  $erreurs_creation[] = __( 'Les mots de passe ne correspondent pas.', 'seliweb' );
+    if ( $date_naissance_raw && ! $date_naissance ) $erreurs_creation[] = __( 'La date de naissance est invalide.', 'seliweb' );
 
     if ( empty( $erreurs_creation ) ) {
         $user_login = sanitize_user( strtolower( $prenom . '.' . $nom ), true );
@@ -248,6 +257,7 @@ if ( isset( $_POST['seliweb_nonce_creation'] )
                 'show_tel_fixe'     => isset($_POST['show_tel_fixe'])     ? 1 : 0,
                 'show_adresse'      => isset($_POST['show_adresse'])      ? 1 : 0,
                 'numero_sel'        => $numero_sel_new,
+                'date_naissance'    => $date_naissance,
             ), array( 'wp_user_id' => $user_id ) );
             $wpdb->insert( $ti, array(
                 'wp_user_id'   => $user_id,  'civilite'     => $civilite,
@@ -379,6 +389,10 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                     <input type="text" name="organisme" class="regular-text" value="<?php echo esc_attr($_POST['organisme']??''); ?>">
                     <p class="description"><?php esc_html_e("Ne renseigner que si la personne agit au nom d'une personne morale.",'seliweb'); ?></p>
                 </td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e('Date de naissance','seliweb'); ?></th>
+                <td><input type="date" name="date_naissance" value="<?php echo esc_attr($_POST['date_naissance']??''); ?>"></td>
             </tr>
 
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Contact','seliweb'); ?></th></tr>
@@ -567,6 +581,10 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <tr>
                 <th><?php esc_html_e("Organisme",'seliweb'); ?></th>
                 <td><input type="text" name="organisme" class="regular-text" value="<?php echo esc_attr($m_edit->organisme??''); ?>"></td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e('Date de naissance','seliweb'); ?></th>
+                <td><input type="date" name="date_naissance" value="<?php echo esc_attr($m_edit->date_naissance??''); ?>"></td>
             </tr>
 
             <tr><th colspan="2" style="padding:14px 0 4px;color:#1d6a4a;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #ddd;"><?php esc_html_e('Contact','seliweb'); ?></th></tr>

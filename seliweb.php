@@ -868,6 +868,8 @@ class Seliweb {
             $cp          = sanitize_text_field( wp_unslash( $_POST['code_postal']  ?? '' ) );
             $new_pwd  = $_POST['new_password']         ?? '';
             $new_pwd2 = $_POST['new_password_confirm']  ?? '';
+            $date_naissance_raw = sanitize_text_field( wp_unslash( $_POST['date_naissance'] ?? '' ) );
+            $date_naissance = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_naissance_raw ) ? $date_naissance_raw : null;
 
 
             // Mettre à jour l'email WP si valide et non déjà utilisé par un autre
@@ -905,6 +907,7 @@ class Seliweb {
                 'ville'          => $ville,
                 'code_postal'    => $cp,
                 'notif_annonces' => isset( $_POST['notif_annonces'] ) ? 1 : 0,
+                'date_naissance' => $date_naissance,
             );
             $existe_membre = $wpdb->get_var( $wpdb->prepare(
                 "SELECT id FROM $tm WHERE wp_user_id=%d", $wp_user_id
