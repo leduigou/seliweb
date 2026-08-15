@@ -332,10 +332,48 @@ class Seliweb {
             return '<p>' . esc_html__( "Les inscriptions sont actuellement fermées.", 'seliweb' ) . '</p>';
         }
 
-        // Traitement POST du formulaire étendu
-        $erreurs = array();
-        $succes  = false;
-        if ( isset( $_POST['seliweb_inscription_nonce'] )
+        $erreurs      = array();
+        $succes       = false;
+        $attente_code = false;
+        $token        = '';
+        $email_attente = '';
+
+        // --- Étape 2 : vérification du code reçu par email ---
+        if ( isset( $_POST['seliweb_code_nonce'] )
+             && wp_verify_nonce( $_POST['seliweb_code_nonce'], 'seliweb_inscription_code' ) ) {
+
+            $token      = sanitize_text_field( wp_unslash( $_POST['token'] ?? '' ) );
+            $code_saisi = sanitize_text_field( wp_unslash( $_POST['code']  ?? '' ) );
+            $pending    = $token ? get_transient( 'seliweb_inscr_pending_' . $token ) : false;
+
+            if ( ! $pending ) {
+                $erreurs[] = __( 'Session expirée, veuillez recommencer votre inscription.', 'seliweb' );
+            } elseif ( hash_equals( $pending['code'], $code_saisi ) ) {
+                delete_transient( 'seliweb_inscr_pending_' . $token );
+                $result = $this->creer_membre_inscription( $pending['data'] );
+                if ( is_wp_error( $result ) ) {
+                    $erreurs[] = $result->get_error_message();
+                } else {
+                    $succes = true;
+                }
+            } else {
+                $pending['tentatives'] = ( $pending['tentatives'] ?? 0 ) + 1;
+                if ( $pending['tentatives'] >= 5 ) {
+                    delete_transient( 'seliweb_inscr_pending_' . $token );
+                    $erreurs[] = __( 'Trop de tentatives incorrectes. Veuillez recommencer votre inscription.', 'seliweb' );
+                } else {
+                    set_transient( 'seliweb_inscr_pending_' . $token, $pending, 15 * MINUTE_IN_SECONDS );
+                    $attente_code  = true;
+                    $email_attente = $pending['data']['email'];
+                    $erreurs[]     = sprintf(
+                        __( 'Code incorrect (%d tentative(s) restante(s)).', 'seliweb' ),
+                        5 - $pending['tentatives']
+                    );
+                }
+            }
+
+        // --- Étape 1 : formulaire d'inscription initial ---
+        } elseif ( isset( $_POST['seliweb_inscription_nonce'] )
              && wp_verify_nonce( $_POST['seliweb_inscription_nonce'], 'seliweb_inscription' ) ) {
 
             $civilite   = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
@@ -364,101 +402,43 @@ class Seliweb {
             }
 
             if ( empty( $erreurs ) ) {
-                // Créer le login à partir du prénom + nom
-                $user_login = sanitize_user( strtolower( $prenom . '.' . $nom ), true );
-                $user_login = ! username_exists( $user_login ) ? $user_login : $user_login . rand(10,99);
+                $token = wp_generate_password( 24, false, false );
+                $code  = str_pad( (string) random_int( 0, 9999 ), 4, '0', STR_PAD_LEFT );
 
-                $user_id = wp_create_user( $user_login, wp_generate_password(), $email );
-
-                if ( ! is_wp_error( $user_id ) ) {
-                    // Masquer la barre d'outils WP sur le front-end
-                    update_user_meta( $user_id, 'show_admin_bar_front', 'false' );
-
-                    // Mettre à jour le profil WP
-                    wp_update_user( array(
-                        'ID'           => $user_id,
-                        'first_name'   => $prenom,
-                        'last_name'    => $nom,
-                        'display_name' => $prenom . ' ' . $nom,
-                    ) );
-
-                    // Envoyer le mail avec le mot de passe
-                    wp_new_user_notification( $user_id, null, 'user' );
-
-                    // Sauvegarder les données étendues
-                    global $wpdb;
-                    $wpdb->insert(
-                        $wpdb->prefix . 'seliweb_inscriptions',
-                        array(
-                            'wp_user_id'   => $user_id,
-                            'civilite'     => $civilite,
-                            'nom'          => $nom,
-                            'prenom'       => $prenom,
-                            'organisme'    => $organisme,
-                            'tel_portable' => $tel_port,
-                            'tel_fixe'     => $tel_fixe,
-                            'adresse1'     => $adresse1,
-                            'adresse2'     => $adresse2,
-                            'ville'        => $ville,
-                            'code_postal'  => $cp,
-                        )
-                    );
-
-                    // Données complémentaires dans wp_usermeta
-                    update_user_meta( $user_id, 'seliweb_organisme', $organisme );
-
-                    // Créer/rattacher le membre (crée la ligne dans seliweb_membres)
-                    $this->rattacher_groupe_defaut( $user_id );
-
-                    // Préférences de confidentialité et notifications (issues du formulaire d'inscription)
-                    $notif_ins    = isset( $_POST['notif_annonces'] )    ? 1 : 0;
-                    $show_email   = isset( $_POST['show_email'] )        ? 1 : 0;
-                    $show_tel_p   = isset( $_POST['show_tel_portable'] ) ? 1 : 0;
-                    $show_tel_f   = isset( $_POST['show_tel_fixe'] )     ? 1 : 0;
-                    $show_adr     = isset( $_POST['show_adresse'] )      ? 1 : 0;
-
-                    // Mettre à jour les données SEL du membre
-                    $tm = $wpdb->prefix . 'seliweb_membres';
-                    $wpdb->update( $tm, array(
+                set_transient( 'seliweb_inscr_pending_' . $token, array(
+                    'code'       => $code,
+                    'tentatives' => 0,
+                    'data'       => array(
                         'civilite'          => $civilite,
+                        'nom'               => $nom,
+                        'prenom'            => $prenom,
+                        'organisme'         => $organisme,
                         'tel_portable'      => $tel_port,
                         'tel_fixe'          => $tel_fixe,
+                        'email'             => $email,
                         'adresse1'          => $adresse1,
                         'adresse2'          => $adresse2,
                         'ville'             => $ville,
                         'code_postal'       => $cp,
-                        'notif_annonces'    => $notif_ins,
-                        'show_email'        => $show_email,
-                        'show_tel_portable' => $show_tel_p,
-                        'show_tel_fixe'     => $show_tel_f,
-                        'show_adresse'      => $show_adr,
-                    ), array( 'wp_user_id' => $user_id ) );
+                        'notif_annonces'    => isset( $_POST['notif_annonces'] )    ? 1 : 0,
+                        'show_email'        => isset( $_POST['show_email'] )        ? 1 : 0,
+                        'show_tel_portable' => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
+                        'show_tel_fixe'     => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
+                        'show_adresse'      => isset( $_POST['show_adresse'] )      ? 1 : 0,
+                    ),
+                ), 15 * MINUTE_IN_SECONDS );
 
-                    // Sécurité : si la ligne n'existait pas encore (pas de groupe par défaut),
-                    // on insère directement avec toutes les données
-                    if ( $wpdb->rows_affected === 0 ) {
-                        $wpdb->insert( $tm, array(
-                            'wp_user_id'        => $user_id,
-                            'groupe_id'         => null,
-                            'civilite'          => $civilite,
-                            'tel_portable'      => $tel_port,
-                            'tel_fixe'          => $tel_fixe,
-                            'adresse1'          => $adresse1,
-                            'adresse2'          => $adresse2,
-                            'ville'             => $ville,
-                            'code_postal'       => $cp,
-                            'notif_annonces'    => $notif_ins,
-                            'show_email'        => $show_email,
-                            'show_tel_portable' => $show_tel_p,
-                            'show_tel_fixe'     => $show_tel_f,
-                            'show_adresse'      => $show_adr,
-                        ) );
-                    }
+                wp_mail(
+                    $email,
+                    sprintf( __( '[%s] Code de vérification', 'seliweb' ), get_bloginfo( 'name' ) ),
+                    sprintf(
+                        __( "Bonjour,\n\nVoici votre code de vérification pour finaliser votre inscription : %s\n\nCe code est valable 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.", 'seliweb' ),
+                        $code
+                    )
+                );
 
-                    $succes = true;
-                } else {
-                    $erreurs[] = $user_id->get_error_message();
-                }
+                $attente_code  = true;
+                $email_attente = $email;
             }
         }
 
@@ -475,6 +455,38 @@ class Seliweb {
                             <?php esc_html_e( 'Se connecter', 'seliweb' ); ?>
                         </a>
                     <?php endif; ?>
+                </div>
+
+            <?php elseif ( $attente_code ) : ?>
+
+                <?php if ( ! empty( $erreurs ) ) : ?>
+                    <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:12px 16px;border-radius:4px;margin-bottom:20px;">
+                        <ul style="margin:0;padding-left:18px;">
+                            <?php foreach ( $erreurs as $e ) : ?>
+                                <li style="color:#b32d2e;"><?php echo esc_html($e); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
+                <div class="seliweb-login-box" style="max-width:420px;background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:28px;">
+                    <h2 style="font-size:1.15rem;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #e0e0e0;color:var(--color-primary,#1d6a4a);">
+                        <?php esc_html_e( 'Vérification de votre email', 'seliweb' ); ?>
+                    </h2>
+                    <p style="font-size:.9rem;color:#555;margin-bottom:16px;">
+                        <?php printf(
+                            esc_html__( 'Un code à 4 chiffres a été envoyé à %s. Saisissez-le ci-dessous pour finaliser votre inscription.', 'seliweb' ),
+                            '<strong>' . esc_html( $email_attente ) . '</strong>'
+                        ); ?>
+                    </p>
+                    <form method="post">
+                        <?php wp_nonce_field( 'seliweb_inscription_code', 'seliweb_code_nonce' ); ?>
+                        <input type="hidden" name="token" value="<?php echo esc_attr( $token ); ?>">
+                        <input type="text" name="code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
+                               autocomplete="one-time-code" required autofocus
+                               style="width:100%;font-size:1.4rem;letter-spacing:.3em;text-align:center;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:14px;box-sizing:border-box;">
+                        <button type="submit" class="seliweb-btn" style="width:100%;"><?php esc_html_e( 'Valider', 'seliweb' ); ?></button>
+                    </form>
                 </div>
 
             <?php else : ?>
@@ -641,6 +653,90 @@ class Seliweb {
         return ob_get_clean();
     }
 
+    // ----------------------------------------------------------------
+    // Création effective du compte membre, une fois le code email
+    // vérifié — $data contient les champs déjà validés/sanitizés à
+    // l'étape 1 de shortcode_inscription(). Retourne le user_id créé,
+    // ou un WP_Error.
+    // ----------------------------------------------------------------
+    private function creer_membre_inscription( $data ) {
+        // Créer le login à partir du prénom + nom
+        $user_login = sanitize_user( strtolower( $data['prenom'] . '.' . $data['nom'] ), true );
+        $user_login = ! username_exists( $user_login ) ? $user_login : $user_login . rand(10,99);
+
+        $user_id = wp_create_user( $user_login, wp_generate_password(), $data['email'] );
+        if ( is_wp_error( $user_id ) ) {
+            return $user_id;
+        }
+
+        // Masquer la barre d'outils WP sur le front-end
+        update_user_meta( $user_id, 'show_admin_bar_front', 'false' );
+
+        // Mettre à jour le profil WP
+        wp_update_user( array(
+            'ID'           => $user_id,
+            'first_name'   => $data['prenom'],
+            'last_name'    => $data['nom'],
+            'display_name' => $data['prenom'] . ' ' . $data['nom'],
+        ) );
+
+        // Envoyer le mail avec le mot de passe
+        wp_new_user_notification( $user_id, null, 'user' );
+
+        // Sauvegarder les données étendues
+        global $wpdb;
+        $wpdb->insert(
+            $wpdb->prefix . 'seliweb_inscriptions',
+            array(
+                'wp_user_id'   => $user_id,
+                'civilite'     => $data['civilite'],
+                'nom'          => $data['nom'],
+                'prenom'       => $data['prenom'],
+                'organisme'    => $data['organisme'],
+                'tel_portable' => $data['tel_portable'],
+                'tel_fixe'     => $data['tel_fixe'],
+                'adresse1'     => $data['adresse1'],
+                'adresse2'     => $data['adresse2'],
+                'ville'        => $data['ville'],
+                'code_postal'  => $data['code_postal'],
+            )
+        );
+
+        // Données complémentaires dans wp_usermeta
+        update_user_meta( $user_id, 'seliweb_organisme', $data['organisme'] );
+
+        // Créer/rattacher le membre (crée la ligne dans seliweb_membres)
+        $this->rattacher_groupe_defaut( $user_id );
+
+        // Mettre à jour les données SEL du membre
+        $tm = $wpdb->prefix . 'seliweb_membres';
+        $membre_data = array(
+            'civilite'          => $data['civilite'],
+            'tel_portable'      => $data['tel_portable'],
+            'tel_fixe'          => $data['tel_fixe'],
+            'adresse1'          => $data['adresse1'],
+            'adresse2'          => $data['adresse2'],
+            'ville'             => $data['ville'],
+            'code_postal'       => $data['code_postal'],
+            'notif_annonces'    => $data['notif_annonces'],
+            'show_email'        => $data['show_email'],
+            'show_tel_portable' => $data['show_tel_portable'],
+            'show_tel_fixe'     => $data['show_tel_fixe'],
+            'show_adresse'      => $data['show_adresse'],
+        );
+        $wpdb->update( $tm, $membre_data, array( 'wp_user_id' => $user_id ) );
+
+        // Sécurité : si la ligne n'existait pas encore (pas de groupe par défaut),
+        // on insère directement avec toutes les données
+        if ( $wpdb->rows_affected === 0 ) {
+            $wpdb->insert( $tm, array_merge( $membre_data, array(
+                'wp_user_id' => $user_id,
+                'groupe_id'  => null,
+            ) ) );
+        }
+
+        return $user_id;
+    }
 
     // ----------------------------------------------------------------
     // Shortcode [seliweb_annonces] — supprimé, affichage délégué au thème
