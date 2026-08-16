@@ -116,7 +116,7 @@ class Seliweb {
             add_submenu_page( 'seliweb', __('Transactions','seliweb'), __('Transactions','seliweb'), 'manage_options', 'seliweb_transactions', array('Seliweb_Transactions','display') );
         }
         if ( Seliweb_Cotisations::cotisations_actif() ) {
-            add_submenu_page( 'seliweb', __('Cotisations','seliweb'), __('Cotisations','seliweb'), 'manage_options', 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
+            add_submenu_page( 'seliweb', __('Trésorerie','seliweb'), __('Trésorerie','seliweb'), 'manage_options', 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
         }
     }
 

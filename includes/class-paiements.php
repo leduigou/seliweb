@@ -10,6 +10,7 @@ class Seliweb_Paiements {
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
         add_action( 'init', array( __CLASS__, 'handle_webhook' ) );
         add_action( 'init', array( __CLASS__, 'handle_rattachement_post' ) );
+        add_action( 'init', array( __CLASS__, 'handle_sync_offres_post' ) );
     }
 
     public static function render_tab() {
@@ -61,6 +62,8 @@ class Seliweb_Paiements {
             'groupe_arrivee_id'     => ! empty( $_POST['groupe_arrivee_id'] ) ? intval( $_POST['groupe_arrivee_id'] ) : null,
             'enregistre_cotisation' => $enregistre_cotisation,
             'exercice'              => $enregistre_cotisation ? $exercice : null,
+            'compte_paheko_banque'  => ! $enregistre_cotisation ? sanitize_text_field( wp_unslash( $_POST['compte_paheko_banque']  ?? '' ) ) ?: null : null,
+            'compte_paheko_recette' => ! $enregistre_cotisation ? sanitize_text_field( wp_unslash( $_POST['compte_paheko_recette'] ?? '' ) ) ?: null : null,
             'helloasso_url'         => esc_url_raw( wp_unslash( $_POST['helloasso_url'] ?? '' ) ),
         );
 
@@ -170,6 +173,19 @@ class Seliweb_Paiements {
         $tous_exercices = $wpdb->get_results( "SELECT libelle FROM $te ORDER BY date_debut DESC, id DESC" );
         $is_edit       = (bool) $item;
 
+        $comptes_banque = get_transient( 'seliweb_paheko_comptes_5' );
+        if ( false === $comptes_banque && class_exists( 'Seliweb_Cotisations' ) ) {
+            $comptes_banque = Seliweb_Cotisations::paheko_get_comptes( '5' );
+            set_transient( 'seliweb_paheko_comptes_5', $comptes_banque, 600 );
+        }
+        $comptes_recette = get_transient( 'seliweb_paheko_comptes_7' );
+        if ( false === $comptes_recette && class_exists( 'Seliweb_Cotisations' ) ) {
+            $comptes_recette = Seliweb_Cotisations::paheko_get_comptes( '7' );
+            set_transient( 'seliweb_paheko_comptes_7', $comptes_recette, 600 );
+        }
+        $comptes_banque  = $comptes_banque  ?: array();
+        $comptes_recette = $comptes_recette ?: array();
+
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'exercice_requis' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "L'exercice est obligatoire lorsque le paiement enregistre une cotisation.", 'seliweb' ) . '</p></div>';
         }
@@ -268,6 +284,44 @@ class Seliweb_Paiements {
                     </td>
                 </tr>
 
+                <tr id="row_compte_banque" style="<?php echo ( $item && $item->enregistre_cotisation ) ? 'display:none;' : ''; ?>">
+                    <th><label for="compte_paheko_banque"><?php esc_html_e( 'Compte banque (Paheko)', 'seliweb' ); ?></label></th>
+                    <td>
+                        <?php if ( $comptes_banque ) : ?>
+                            <select id="compte_paheko_banque" name="compte_paheko_banque">
+                                <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
+                                <?php foreach ( $comptes_banque as $c ) : ?>
+                                    <option value="<?php echo esc_attr( $c['code'] ); ?>" <?php selected( $item ? $item->compte_paheko_banque : '', $c['code'] ); ?>>
+                                        <?php echo esc_html( $c['code'] . ' — ' . $c['label'] ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Compte sur lequel HelloAsso reverse ce paiement (ex. banque, ou compte "à recevoir" si versement différé).', 'seliweb' ); ?></p>
+                        <?php else : ?>
+                            <p class="description"><?php esc_html_e( 'Aucun compte trouvé — vérifiez la connexion Paheko dans Paramètres > API.', 'seliweb' ); ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+
+                <tr id="row_compte_recette" style="<?php echo ( $item && $item->enregistre_cotisation ) ? 'display:none;' : ''; ?>">
+                    <th><label for="compte_paheko_recette"><?php esc_html_e( 'Compte de recette (Paheko)', 'seliweb' ); ?></label></th>
+                    <td>
+                        <?php if ( $comptes_recette ) : ?>
+                            <select id="compte_paheko_recette" name="compte_paheko_recette">
+                                <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
+                                <?php foreach ( $comptes_recette as $c ) : ?>
+                                    <option value="<?php echo esc_attr( $c['code'] ); ?>" <?php selected( $item ? $item->compte_paheko_recette : '', $c['code'] ); ?>>
+                                        <?php echo esc_html( $c['code'] . ' — ' . $c['label'] ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Compte de produit crédité lors de la synchronisation comptable de ce paiement.', 'seliweb' ); ?></p>
+                        <?php else : ?>
+                            <p class="description"><?php esc_html_e( 'Aucun compte trouvé — vérifiez la connexion Paheko dans Paramètres > API.', 'seliweb' ); ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+
                 <tr>
                     <th><label for="helloasso_url"><?php esc_html_e( 'Lien vers le formulaire HelloAsso', 'seliweb' ); ?></label></th>
                     <td>
@@ -288,9 +342,15 @@ class Seliweb_Paiements {
         <script>
         (function(){
             var cb  = document.getElementById('enregistre_cotisation');
-            var row = document.getElementById('row_exercice');
-            if ( cb && row ) {
-                cb.addEventListener('change', function(){ row.style.display = this.checked ? '' : 'none'; });
+            var rowExercice = document.getElementById('row_exercice');
+            var rowBanque   = document.getElementById('row_compte_banque');
+            var rowRecette  = document.getElementById('row_compte_recette');
+            if ( cb ) {
+                cb.addEventListener('change', function(){
+                    if ( rowExercice ) rowExercice.style.display = this.checked ? '' : 'none';
+                    if ( rowBanque )   rowBanque.style.display   = this.checked ? 'none' : '';
+                    if ( rowRecette )  rowRecette.style.display  = this.checked ? 'none' : '';
+                });
             }
         })();
         </script>
@@ -470,7 +530,7 @@ class Seliweb_Paiements {
     // ================================================================
     // ADMIN — vue "Paiements à rattacher" (page Cotisations, view=a_rattacher)
     // ================================================================
-    public static function render_view_a_rattacher() {
+    public static function render_view_a_rattacher( $section = 'cotisations' ) {
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements';
         $to = $wpdb->prefix . 'seliweb_paiements_offres';
@@ -528,6 +588,7 @@ class Seliweb_Paiements {
                             <?php wp_nonce_field( 'seliweb_rattacher_paiement', 'seliweb_nonce' ); ?>
                             <input type="hidden" name="seliweb_action" value="rattacher_paiement">
                             <input type="hidden" name="paiement_id" value="<?php echo intval( $p->id ); ?>">
+                            <input type="hidden" name="section" value="<?php echo esc_attr( $section ); ?>">
                             <select name="wp_user_id" required style="max-width:150px;">
                                 <option value=""><?php esc_html_e( '— Membre —', 'seliweb' ); ?></option>
                                 <?php foreach ( $membres as $m ) : ?>
@@ -592,7 +653,243 @@ class Seliweb_Paiements {
             'statut'        => 'rattache',
         ), array( 'id' => $paiement_id ) );
 
-        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_cotisations&view=a_rattacher&rattache=1' ) );
+        $section = in_array( $_POST['section'] ?? '', array( 'cotisations', 'offres' ), true ) ? $_POST['section'] : 'cotisations';
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_cotisations&section=' . $section . '&view=a_rattacher&rattache=1' ) );
         exit;
+    }
+
+    // ================================================================
+    // ADMIN — vue "Offres > Synchronisation Paheko"
+    // ================================================================
+    public static function render_view_offres_sync() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+
+        if ( isset( $_GET['synced'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>'
+                . sprintf( esc_html__( '%d paiement(s) synchronisé(s) avec Paheko.', 'seliweb' ), intval( $_GET['synced'] ) )
+                . '</p></div>';
+        }
+        if ( isset( $_GET['sync_errors'] ) ) {
+            echo '<div class="notice notice-warning is-dismissible"><p>'
+                . esc_html__( 'Certaines synchronisations ont échoué (membre introuvable ou non créé dans Paheko).', 'seliweb' )
+                . '</p></div>';
+        }
+
+        $paiements = $wpdb->get_results(
+            "SELECT p.*, o.nom AS offre_nom, o.compte_paheko_banque, o.compte_paheko_recette, u.display_name
+             FROM $tp p
+             INNER JOIN $to o ON o.id = p.offre_id
+             LEFT JOIN  {$wpdb->users} u ON u.ID = p.wp_user_id
+             WHERE p.statut = 'rattache'
+               AND o.enregistre_cotisation = 0
+               AND p.paheko_synced = 0
+             ORDER BY p.date_paiement DESC, p.id DESC"
+        );
+
+        if ( ! $paiements ) {
+            echo '<p>' . esc_html__( 'Aucun paiement en attente de synchronisation.', 'seliweb' ) . '</p>';
+            return;
+        }
+
+        $paheko_years = get_transient( 'seliweb_paheko_years' );
+        if ( false === $paheko_years && class_exists( 'Seliweb_Cotisations' ) ) {
+            $paheko_years = Seliweb_Cotisations::paheko_get_years();
+            set_transient( 'seliweb_paheko_years', $paheko_years, 600 );
+        }
+        $paheko_years = $paheko_years ?: array();
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_cotisations&section=offres&view=sync_offres' ) ); ?>">
+            <?php wp_nonce_field( 'seliweb_sync_offres', 'seliweb_sync_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="sync_offres">
+
+            <table class="wp-list-table widefat fixed striped">
+                <thead><tr>
+                    <th style="width:30px;"><input type="checkbox" id="check_all_offres" title="<?php esc_attr_e( 'Tout sélectionner', 'seliweb' ); ?>"></th>
+                    <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
+                    <th><?php esc_html_e( 'Offre', 'seliweb' ); ?></th>
+                    <th style="width:80px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
+                    <th style="width:80px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+                    <th style="width:140px;"><?php esc_html_e( 'Comptes (banque / recette)', 'seliweb' ); ?></th>
+                    <th style="width:160px;"><?php esc_html_e( 'Exercice Paheko', 'seliweb' ); ?></th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ( $paiements as $p ) : ?>
+                    <tr>
+                        <td><input type="checkbox" name="paiement_ids[]" value="<?php echo intval( $p->id ); ?>"></td>
+                        <td><?php echo esc_html( $p->display_name ?: $p->payer_nom ); ?></td>
+                        <td><?php echo esc_html( $p->offre_nom ); ?></td>
+                        <td><?php echo esc_html( number_format( $p->montant / 100, 2, ',', ' ' ) ); ?> €</td>
+                        <td><?php echo esc_html( date_i18n( 'd/m/Y', strtotime( $p->date_paiement ) ) ); ?></td>
+                        <td style="color:#888;">
+                            <?php if ( $p->compte_paheko_banque && $p->compte_paheko_recette ) : ?>
+                                <?php echo esc_html( $p->compte_paheko_banque . ' / ' . $p->compte_paheko_recette ); ?>
+                            <?php else : ?>
+                                <em style="color:#b32d2e;"><?php esc_html_e( 'Non configurés sur l\'offre', 'seliweb' ); ?></em>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ( $paheko_years ) : ?>
+                                <select name="paheko_year[<?php echo intval( $p->id ); ?>]" style="max-width:150px;">
+                                    <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
+                                    <?php foreach ( $paheko_years as $yr ) : ?>
+                                        <option value="<?php echo intval( $yr['id'] ); ?>"><?php echo esc_html( $yr['label'] ); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else : ?>
+                                <em class="description"><?php esc_html_e( 'Non disponible', 'seliweb' ); ?></em>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <p style="margin-top:16px;">
+                <?php submit_button( __( 'Synchroniser la sélection', 'seliweb' ), 'primary', 'submit', false ); ?>
+            </p>
+        </form>
+
+        <script>
+        (function(){
+            var all = document.getElementById('check_all_offres');
+            if ( all ) {
+                all.addEventListener('change', function(){
+                    document.querySelectorAll('input[name="paiement_ids[]"]').forEach(function(cb){ cb.checked = this.checked; }, this);
+                });
+            }
+        })();
+        </script>
+        <?php
+    }
+
+    public static function handle_sync_offres_post() {
+        if ( ! is_admin() ) return;
+        if ( ! isset( $_POST['seliweb_action'] ) || $_POST['seliweb_action'] !== 'sync_offres' ) return;
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_cotisations' ) return;
+        if ( ! wp_verify_nonce( $_POST['seliweb_sync_nonce'] ?? '', 'seliweb_sync_offres' ) ) return;
+        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! class_exists( 'Seliweb_Cotisations' ) ) return;
+
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+
+        $ids   = array_map( 'intval', (array) ( $_POST['paiement_ids'] ?? array() ) );
+        $years = $_POST['paheko_year'] ?? array();
+
+        $ok = 0; $errors = 0;
+
+        foreach ( $ids as $paiement_id ) {
+            $p = $wpdb->get_row( $wpdb->prepare(
+                "SELECT p.*, o.compte_paheko_banque, o.compte_paheko_recette
+                 FROM $tp p INNER JOIN $to o ON o.id = p.offre_id
+                 WHERE p.id=%d AND p.statut='rattache' AND p.paheko_synced=0",
+                $paiement_id
+            ) );
+            $id_year = intval( $years[ $paiement_id ] ?? 0 );
+            if ( ! $p || ! $id_year || ! $p->compte_paheko_banque || ! $p->compte_paheko_recette ) {
+                $errors++;
+                continue;
+            }
+
+            $email = $p->payer_email;
+            $nom   = $p->payer_nom;
+            if ( ! $email && $p->wp_user_id ) {
+                $user  = get_userdata( $p->wp_user_id );
+                $email = $user ? $user->user_email : '';
+                $nom   = $user ? $user->display_name : $nom;
+            }
+
+            $paheko_user = $email ? Seliweb_Cotisations::paheko_find_user_by_email( $email ) : null;
+            $paheko_user_id = $paheko_user ? $paheko_user['id'] : ( $nom ? Seliweb_Cotisations::paheko_create_user( $nom, $email ) : null );
+            if ( ! $paheko_user_id ) { $errors++; continue; }
+
+            $date_fr = date( 'd/m/Y', strtotime( $p->date_paiement ) );
+            $label   = sanitize_text_field( $nom );
+            $result  = Seliweb_Cotisations::paheko_create_transaction(
+                $id_year, $label, $date_fr, round( $p->montant / 100, 2 ),
+                $p->compte_paheko_banque, $paheko_user_id, $p->compte_paheko_recette
+            );
+
+            if ( $result ) {
+                $wpdb->update( $tp, array( 'paheko_synced' => 1, 'paheko_id_year' => $id_year ), array( 'id' => $paiement_id ) );
+                $ok++;
+            } else {
+                $errors++;
+            }
+        }
+
+        $redirect = admin_url( 'admin.php?page=seliweb_cotisations&section=offres&view=sync_offres'
+            . ( $ok     ? '&synced='      . $ok     : '' )
+            . ( $errors ? '&sync_errors=' . $errors  : '' ) );
+        wp_safe_redirect( $redirect );
+        exit;
+    }
+
+    // ================================================================
+    // ADMIN — vue "Offres > Paiements" (paiements déjà rattachés, hors cotisation)
+    // ================================================================
+    public static function render_view_offres_liste() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
+
+        $paiements = $wpdb->get_results(
+            "SELECT p.*, o.nom AS offre_nom, u.display_name,
+                    gd.nom AS depart_nom, ga.nom AS arrivee_nom
+             FROM $tp p
+             INNER JOIN $to o ON o.id = p.offre_id
+             LEFT JOIN  {$wpdb->users} u ON u.ID = p.wp_user_id
+             LEFT JOIN  $tg gd ON gd.id = o.groupe_depart_id
+             LEFT JOIN  $tg ga ON ga.id = o.groupe_arrivee_id
+             WHERE p.statut = 'rattache'
+               AND o.enregistre_cotisation = 0
+             ORDER BY p.date_paiement DESC, p.id DESC"
+        );
+
+        if ( empty( $paiements ) ) {
+            echo '<p class="description">' . esc_html__( 'Aucun paiement enregistré pour le moment.', 'seliweb' ) . '</p>';
+            return;
+        }
+        ?>
+        <table class="wp-list-table widefat fixed striped">
+            <thead><tr>
+                <th style="width:90px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Offre', 'seliweb' ); ?></th>
+                <th style="width:90px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Transition de groupe', 'seliweb' ); ?></th>
+                <th style="width:110px;"><?php esc_html_e( 'Sync Paheko', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ( $paiements as $p ) :
+                $transition = '—';
+                if ( $p->depart_nom && $p->arrivee_nom ) {
+                    $transition = esc_html( $p->depart_nom ) . ' &rarr; ' . esc_html( $p->arrivee_nom );
+                } elseif ( $p->arrivee_nom ) {
+                    $transition = '&rarr; ' . esc_html( $p->arrivee_nom );
+                }
+            ?>
+                <tr>
+                    <td><?php echo esc_html( $p->date_paiement ); ?></td>
+                    <td><?php echo esc_html( $p->display_name ?: $p->payer_nom ); ?></td>
+                    <td><?php echo esc_html( $p->offre_nom ); ?></td>
+                    <td><?php echo esc_html( number_format( $p->montant / 100, 2, ',', ' ' ) ); ?> €</td>
+                    <td><?php echo $transition; ?></td>
+                    <td>
+                        <?php if ( ! empty( $p->paheko_synced ) ) : ?>
+                            <span style="color:green;font-weight:600;"><?php esc_html_e( 'Synchronisé', 'seliweb' ); ?></span>
+                        <?php else : ?>
+                            <span style="color:#dba617;"><?php esc_html_e( 'En attente', 'seliweb' ); ?></span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
     }
 }

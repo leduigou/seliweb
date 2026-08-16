@@ -197,6 +197,18 @@ class Seliweb_Cotisations {
         return $result['results'] ?? array();
     }
 
+    // Comptes du plan comptable Paheko d'une classe donnée (ex. '5' = comptes
+    // financiers/banque, '7' = comptes de produits/recette). Utilisé pour les
+    // sélecteurs "compte banque" / "compte de recette" des offres (Paiements).
+    public static function paheko_get_comptes( $classe ) {
+        $classe = preg_replace( '/[^0-9]/', '', (string) $classe );
+        if ( ! $classe ) return array();
+        $result = self::paheko_request( 'POST', 'sql', array(
+            'sql' => "SELECT id, code, label FROM acc_accounts WHERE code LIKE '" . esc_sql( $classe ) . "%' ORDER BY code",
+        ) );
+        return $result['results'] ?? array();
+    }
+
     private static function paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $amount_euros ) {
         return self::paheko_request( 'POST', 'user/' . intval( $paheko_user_id ) . '/subscribe', array(
             'id_service' => intval( $id_service ),
@@ -207,7 +219,7 @@ class Seliweb_Cotisations {
         ) );
     }
 
-    private static function paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit = '512', $paheko_user_id = null ) {
+    public static function paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit = '512', $paheko_user_id = null, $compte_credit = '756' ) {
         $body = array(
             'id_year' => intval( $id_year ),
             'type'    => 'revenue',
@@ -215,7 +227,7 @@ class Seliweb_Cotisations {
             'date'    => $date_fr,
             'amount'  => $amount_euros,
             'debit'   => $compte_debit,
-            'credit'  => '756',
+            'credit'  => $compte_credit,
         );
         if ( $paheko_user_id ) {
             $body['linked_users'] = json_encode( [ intval( $paheko_user_id ) ] );
@@ -461,27 +473,74 @@ class Seliweb_Cotisations {
             return;
         }
 
-        $cfg  = self::cfg();
-        $view = sanitize_key( $_GET['view'] ?? 'liste' );
+        $cfg     = self::cfg();
+        $section = sanitize_key( $_GET['section'] ?? 'cotisations' );
+        $view    = sanitize_key( $_GET['view'] ?? '' );
 
         $paheko_actif = ! empty( $cfg['cotisations_paheko_actif'] )
                         && ! empty( $cfg['paheko_url'] )
                         && ! empty( $cfg['paheko_identifiant'] );
         $ha_actif     = ! empty( $cfg['cotisations_helloasso_actif'] );
 
-        echo '<div class="wrap"><h1>' . esc_html__( 'Cotisations', 'seliweb' ) . '</h1>';
+        if ( ! $ha_actif ) $section = 'cotisations'; // pas d'onglet Offres sans HelloAsso
+
+        echo '<div class="wrap"><h1>' . esc_html__( 'Trésorerie', 'seliweb' ) . '</h1>';
+
+        $base = admin_url( 'admin.php?page=seliweb_cotisations' );
+
+        if ( $ha_actif ) {
+            echo '<h2 class="nav-tab-wrapper" style="margin-bottom:0;">';
+            echo '<a href="' . esc_url( $base . '&section=cotisations' ) . '" class="nav-tab ' . ( $section === 'cotisations' ? 'nav-tab-active' : '' ) . '">'
+                . esc_html__( 'Cotisations', 'seliweb' ) . '</a>';
+            echo '<a href="' . esc_url( $base . '&section=offres' ) . '" class="nav-tab ' . ( $section === 'offres' ? 'nav-tab-active' : '' ) . '">'
+                . esc_html__( 'Offres', 'seliweb' ) . '</a>';
+            echo '</h2>';
+        }
+
+        // ============================================================
+        // SECTION OFFRES
+        // ============================================================
+        if ( $section === 'offres' ) {
+            $view = $view ?: 'liste_offres';
+            echo '<nav class="nav-tab-wrapper" style="margin:12px 0 20px;">';
+            echo '<a href="' . esc_url( $base . '&section=offres&view=liste_offres' ) . '" class="nav-tab ' . ( $view === 'liste_offres' ? 'nav-tab-active' : '' ) . '">'
+                . esc_html__( 'Paiements', 'seliweb' ) . '</a>';
+            echo '<a href="' . esc_url( $base . '&section=offres&view=a_rattacher' ) . '" class="nav-tab ' . ( $view === 'a_rattacher' ? 'nav-tab-active' : '' ) . '">'
+                . esc_html__( 'Paiements à rattacher', 'seliweb' ) . '</a>';
+            if ( $paheko_actif ) {
+                echo '<a href="' . esc_url( $base . '&section=offres&view=sync_offres' ) . '" class="nav-tab ' . ( $view === 'sync_offres' ? 'nav-tab-active' : '' ) . '">'
+                    . esc_html__( 'Synchronisation Paheko', 'seliweb' ) . '</a>';
+            }
+            echo '</nav>';
+
+            if ( class_exists( 'Seliweb_Paiements' ) ) {
+                if ( $view === 'a_rattacher' ) {
+                    Seliweb_Paiements::render_view_a_rattacher( 'offres' );
+                } elseif ( $view === 'sync_offres' && $paheko_actif ) {
+                    Seliweb_Paiements::render_view_offres_sync();
+                } else {
+                    Seliweb_Paiements::render_view_offres_liste();
+                }
+            }
+            echo '</div>';
+            return;
+        }
+
+        // ============================================================
+        // SECTION COTISATIONS (défaut)
+        // ============================================================
+        $view = $view ?: 'liste';
 
         if ( $paheko_actif || $ha_actif ) {
-            $base = admin_url( 'admin.php?page=seliweb_cotisations' );
-            echo '<nav class="nav-tab-wrapper" style="margin-bottom:20px;">';
-            echo '<a href="' . esc_url( $base . '&view=liste' ) . '" class="nav-tab ' . ( $view === 'liste' ? 'nav-tab-active' : '' ) . '">'
+            echo '<nav class="nav-tab-wrapper" style="margin:12px 0 20px;">';
+            echo '<a href="' . esc_url( $base . '&section=cotisations&view=liste' ) . '" class="nav-tab ' . ( $view === 'liste' ? 'nav-tab-active' : '' ) . '">'
                 . esc_html__( 'Cotisations', 'seliweb' ) . '</a>';
             if ( $paheko_actif ) {
-                echo '<a href="' . esc_url( $base . '&view=sync' ) . '" class="nav-tab ' . ( $view === 'sync' ? 'nav-tab-active' : '' ) . '">'
+                echo '<a href="' . esc_url( $base . '&section=cotisations&view=sync' ) . '" class="nav-tab ' . ( $view === 'sync' ? 'nav-tab-active' : '' ) . '">'
                     . esc_html__( 'Synchronisation Paheko', 'seliweb' ) . '</a>';
             }
             if ( $ha_actif ) {
-                echo '<a href="' . esc_url( $base . '&view=a_rattacher' ) . '" class="nav-tab ' . ( $view === 'a_rattacher' ? 'nav-tab-active' : '' ) . '">'
+                echo '<a href="' . esc_url( $base . '&section=cotisations&view=a_rattacher' ) . '" class="nav-tab ' . ( $view === 'a_rattacher' ? 'nav-tab-active' : '' ) . '">'
                     . esc_html__( 'Paiements à rattacher', 'seliweb' ) . '</a>';
             }
             echo '</nav>';
@@ -494,7 +553,7 @@ class Seliweb_Cotisations {
         }
 
         if ( $view === 'a_rattacher' && $ha_actif ) {
-            if ( class_exists( 'Seliweb_Paiements' ) ) Seliweb_Paiements::render_view_a_rattacher();
+            if ( class_exists( 'Seliweb_Paiements' ) ) Seliweb_Paiements::render_view_a_rattacher( 'cotisations' );
             echo '</div>';
             return;
         }
@@ -1308,6 +1367,14 @@ class Seliweb_Cotisations {
                 $ok++;
             } else {
                 $errors++;
+            }
+
+            // Mémorise la dernière sélection comme nouveau défaut de
+            // présélection (corrige un bug préexistant : ces clés n'étaient
+            // jusqu'ici jamais écrites, la présélection restait donc
+            // toujours vide malgré le code de lecture déjà en place).
+            if ( $id_year && $id_fee ) {
+                self::cfg_save( array( 'paheko_id_year' => $id_year, 'paheko_id_fee' => $id_fee ) );
             }
         }
 

@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.5';
+    const DB_VERSION     = '2.6';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -349,6 +349,13 @@ class Seliweb_Database {
             'exercice',
             "VARCHAR(20) DEFAULT NULL AFTER enregistre_cotisation"
         );
+
+        // Migration v2.6 : synchronisation Paheko des offres (hors cotisations) —
+        // compte banque / compte de recette choisis par offre, suivi de sync par paiement.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'compte_paheko_banque',  "VARCHAR(10) DEFAULT NULL" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'compte_paheko_recette', "VARCHAR(10) DEFAULT NULL" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements', 'paheko_synced',  "TINYINT(1) NOT NULL DEFAULT 0" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements', 'paheko_id_year', "INT DEFAULT NULL" );
 
         self::insert_defaults();
     }
