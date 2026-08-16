@@ -274,8 +274,9 @@ class Seliweb_Parametres {
     // Traitement POST
     // ----------------------------------------------------------------
     private static function handle_post( $tab ) {
-        // Les POST de l'onglet Groupes sont traités par Seliweb_Groupes::handle_post() (hook init)
-        if ( $tab === 'groupes' ) return;
+        // Les POST des onglets Groupes et Paiements sont traités par leurs
+        // propres classes (hook init), pas ici.
+        if ( $tab === 'groupes' || $tab === 'paiements' ) return;
         // Suppressions GET gérées par handle_get_actions() via hook init
         // Ici on traite uniquement les POST (ajouts et modifications)
         if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
@@ -351,9 +352,7 @@ class Seliweb_Parametres {
     // PAIEMENTS
     // ================================================================
     private static function tab_paiements() {
-        ?>
-        <p class="description"><?php esc_html_e( 'Aucun réglage pour le moment.', 'seliweb' ); ?></p>
-        <?php
+        Seliweb_Paiements::render_tab();
     }
 
     // ================================================================

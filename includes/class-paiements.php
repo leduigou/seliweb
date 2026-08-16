@@ -1,0 +1,259 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Seliweb_Paiements {
+
+    public static function init() {
+        add_action( 'init', array( __CLASS__, 'handle_post' ) );
+        add_action( 'init', array( __CLASS__, 'handle_delete' ) );
+    }
+
+    public static function render_tab() {
+        $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
+        $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
+
+        switch ( $action ) {
+            case 'new':
+            case 'edit':
+                self::form( $id );
+                break;
+            default:
+                self::liste();
+                break;
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Traitement POST — via hook init
+    // ----------------------------------------------------------------
+    public static function handle_post() {
+        if ( ! is_admin() ) return;
+        if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
+        if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_paiements' ) ) return;
+        if ( ! current_user_can( 'manage_options' ) ) return;
+
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements_offres';
+
+        $data = array(
+            'nom'                   => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
+            'description'           => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
+            'tarif'                 => sanitize_text_field( wp_unslash( $_POST['tarif'] ?? '' ) ),
+            'groupe_depart_id'      => ! empty( $_POST['groupe_depart_id'] )  ? intval( $_POST['groupe_depart_id'] )  : null,
+            'groupe_arrivee_id'     => ! empty( $_POST['groupe_arrivee_id'] ) ? intval( $_POST['groupe_arrivee_id'] ) : null,
+            'enregistre_cotisation' => isset( $_POST['enregistre_cotisation'] ) ? 1 : 0,
+            'helloasso_url'         => esc_url_raw( wp_unslash( $_POST['helloasso_url'] ?? '' ) ),
+        );
+
+        $action = sanitize_key( $_POST['seliweb_action'] );
+
+        if ( $action === 'add_paiement' ) {
+            $wpdb->insert( $tp, $data );
+        } elseif ( $action === 'update_paiement' ) {
+            $wpdb->update( $tp, $data, array( 'id' => intval( $_POST['id'] ) ) );
+        } else {
+            return;
+        }
+
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements&updated=1' ) );
+        exit;
+    }
+
+    public static function handle_delete() {
+        if ( ! is_admin() ) return;
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
+        if ( ! isset( $_GET['action'], $_GET['id'] ) || $_GET['action'] !== 'delete' ) return;
+        if ( ! isset( $_GET['tab'] ) || $_GET['tab'] !== 'paiements' ) return;
+        if ( ! check_admin_referer( 'seliweb_delete_paiement_' . intval( $_GET['id'] ) ) ) return;
+
+        global $wpdb;
+        $wpdb->delete( $wpdb->prefix . 'seliweb_paiements_offres', array( 'id' => intval( $_GET['id'] ) ) );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements&deleted=1' ) );
+        exit;
+    }
+
+    // ----------------------------------------------------------------
+    // Liste des paiements configurés
+    // ----------------------------------------------------------------
+    private static function liste() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements_offres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
+        $items = $wpdb->get_results(
+            "SELECT p.*, gd.nom AS depart_nom, ga.nom AS arrivee_nom
+             FROM $tp p
+             LEFT JOIN $tg gd ON gd.id = p.groupe_depart_id
+             LEFT JOIN $tg ga ON ga.id = p.groupe_arrivee_id
+             ORDER BY p.nom ASC"
+        );
+
+        if ( isset( $_GET['updated'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paiement enregistré.', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paiement supprimé.', 'seliweb' ) . '</p></div>';
+        ?>
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements&action=new' ) ); ?>"
+               class="button button-primary"><?php esc_html_e( 'Ajouter un paiement', 'seliweb' ); ?></a>
+        </p>
+        <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
+            <thead><tr>
+                <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Groupe de départ', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( "Groupe d'arrivée", 'seliweb' ); ?></th>
+                <th style="width:90px;"><?php esc_html_e( 'Tarif', 'seliweb' ); ?></th>
+                <th style="width:90px;"><?php esc_html_e( 'Cotisation', 'seliweb' ); ?></th>
+                <th style="width:140px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php if ( empty( $items ) ) : ?>
+                <tr><td colspan="6"><em><?php esc_html_e( 'Aucun paiement configuré.', 'seliweb' ); ?></em></td></tr>
+            <?php else : ?>
+                <?php foreach ( $items as $row ) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html( $row->nom ); ?></strong></td>
+                    <td><?php echo $row->depart_nom ? esc_html( $row->depart_nom ) : '<em>' . esc_html__( 'Tous les groupes', 'seliweb' ) . '</em>'; ?></td>
+                    <td><?php echo $row->arrivee_nom ? esc_html( $row->arrivee_nom ) : '<em>' . esc_html__( 'Aucun changement', 'seliweb' ) . '</em>'; ?></td>
+                    <td><?php echo esc_html( $row->tarif ); ?></td>
+                    <td style="text-align:center;">
+                        <?php if ( $row->enregistre_cotisation ) : ?>
+                            <span style="color:green;font-weight:700;" title="<?php esc_attr_e( 'Enregistre une cotisation', 'seliweb' ); ?>">&#10003;</span>
+                        <?php else : ?>
+                            <span style="color:#ccc;">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
+                        &nbsp;|&nbsp;
+                        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements&action=delete&id=' . $row->id ), 'seliweb_delete_paiement_' . $row->id ) ); ?>"
+                           onclick="return confirm('<?php esc_attr_e( 'Supprimer ce paiement ?', 'seliweb' ); ?>')"
+                           style="color:#b32d2e;"><?php esc_html_e( 'Supprimer', 'seliweb' ); ?></a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    // ----------------------------------------------------------------
+    // Formulaire ajout / modification
+    // ----------------------------------------------------------------
+    private static function form( $id = 0 ) {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements_offres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
+
+        $item        = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tp WHERE id=%d", $id ) ) : null;
+        $tous_groupes = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
+        $is_edit     = (bool) $item;
+        ?>
+        <form method="post" style="max-width:700px;">
+            <?php wp_nonce_field( 'seliweb_paiements', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="<?php echo $is_edit ? 'update_paiement' : 'add_paiement'; ?>">
+            <?php if ( $is_edit ) : ?><input type="hidden" name="id" value="<?php echo intval( $item->id ); ?>"><?php endif; ?>
+
+            <table class="form-table">
+
+                <tr>
+                    <th><label for="nom"><?php esc_html_e( 'Nom', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="text" id="nom" name="nom" class="regular-text"
+                               value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required>
+                        <p class="description"><?php esc_html_e( 'Titre affiché dans Mon compte, ex. : "Adhésion au SEL".', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="description"><?php esc_html_e( 'Description', 'seliweb' ); ?></label></th>
+                    <td>
+                        <textarea id="description" name="description" class="large-text" rows="4"><?php echo $item ? esc_textarea( $item->description ) : ''; ?></textarea>
+                        <p class="description"><?php esc_html_e( 'Texte explicatif affiché dans Mon compte.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="tarif"><?php esc_html_e( 'Tarif', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="text" id="tarif" name="tarif" class="regular-text"
+                               value="<?php echo $item ? esc_attr( $item->tarif ) : ''; ?>" placeholder="<?php esc_attr_e( 'Ex. : 20 €/an', 'seliweb' ); ?>">
+                        <p class="description"><?php esc_html_e( 'Texte libre affiché à titre indicatif — le montant réel est celui réglé sur HelloAsso.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="groupe_depart_id"><?php esc_html_e( 'Groupe de départ', 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="groupe_depart_id" name="groupe_depart_id">
+                            <option value=""><?php esc_html_e( '— Tous les groupes —', 'seliweb' ); ?></option>
+                            <?php foreach ( $tous_groupes as $g ) : ?>
+                                <option value="<?php echo intval( $g->id ); ?>" <?php selected( $item ? $item->groupe_depart_id : '', $g->id ); ?>>
+                                    <?php echo esc_html( $g->nom ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Ce paiement n\'apparaîtra dans Mon compte que pour les membres de ce groupe. Laisser sur "Tous les groupes" pour le rendre accessible à tous.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="groupe_arrivee_id"><?php esc_html_e( "Groupe d'arrivée", 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="groupe_arrivee_id" name="groupe_arrivee_id">
+                            <option value=""><?php esc_html_e( '— Aucun changement —', 'seliweb' ); ?></option>
+                            <?php foreach ( $tous_groupes as $g ) : ?>
+                                <option value="<?php echo intval( $g->id ); ?>" <?php selected( $item ? $item->groupe_arrivee_id : '', $g->id ); ?>>
+                                    <?php echo esc_html( $g->nom ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Groupe attribué au membre une fois le paiement effectué. Laisser sur "Aucun changement" pour un renouvellement ou un don.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><?php esc_html_e( 'Cotisation', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="enregistre_cotisation" value="1"
+                                   <?php checked( $item ? $item->enregistre_cotisation : 0 ); ?>>
+                            <?php esc_html_e( 'Ce paiement enregistre une cotisation', 'seliweb' ); ?>
+                        </label>
+                        <p class="description"><?php esc_html_e( 'À cocher pour une adhésion ou un renouvellement de cotisation. Laisser décoché pour une offre (ex. passage au groupe Annonceurs) ou un don.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="helloasso_url"><?php esc_html_e( 'Lien vers le formulaire HelloAsso', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="url" id="helloasso_url" name="helloasso_url" class="large-text"
+                               value="<?php echo $item ? esc_attr( $item->helloasso_url ) : ''; ?>"
+                               placeholder="https://www.helloasso.com/associations/mon-sel/adhesions/adhesion-2026">
+                    </td>
+                </tr>
+
+            </table>
+
+            <?php submit_button( $is_edit ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ) ); ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements' ) ); ?>" class="button">
+                <?php esc_html_e( 'Annuler', 'seliweb' ); ?>
+            </a>
+        </form>
+        <?php
+    }
+
+    // ----------------------------------------------------------------
+    // Méthode utilitaire — paiements accessibles à un membre selon son groupe
+    // ----------------------------------------------------------------
+    public static function get_offres_pour_membre( $groupe_id ) {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements_offres';
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM $tp WHERE groupe_depart_id IS NULL OR groupe_depart_id = %d ORDER BY nom ASC",
+            intval( $groupe_id )
+        ) );
+    }
+}

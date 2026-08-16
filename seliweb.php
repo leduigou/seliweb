@@ -22,6 +22,7 @@ define( 'SELIWEB_PLUGIN_FILE', plugin_basename( __FILE__ ) );
 require_once SELIWEB_DIR . 'includes/class-database.php';
 require_once SELIWEB_DIR . 'includes/class-parametres.php';
 require_once SELIWEB_DIR . 'includes/class-groupes.php';
+require_once SELIWEB_DIR . 'includes/class-paiements.php';
 require_once SELIWEB_DIR . 'includes/class-annonces.php';
 require_once SELIWEB_DIR . 'includes/class-transactions.php';
 require_once SELIWEB_DIR . 'includes/class-cotisations.php';
@@ -29,6 +30,7 @@ require_once SELIWEB_DIR . 'includes/class-updater.php';
 require_once SELIWEB_DIR . 'includes/class-front.php';
 
 Seliweb_Groupes::init();
+Seliweb_Paiements::init();
 Seliweb_Annonces::init();
 Seliweb_Parametres::init();
 Seliweb_Transactions::init();

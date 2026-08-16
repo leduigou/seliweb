@@ -55,6 +55,11 @@ $is_cotisations_membre = class_exists( 'Seliweb_Cotisations' )
     && Seliweb_Cotisations::cotisations_actif()
     && Seliweb_Cotisations::groupe_soumis( $membre->groupe_id );
 
+// Onglet Paiements : uniquement s'il existe au moins une offre accessible au groupe du membre
+$offres_membre = class_exists( 'Seliweb_Paiements' )
+    ? Seliweb_Paiements::get_offres_pour_membre( $membre->groupe_id )
+    : array();
+
 // Monnaies autorisées par le groupe
 $monnaies_dispo = array();
 if ( $membre->groupe_id ) {
@@ -162,6 +167,12 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         <a href="<?php echo esc_url( add_query_arg('sel_action','cotisations',$page_url) ); ?>"
            class="seliweb-tab <?php echo $action==='cotisations' ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Cotisations', 'seliweb' ); ?>
+        </a>
+        <?php endif; ?>
+        <?php if ( ! empty( $offres_membre ) ) : ?>
+        <a href="<?php echo esc_url( add_query_arg('sel_action','paiements',$page_url) ); ?>"
+           class="seliweb-tab <?php echo $action==='paiements' ? 'seliweb-tab-active' : ''; ?>">
+            <?php esc_html_e( 'Paiements', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
     </div>
@@ -1245,6 +1256,27 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     </table>
     </div>
     <?php endif; ?>
+
+    <?php elseif ( $action === 'paiements' && ! empty( $offres_membre ) ) : ?>
+
+    <h3><?php esc_html_e( 'Paiements', 'seliweb' ); ?></h3>
+
+    <?php foreach ( $offres_membre as $offre ) : ?>
+        <div class="seliweb-notice" style="background:#f7fbf9;border-left:4px solid #1d6a4a;padding:14px 18px;border-radius:4px;margin-bottom:14px;">
+            <h4 style="margin:0 0 6px;"><?php echo esc_html( $offre->nom ); ?></h4>
+            <?php if ( $offre->description ) : ?>
+                <p style="margin:0 0 10px;"><?php echo nl2br( esc_html( $offre->description ) ); ?></p>
+            <?php endif; ?>
+            <?php if ( $offre->tarif ) : ?>
+                <p style="margin:0 0 10px;font-weight:600;"><?php echo esc_html( $offre->tarif ); ?></p>
+            <?php endif; ?>
+            <?php if ( $offre->helloasso_url ) : ?>
+                <a href="<?php echo esc_url( $offre->helloasso_url ); ?>" class="seliweb-btn" target="_blank" rel="noopener">
+                    <?php esc_html_e( 'Régler en ligne', 'seliweb' ); ?>
+                </a>
+            <?php endif; ?>
+        </div>
+    <?php endforeach; ?>
 
     <?php  endif; ?>
 

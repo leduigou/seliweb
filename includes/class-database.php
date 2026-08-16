@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.2';
+    const DB_VERSION     = '2.3';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -211,6 +211,22 @@ class Seliweb_Database {
             date_debut DATE         DEFAULT NULL,
             date_fin   DATE         DEFAULT NULL,
             est_actif  TINYINT(1)  NOT NULL DEFAULT 0,
+            PRIMARY KEY (id)
+        ) $charset;";
+
+        // Catalogue des paiements en ligne (HelloAsso) : adhésion, renouvellement
+        // de cotisation, offres (ex. passage au groupe Annonceurs), dons...
+        // groupe_depart_id NULL = accessible quel que soit le groupe actuel du
+        // membre. groupe_arrivee_id NULL = ne change pas le groupe du membre.
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_paiements_offres (
+            id                     INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            nom                    VARCHAR(150) NOT NULL,
+            description            TEXT,
+            tarif                  VARCHAR(100) DEFAULT NULL,
+            groupe_depart_id       INT UNSIGNED DEFAULT NULL,
+            groupe_arrivee_id      INT UNSIGNED DEFAULT NULL,
+            enregistre_cotisation  TINYINT(1)   NOT NULL DEFAULT 0,
+            helloasso_url          VARCHAR(500) DEFAULT NULL,
             PRIMARY KEY (id)
         ) $charset;";
 
