@@ -9,6 +9,7 @@ class Seliweb_Paiements {
         add_action( 'init', array( __CLASS__, 'handle_post' ) );
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
         add_action( 'init', array( __CLASS__, 'handle_webhook' ) );
+        add_action( 'init', array( __CLASS__, 'handle_rattachement_post' ) );
     }
 
     public static function render_tab() {
@@ -348,22 +349,7 @@ class Seliweb_Paiements {
         $wp_user_id = $wp_user ? $wp_user->ID : 0;
 
         $matched       = $offre && $wp_user_id;
-        $cotisation_id = null;
-
-        if ( $matched ) {
-            if ( $offre->enregistre_cotisation && class_exists( 'Seliweb_Cotisations' ) ) {
-                $cotisation_id = Seliweb_Cotisations::enregistrer_paiement_cotisation(
-                    $wp_user_id, $amount_cents, $date, $ha_order_id, $email, $nom
-                );
-            }
-            if ( $offre->groupe_arrivee_id ) {
-                $wpdb->update(
-                    $wpdb->prefix . 'seliweb_membres',
-                    array( 'groupe_id' => intval( $offre->groupe_arrivee_id ) ),
-                    array( 'wp_user_id' => $wp_user_id )
-                );
-            }
-        }
+        $cotisation_id = $matched ? self::apply_offre_actions( $offre, $wp_user_id, $amount_cents, $date, $ha_order_id, $email, $nom ) : null;
 
         $wpdb->insert( $tp, array(
             'offre_id'            => $offre ? $offre->id : null,
@@ -378,5 +364,161 @@ class Seliweb_Paiements {
             'payer_nom'           => $nom,
             'created_at'          => current_time( 'mysql' ),
         ) );
+    }
+
+    // ----------------------------------------------------------------
+    // Applique les actions d'une offre à un membre identifié : enregistre
+    // une cotisation si l'offre le prévoit, puis change son groupe si un
+    // groupe d'arrivée est configuré. Utilisée par le rattachement
+    // automatique (webhook) comme par le rattachement manuel.
+    // Retourne l'id de la cotisation créée, ou null si aucune.
+    // ----------------------------------------------------------------
+    private static function apply_offre_actions( $offre, $wp_user_id, $montant, $date, $ha_order_id = '', $email = '', $nom = '' ) {
+        global $wpdb;
+        $cotisation_id = null;
+
+        if ( $offre->enregistre_cotisation && class_exists( 'Seliweb_Cotisations' ) ) {
+            $cotisation_id = Seliweb_Cotisations::enregistrer_paiement_cotisation(
+                $wp_user_id, $montant, $date, $ha_order_id, $email, $nom
+            );
+        }
+        if ( $offre->groupe_arrivee_id ) {
+            $wpdb->update(
+                $wpdb->prefix . 'seliweb_membres',
+                array( 'groupe_id' => intval( $offre->groupe_arrivee_id ) ),
+                array( 'wp_user_id' => $wp_user_id )
+            );
+        }
+
+        return $cotisation_id;
+    }
+
+    // ================================================================
+    // ADMIN — vue "Paiements à rattacher" (page Cotisations, view=a_rattacher)
+    // ================================================================
+    public static function render_view_a_rattacher() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+
+        if ( isset( $_GET['rattache'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paiement rattaché.', 'seliweb' ) . '</p></div>';
+        }
+
+        $paiements = $wpdb->get_results(
+            "SELECT p.*, o.nom AS offre_nom
+             FROM $tp p
+             LEFT JOIN $to o ON o.id = p.offre_id
+             WHERE p.statut = 'en_attente'
+             ORDER BY p.created_at DESC"
+        );
+
+        $membres = $wpdb->get_results(
+            "SELECT m.wp_user_id, u.display_name
+             FROM {$wpdb->prefix}seliweb_membres m
+             INNER JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+             ORDER BY u.display_name ASC"
+        );
+        $offres = $wpdb->get_results( "SELECT id, nom FROM $to ORDER BY nom ASC" );
+
+        if ( empty( $paiements ) ) {
+            echo '<p class="description">' . esc_html__( 'Aucun paiement en attente de rattachement.', 'seliweb' ) . '</p>';
+            return;
+        }
+        ?>
+        <table class="wp-list-table widefat fixed striped">
+            <thead><tr>
+                <th style="width:90px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+                <th style="width:90px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Payeur', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Offre reconnue', 'seliweb' ); ?></th>
+                <th style="width:320px;"><?php esc_html_e( 'Rattacher à', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ( $paiements as $p ) : ?>
+                <tr>
+                    <td><?php echo esc_html( $p->date_paiement ); ?></td>
+                    <td><?php echo esc_html( number_format( $p->montant / 100, 2, ',', ' ' ) ); ?> €</td>
+                    <td>
+                        <?php echo esc_html( $p->payer_nom ); ?><br>
+                        <span style="color:#888;font-size:12px;"><?php echo esc_html( $p->payer_email ); ?></span>
+                    </td>
+                    <td>
+                        <?php echo $p->offre_nom ? esc_html( $p->offre_nom ) : '<em style="color:#b32d2e;">' . esc_html__( 'Inconnue', 'seliweb' ) . '</em>'; ?>
+                        <?php if ( $p->helloasso_form_slug ) : ?>
+                            <br><span style="color:#888;font-size:11px;"><?php echo esc_html( $p->helloasso_form_slug ); ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                            <?php wp_nonce_field( 'seliweb_rattacher_paiement', 'seliweb_nonce' ); ?>
+                            <input type="hidden" name="seliweb_action" value="rattacher_paiement">
+                            <input type="hidden" name="paiement_id" value="<?php echo intval( $p->id ); ?>">
+                            <select name="wp_user_id" required style="max-width:150px;">
+                                <option value=""><?php esc_html_e( '— Membre —', 'seliweb' ); ?></option>
+                                <?php foreach ( $membres as $m ) : ?>
+                                    <option value="<?php echo intval( $m->wp_user_id ); ?>" <?php selected( $p->wp_user_id, $m->wp_user_id ); ?>>
+                                        <?php echo esc_html( $m->display_name ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select name="offre_id" style="max-width:130px;">
+                                <option value=""><?php esc_html_e( '— Aucune —', 'seliweb' ); ?></option>
+                                <?php foreach ( $offres as $o ) : ?>
+                                    <option value="<?php echo intval( $o->id ); ?>" <?php selected( $p->offre_id, $o->id ); ?>>
+                                        <?php echo esc_html( $o->nom ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="submit" class="button button-primary"><?php esc_html_e( 'Rattacher', 'seliweb' ); ?></button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    public static function handle_rattachement_post() {
+        if ( ! is_admin() ) return;
+        if ( ! isset( $_POST['seliweb_nonce'], $_POST['seliweb_action'] ) ) return;
+        if ( $_POST['seliweb_action'] !== 'rattacher_paiement' ) return;
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_cotisations' ) return;
+        if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_rattacher_paiement' ) ) return;
+        if ( ! current_user_can( 'manage_options' ) ) return;
+
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+
+        $paiement_id = intval( $_POST['paiement_id'] );
+        $wp_user_id  = intval( $_POST['wp_user_id'] );
+        $offre_id    = ! empty( $_POST['offre_id'] ) ? intval( $_POST['offre_id'] ) : null;
+        if ( ! $paiement_id || ! $wp_user_id ) return;
+
+        $paiement = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tp WHERE id=%d AND statut='en_attente'", $paiement_id ) );
+        if ( ! $paiement ) return;
+
+        $cotisation_id = null;
+        if ( $offre_id ) {
+            $offre = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $to WHERE id=%d", $offre_id ) );
+            if ( $offre ) {
+                $cotisation_id = self::apply_offre_actions(
+                    $offre, $wp_user_id, $paiement->montant, $paiement->date_paiement,
+                    $paiement->helloasso_order_id, $paiement->payer_email, $paiement->payer_nom
+                );
+            }
+        }
+
+        $wpdb->update( $tp, array(
+            'wp_user_id'    => $wp_user_id,
+            'offre_id'      => $offre_id,
+            'cotisation_id' => $cotisation_id,
+            'statut'        => 'rattache',
+        ), array( 'id' => $paiement_id ) );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_cotisations&view=a_rattacher&rattache=1' ) );
+        exit;
     }
 }

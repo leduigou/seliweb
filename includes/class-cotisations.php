@@ -446,21 +446,34 @@ class Seliweb_Cotisations {
         $paheko_actif = ! empty( $cfg['cotisations_paheko_actif'] )
                         && ! empty( $cfg['paheko_url'] )
                         && ! empty( $cfg['paheko_identifiant'] );
+        $ha_actif     = ! empty( $cfg['cotisations_helloasso_actif'] );
 
         echo '<div class="wrap"><h1>' . esc_html__( 'Cotisations', 'seliweb' ) . '</h1>';
 
-        if ( $paheko_actif ) {
+        if ( $paheko_actif || $ha_actif ) {
             $base = admin_url( 'admin.php?page=seliweb_cotisations' );
             echo '<nav class="nav-tab-wrapper" style="margin-bottom:20px;">';
-            echo '<a href="' . esc_url( $base . '&view=liste' ) . '" class="nav-tab ' . ( $view !== 'sync' ? 'nav-tab-active' : '' ) . '">'
+            echo '<a href="' . esc_url( $base . '&view=liste' ) . '" class="nav-tab ' . ( $view === 'liste' ? 'nav-tab-active' : '' ) . '">'
                 . esc_html__( 'Cotisations', 'seliweb' ) . '</a>';
-            echo '<a href="' . esc_url( $base . '&view=sync' ) . '" class="nav-tab ' . ( $view === 'sync' ? 'nav-tab-active' : '' ) . '">'
-                . esc_html__( 'Synchronisation Paheko', 'seliweb' ) . '</a>';
+            if ( $paheko_actif ) {
+                echo '<a href="' . esc_url( $base . '&view=sync' ) . '" class="nav-tab ' . ( $view === 'sync' ? 'nav-tab-active' : '' ) . '">'
+                    . esc_html__( 'Synchronisation Paheko', 'seliweb' ) . '</a>';
+            }
+            if ( $ha_actif ) {
+                echo '<a href="' . esc_url( $base . '&view=a_rattacher' ) . '" class="nav-tab ' . ( $view === 'a_rattacher' ? 'nav-tab-active' : '' ) . '">'
+                    . esc_html__( 'Paiements à rattacher', 'seliweb' ) . '</a>';
+            }
             echo '</nav>';
         }
 
         if ( $view === 'sync' && $paheko_actif ) {
             self::display_sync( $cfg );
+            echo '</div>';
+            return;
+        }
+
+        if ( $view === 'a_rattacher' && $ha_actif ) {
+            if ( class_exists( 'Seliweb_Paiements' ) ) Seliweb_Paiements::render_view_a_rattacher();
             echo '</div>';
             return;
         }
