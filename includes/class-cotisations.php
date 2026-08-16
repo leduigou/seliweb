@@ -1720,7 +1720,7 @@ class Seliweb_Cotisations {
                     <th><?php esc_html_e( 'URL webhook', 'seliweb' ); ?></th>
                     <td>
                         <code><?php echo esc_html( add_query_arg( 'seliweb_helloasso_webhook', '1', home_url( '/' ) ) ); ?></code>
-                        <p class="description"><?php esc_html_e( 'À renseigner dans votre tableau de bord HelloAsso pour recevoir les notifications de paiement.', 'seliweb' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'À renseigner dans votre tableau de bord HelloAsso, menu Intégration et API, zone notifications, champ URL de call back.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
             </table>
