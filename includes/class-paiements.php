@@ -40,17 +40,29 @@ class Seliweb_Paiements {
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements_offres';
 
+        $enregistre_cotisation = isset( $_POST['enregistre_cotisation'] ) ? 1 : 0;
+        $exercice              = sanitize_text_field( wp_unslash( $_POST['exercice'] ?? '' ) );
+        $action                = sanitize_key( $_POST['seliweb_action'] );
+
+        if ( $enregistre_cotisation && ! $exercice ) {
+            $redir_action = $action === 'add_paiement' ? 'new' : 'edit';
+            wp_safe_redirect( admin_url(
+                'admin.php?page=seliweb_parametres&tab=paiements&action=' . $redir_action
+                . '&id=' . intval( $_POST['id'] ?? 0 ) . '&error=exercice_requis'
+            ) );
+            exit;
+        }
+
         $data = array(
             'nom'                   => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             'description'           => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
             'tarif'                 => sanitize_text_field( wp_unslash( $_POST['tarif'] ?? '' ) ),
             'groupe_depart_id'      => ! empty( $_POST['groupe_depart_id'] )  ? intval( $_POST['groupe_depart_id'] )  : null,
             'groupe_arrivee_id'     => ! empty( $_POST['groupe_arrivee_id'] ) ? intval( $_POST['groupe_arrivee_id'] ) : null,
-            'enregistre_cotisation' => isset( $_POST['enregistre_cotisation'] ) ? 1 : 0,
+            'enregistre_cotisation' => $enregistre_cotisation,
+            'exercice'              => $enregistre_cotisation ? $exercice : null,
             'helloasso_url'         => esc_url_raw( wp_unslash( $_POST['helloasso_url'] ?? '' ) ),
         );
-
-        $action = sanitize_key( $_POST['seliweb_action'] );
 
         if ( $action === 'add_paiement' ) {
             $wpdb->insert( $tp, $data );
@@ -122,6 +134,9 @@ class Seliweb_Paiements {
                     <td style="text-align:center;">
                         <?php if ( $row->enregistre_cotisation ) : ?>
                             <span style="color:green;font-weight:700;" title="<?php esc_attr_e( 'Enregistre une cotisation', 'seliweb' ); ?>">&#10003;</span>
+                            <?php if ( $row->exercice ) : ?>
+                                <br><span style="font-size:11px;color:#888;"><?php echo esc_html( $row->exercice ); ?></span>
+                            <?php endif; ?>
                         <?php else : ?>
                             <span style="color:#ccc;">—</span>
                         <?php endif; ?>
@@ -148,10 +163,16 @@ class Seliweb_Paiements {
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements_offres';
         $tg = $wpdb->prefix . 'seliweb_groupes';
+        $te = $wpdb->prefix . 'seliweb_exercices';
 
-        $item        = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tp WHERE id=%d", $id ) ) : null;
-        $tous_groupes = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
-        $is_edit     = (bool) $item;
+        $item          = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tp WHERE id=%d", $id ) ) : null;
+        $tous_groupes  = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
+        $tous_exercices = $wpdb->get_results( "SELECT libelle FROM $te ORDER BY date_debut DESC, id DESC" );
+        $is_edit       = (bool) $item;
+
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'exercice_requis' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "L'exercice est obligatoire lorsque le paiement enregistre une cotisation.", 'seliweb' ) . '</p></div>';
+        }
         ?>
         <form method="post" style="max-width:700px;">
             <?php wp_nonce_field( 'seliweb_paiements', 'seliweb_nonce' ); ?>
@@ -220,11 +241,30 @@ class Seliweb_Paiements {
                     <th><?php esc_html_e( 'Cotisation', 'seliweb' ); ?></th>
                     <td>
                         <label>
-                            <input type="checkbox" name="enregistre_cotisation" value="1"
+                            <input type="checkbox" name="enregistre_cotisation" id="enregistre_cotisation" value="1"
                                    <?php checked( $item ? $item->enregistre_cotisation : 0 ); ?>>
                             <?php esc_html_e( 'Ce paiement enregistre une cotisation', 'seliweb' ); ?>
                         </label>
                         <p class="description"><?php esc_html_e( 'À cocher pour une adhésion ou un renouvellement de cotisation. Laisser décoché pour une offre (ex. passage au groupe Annonceurs) ou un don.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr id="row_exercice" style="<?php echo ( $item && $item->enregistre_cotisation ) ? '' : 'display:none;'; ?>">
+                    <th><label for="exercice"><?php esc_html_e( 'Exercice concerné', 'seliweb' ); ?></label></th>
+                    <td>
+                        <?php if ( $tous_exercices ) : ?>
+                            <select id="exercice" name="exercice">
+                                <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
+                                <?php foreach ( $tous_exercices as $ex ) : ?>
+                                    <option value="<?php echo esc_attr( $ex->libelle ); ?>" <?php selected( $item ? $item->exercice : '', $ex->libelle ); ?>>
+                                        <?php echo esc_html( $ex->libelle ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Le formulaire HelloAsso saisi ci-dessous correspond à cet exercice de cotisation.', 'seliweb' ); ?></p>
+                        <?php else : ?>
+                            <p class="description"><?php esc_html_e( 'Aucun exercice défini. Paramètres > Cotisations > Exercices.', 'seliweb' ); ?></p>
+                        <?php endif; ?>
                     </td>
                 </tr>
 
@@ -244,6 +284,16 @@ class Seliweb_Paiements {
                 <?php esc_html_e( 'Annuler', 'seliweb' ); ?>
             </a>
         </form>
+
+        <script>
+        (function(){
+            var cb  = document.getElementById('enregistre_cotisation');
+            var row = document.getElementById('row_exercice');
+            if ( cb && row ) {
+                cb.addEventListener('change', function(){ row.style.display = this.checked ? '' : 'none'; });
+            }
+        })();
+        </script>
         <?php
     }
 
@@ -379,7 +429,7 @@ class Seliweb_Paiements {
 
         if ( $offre->enregistre_cotisation && class_exists( 'Seliweb_Cotisations' ) ) {
             $cotisation_id = Seliweb_Cotisations::enregistrer_paiement_cotisation(
-                $wp_user_id, $montant, $date, $ha_order_id, $email, $nom
+                $wp_user_id, $montant, $date, $ha_order_id, $email, $nom, $offre->exercice, $offre->nom
             );
         }
         if ( $offre->groupe_arrivee_id ) {

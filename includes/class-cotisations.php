@@ -231,11 +231,15 @@ class Seliweb_Cotisations {
     // "enregistre une cotisation" (adhésion, renouvellement...). Reste
     // la voie minoritaire : ~80% des cotisations sont encore saisies
     // manuellement par le trésorier via l'onglet Cotisations.
-    public static function enregistrer_paiement_cotisation( $wp_user_id, $montant, $date, $helloasso_order_id = '', $email = '', $nom = '' ) {
+    public static function enregistrer_paiement_cotisation( $wp_user_id, $montant, $date, $helloasso_order_id = '', $email = '', $nom = '', $exercice = '', $libelle = '' ) {
         global $wpdb;
         $tc = $wpdb->prefix . 'seliweb_cotisations';
+        $tr = $wpdb->prefix . 'seliweb_cotisations_reglements';
+
         $wpdb->insert( $tc, array(
             'wp_user_id'            => intval( $wp_user_id ),
+            'exercice'              => $exercice ?: null,
+            'libelle'               => $libelle  ?: null,
             'montant'               => intval( $montant ),
             'date_paiement'         => $date,
             'statut'                => 'paye',
@@ -245,7 +249,24 @@ class Seliweb_Cotisations {
             'paheko_synced'         => 0,
             'created_at'            => current_time( 'mysql' ),
         ) );
-        return (int) $wpdb->insert_id;
+        $cotisation_id = (int) $wpdb->insert_id;
+
+        // Ligne de règlement en monnaie légale, nécessaire pour que la
+        // cotisation apparaisse dans "Mon compte" et soit reprise par la
+        // synchronisation Paheko (qui exige un règlement en monnaie légale).
+        $monnaie_legale_id = (int) $wpdb->get_var(
+            "SELECT id FROM {$wpdb->prefix}seliweb_monnaies WHERE est_legale=1 LIMIT 1"
+        );
+        if ( $monnaie_legale_id ) {
+            $wpdb->insert( $tr, array(
+                'cotisation_id' => $cotisation_id,
+                'montant'       => intval( $montant ),
+                'monnaie_id'    => $monnaie_legale_id,
+                'mode_paiement' => 'helloasso',
+            ) );
+        }
+
+        return $cotisation_id;
     }
 
     private static function sync_to_paheko( $cotisation_id, $email, $nom, $date, $id_year, $id_fee, $id_service ) {

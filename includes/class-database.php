@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.4';
+    const DB_VERSION     = '2.5';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -226,6 +226,7 @@ class Seliweb_Database {
             groupe_depart_id       INT UNSIGNED DEFAULT NULL,
             groupe_arrivee_id      INT UNSIGNED DEFAULT NULL,
             enregistre_cotisation  TINYINT(1)   NOT NULL DEFAULT 0,
+            exercice               VARCHAR(20)  DEFAULT NULL,
             helloasso_url          VARCHAR(500) DEFAULT NULL,
             PRIMARY KEY (id)
         ) $charset;";
@@ -340,6 +341,14 @@ class Seliweb_Database {
         // booléen global notif_annonces par une liste de groupes cochés).
         self::maybe_add_column( $tm, 'notif_groupes', "VARCHAR(255) DEFAULT NULL AFTER groupe_id" );
         self::maybe_migrate_notif_groupes();
+
+        // Migration v2.5 : exercice concerné par un paiement de cotisation
+        // (le lien HelloAsso saisi correspond à un exercice précis).
+        self::maybe_add_column(
+            $wpdb->prefix . 'seliweb_paiements_offres',
+            'exercice',
+            "VARCHAR(20) DEFAULT NULL AFTER enregistre_cotisation"
+        );
 
         self::insert_defaults();
     }
