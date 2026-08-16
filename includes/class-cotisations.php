@@ -8,7 +8,6 @@ class Seliweb_Cotisations {
     private static $cfg = null;
 
     public static function init() {
-        add_action( 'init',       array( __CLASS__, 'handle_webhook' ) );
         add_action( 'init',       array( __CLASS__, 'handle_exclu_get' ) );
         add_action( 'admin_init', array( __CLASS__, 'handle_admin_post' ) );
     }
@@ -225,71 +224,28 @@ class Seliweb_Cotisations {
     }
 
     // ================================================================
-    // WEBHOOK HELLOASSO  (?seliweb_helloasso_webhook=1)
+    // ENREGISTREMENT D'UNE COTISATION PAYÉE
     // ================================================================
-    public static function handle_webhook() {
-        if ( ! isset( $_GET['seliweb_helloasso_webhook'] ) ) return;
-
-        if ( $_SERVER['REQUEST_METHOD'] !== 'POST' ) {
-            http_response_code( 405 );
-            exit( 'Method Not Allowed' );
-        }
-
-        $body = file_get_contents( 'php://input' );
-        $data = json_decode( $body, true );
-
-        if ( ! is_array( $data ) ) {
-            http_response_code( 400 );
-            exit( 'Bad Request' );
-        }
-
-        $event = $data['eventType'] ?? '';
-        if ( $event === 'Order' && ! empty( $data['data'] ) ) {
-            self::process_order( $data['data'] );
-        }
-
-        http_response_code( 200 );
-        exit( 'OK' );
-    }
-
-    // ================================================================
-    // TRAITEMENT D'UN PAIEMENT
-    // ================================================================
-    public static function process_order( $order ) {
+    // Appelée par Seliweb_Paiements::process_order() lorsqu'un paiement
+    // HelloAsso rattaché à un membre correspond à une offre marquée
+    // "enregistre une cotisation" (adhésion, renouvellement...). Reste
+    // la voie minoritaire : ~80% des cotisations sont encore saisies
+    // manuellement par le trésorier via l'onglet Cotisations.
+    public static function enregistrer_paiement_cotisation( $wp_user_id, $montant, $date, $helloasso_order_id = '', $email = '', $nom = '' ) {
         global $wpdb;
-        $tc  = $wpdb->prefix . 'seliweb_cotisations';
-        $cfg = self::cfg();
-
-        $ha_order_id = (string) ( $order['id'] ?? '' );
-        if ( ! $ha_order_id ) return;
-
-        if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tc WHERE helloasso_order_id=%s LIMIT 1", $ha_order_id ) ) ) {
-            return; // déjà traité
-        }
-
-        $payer        = $order['payer'] ?? array();
-        $email        = sanitize_email( $payer['email'] ?? '' );
-        $prenom       = sanitize_text_field( $payer['firstName'] ?? '' );
-        $nom_famille  = sanitize_text_field( $payer['lastName']  ?? '' );
-        $nom          = trim( $prenom . ' ' . $nom_famille );
-        $amount_cents = intval( $order['amount']['total'] ?? 0 );
-        $date         = substr( $order['date'] ?? current_time( 'Y-m-d' ), 0, 10 );
-
-        $wp_user    = $email ? get_user_by( 'email', $email ) : null;
-        $wp_user_id = $wp_user ? $wp_user->ID : 0;
-
+        $tc = $wpdb->prefix . 'seliweb_cotisations';
         $wpdb->insert( $tc, array(
-            'wp_user_id'            => $wp_user_id,
-            'montant'               => $amount_cents,
+            'wp_user_id'            => intval( $wp_user_id ),
+            'montant'               => intval( $montant ),
             'date_paiement'         => $date,
             'statut'                => 'paye',
-            'helloasso_order_id'    => $ha_order_id,
+            'helloasso_order_id'    => $helloasso_order_id,
             'helloasso_payer_email' => $email,
             'helloasso_payer_nom'   => $nom,
             'paheko_synced'         => 0,
             'created_at'            => current_time( 'mysql' ),
         ) );
-        $cotisation_id = (int) $wpdb->insert_id;
+        return (int) $wpdb->insert_id;
     }
 
     private static function sync_to_paheko( $cotisation_id, $email, $nom, $date, $id_year, $id_fee, $id_service ) {
@@ -2001,7 +1957,7 @@ class Seliweb_Cotisations {
         $org_slug  = '';
         $form_slug = '';
         if ( $campaign_url ) {
-            if ( preg_match( '#/associations/([^/]+)/[^/]+/([^/?#]+)#', $campaign_url, $m ) ) {
+            if ( preg_match( '~/associations/([^/]+)/[^/]+/([^/?#]+)~', $campaign_url, $m ) ) {
                 $org_slug  = $m[1];
                 $form_slug = $m[2];
             }

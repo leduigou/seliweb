@@ -8,6 +8,7 @@ class Seliweb_Paiements {
     public static function init() {
         add_action( 'init', array( __CLASS__, 'handle_post' ) );
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
+        add_action( 'init', array( __CLASS__, 'handle_webhook' ) );
     }
 
     public static function render_tab() {
@@ -254,6 +255,128 @@ class Seliweb_Paiements {
         return $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM $tp WHERE groupe_depart_id IS NULL OR groupe_depart_id = %d ORDER BY nom ASC",
             intval( $groupe_id )
+        ) );
+    }
+
+    // ================================================================
+    // WEBHOOK HELLOASSO  (?seliweb_helloasso_webhook=1)
+    // ================================================================
+    public static function handle_webhook() {
+        if ( ! isset( $_GET['seliweb_helloasso_webhook'] ) ) return;
+
+        if ( $_SERVER['REQUEST_METHOD'] !== 'POST' ) {
+            http_response_code( 405 );
+            exit( 'Method Not Allowed' );
+        }
+
+        $body = file_get_contents( 'php://input' );
+        $data = json_decode( $body, true );
+
+        if ( ! is_array( $data ) ) {
+            http_response_code( 400 );
+            exit( 'Bad Request' );
+        }
+
+        $event = $data['eventType'] ?? '';
+        if ( $event === 'Order' && ! empty( $data['data'] ) ) {
+            self::process_order( $data['data'] );
+        }
+
+        http_response_code( 200 );
+        exit( 'OK' );
+    }
+
+    // Extrait le dernier segment d'une URL de formulaire HelloAsso
+    // (…/adhesions/adhesion-2026 → adhesion-2026), pour retrouver l'offre
+    // correspondante à partir du form_slug reçu dans le paiement.
+    private static function extract_form_slug( $url ) {
+        if ( preg_match( '~/associations/[^/]+/[^/]+/([^/?#]+)~', (string) $url, $m ) ) {
+            return $m[1];
+        }
+        return '';
+    }
+
+    private static function find_offre_par_form_slug( $form_slug ) {
+        if ( ! $form_slug ) return null;
+        global $wpdb;
+        $tp     = $wpdb->prefix . 'seliweb_paiements_offres';
+        $offres = $wpdb->get_results( "SELECT * FROM $tp WHERE helloasso_url IS NOT NULL AND helloasso_url != ''" );
+        foreach ( $offres as $offre ) {
+            if ( self::extract_form_slug( $offre->helloasso_url ) === $form_slug ) {
+                return $offre;
+            }
+        }
+        return null;
+    }
+
+    // ================================================================
+    // TRAITEMENT D'UN PAIEMENT
+    // ================================================================
+    // Journalise systématiquement le paiement reçu. Applique les actions
+    // de l'offre (cotisation, changement de groupe) uniquement si le
+    // paiement a pu être rattaché à la fois à une offre connue (via le
+    // formulaire HelloAsso) et à un membre (via l'email du payeur) —
+    // sinon il reste "en_attente" pour un rattachement manuel.
+    public static function process_order( $order ) {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+
+        $ha_order_id = (string) ( $order['id'] ?? '' );
+        if ( ! $ha_order_id ) return;
+
+        if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE helloasso_order_id=%s LIMIT 1", $ha_order_id ) ) ) {
+            return; // déjà traité
+        }
+
+        $payer        = $order['payer'] ?? array();
+        $email        = sanitize_email( $payer['email'] ?? '' );
+        $prenom       = sanitize_text_field( $payer['firstName'] ?? '' );
+        $nom_famille  = sanitize_text_field( $payer['lastName']  ?? '' );
+        $nom          = trim( $prenom . ' ' . $nom_famille );
+        $amount_cents = intval( $order['amount']['total'] ?? 0 );
+        $date         = substr( $order['date'] ?? current_time( 'Y-m-d' ), 0, 10 );
+
+        // Le nom du champ exact (formSlug au niveau de la commande, ou dans
+        // le premier article) dépend de la structure réelle envoyée par
+        // HelloAsso — à confirmer avec un paiement réel une fois le webhook
+        // exposé publiquement. Reste sans effet bloquant si absent : le
+        // paiement est alors simplement journalisé en attente.
+        $form_slug = sanitize_text_field( $order['formSlug'] ?? ( $order['items'][0]['formSlug'] ?? '' ) );
+        $offre     = self::find_offre_par_form_slug( $form_slug );
+
+        $wp_user    = $email ? get_user_by( 'email', $email ) : null;
+        $wp_user_id = $wp_user ? $wp_user->ID : 0;
+
+        $matched       = $offre && $wp_user_id;
+        $cotisation_id = null;
+
+        if ( $matched ) {
+            if ( $offre->enregistre_cotisation && class_exists( 'Seliweb_Cotisations' ) ) {
+                $cotisation_id = Seliweb_Cotisations::enregistrer_paiement_cotisation(
+                    $wp_user_id, $amount_cents, $date, $ha_order_id, $email, $nom
+                );
+            }
+            if ( $offre->groupe_arrivee_id ) {
+                $wpdb->update(
+                    $wpdb->prefix . 'seliweb_membres',
+                    array( 'groupe_id' => intval( $offre->groupe_arrivee_id ) ),
+                    array( 'wp_user_id' => $wp_user_id )
+                );
+            }
+        }
+
+        $wpdb->insert( $tp, array(
+            'offre_id'            => $offre ? $offre->id : null,
+            'wp_user_id'          => $wp_user_id ?: null,
+            'cotisation_id'       => $cotisation_id,
+            'montant'             => $amount_cents,
+            'date_paiement'       => $date,
+            'statut'              => $matched ? 'rattache' : 'en_attente',
+            'helloasso_order_id'  => $ha_order_id,
+            'helloasso_form_slug' => $form_slug,
+            'payer_email'         => $email,
+            'payer_nom'           => $nom,
+            'created_at'          => current_time( 'mysql' ),
         ) );
     }
 }

@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.3';
+    const DB_VERSION     = '2.4';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -228,6 +228,29 @@ class Seliweb_Database {
             enregistre_cotisation  TINYINT(1)   NOT NULL DEFAULT 0,
             helloasso_url          VARCHAR(500) DEFAULT NULL,
             PRIMARY KEY (id)
+        ) $charset;";
+
+        // Journal des paiements reçus via webhook HelloAsso (adhésion, offre,
+        // don...), qu'ils aient pu être rattachés automatiquement à un membre
+        // et une offre ou non (statut en_attente = à traiter manuellement).
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_paiements (
+            id                   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            offre_id             INT UNSIGNED DEFAULT NULL,
+            wp_user_id           BIGINT UNSIGNED DEFAULT NULL,
+            cotisation_id        INT UNSIGNED DEFAULT NULL,
+            montant              INT UNSIGNED NOT NULL DEFAULT 0,
+            date_paiement        DATE         NOT NULL,
+            statut               ENUM('rattache','en_attente') NOT NULL DEFAULT 'en_attente',
+            helloasso_order_id   VARCHAR(100) DEFAULT NULL,
+            helloasso_form_slug  VARCHAR(150) DEFAULT NULL,
+            payer_email          VARCHAR(200) DEFAULT NULL,
+            payer_nom            VARCHAR(200) DEFAULT NULL,
+            created_at           DATETIME     NOT NULL,
+            PRIMARY KEY (id),
+            KEY offre_id (offre_id),
+            KEY wp_user_id (wp_user_id),
+            KEY statut (statut),
+            KEY helloasso_order_id (helloasso_order_id)
         ) $charset;";
 
         $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_cotisations_reglements (
