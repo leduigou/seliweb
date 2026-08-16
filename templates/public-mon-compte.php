@@ -55,9 +55,13 @@ $is_cotisations_membre = class_exists( 'Seliweb_Cotisations' )
     && Seliweb_Cotisations::cotisations_actif()
     && Seliweb_Cotisations::groupe_soumis( $membre->groupe_id );
 
-// Onglet Paiements : uniquement s'il existe au moins une offre accessible au groupe du membre
+// Onglet Paiements : uniquement s'il existe au moins une offre accessible au groupe du membre,
+// ou un historique de paiements déjà effectués
 $offres_membre = class_exists( 'Seliweb_Paiements' )
     ? Seliweb_Paiements::get_offres_pour_membre( $membre->groupe_id )
+    : array();
+$historique_paiements = class_exists( 'Seliweb_Paiements' )
+    ? Seliweb_Paiements::get_historique_paiements_membre( $wp_user_id )
     : array();
 
 // Monnaies autorisées par le groupe
@@ -169,7 +173,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( 'Cotisations', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
-        <?php if ( ! empty( $offres_membre ) ) : ?>
+        <?php if ( ! empty( $offres_membre ) || ! empty( $historique_paiements ) ) : ?>
         <a href="<?php echo esc_url( add_query_arg('sel_action','paiements',$page_url) ); ?>"
            class="seliweb-tab <?php echo $action==='paiements' ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Paiements', 'seliweb' ); ?>
@@ -1257,9 +1261,41 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     </div>
     <?php endif; ?>
 
-    <?php elseif ( $action === 'paiements' && ! empty( $offres_membre ) ) : ?>
+    <?php elseif ( $action === 'paiements' && ( ! empty( $offres_membre ) || ! empty( $historique_paiements ) ) ) : ?>
 
-    <h3><?php esc_html_e( 'Paiements', 'seliweb' ); ?></h3>
+    <?php if ( ! empty( $historique_paiements ) ) : ?>
+    <h3><?php esc_html_e( 'Mes paiements', 'seliweb' ); ?></h3>
+    <div style="overflow-x:auto;">
+    <table class="seliweb-table">
+        <thead><tr>
+            <th style="width:90px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+            <th><?php esc_html_e( 'Offre', 'seliweb' ); ?></th>
+            <th style="width:100px;text-align:right;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
+            <th style="width:180px;"><?php esc_html_e( 'Transition de groupe', 'seliweb' ); ?></th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ( $historique_paiements as $p ) :
+            $transition = '—';
+            if ( $p->depart_nom && $p->arrivee_nom ) {
+                $transition = esc_html( $p->depart_nom ) . ' &rarr; ' . esc_html( $p->arrivee_nom );
+            } elseif ( $p->arrivee_nom ) {
+                $transition = '&rarr; ' . esc_html( $p->arrivee_nom );
+            }
+        ?>
+        <tr>
+            <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime( $p->date_paiement ) ) ); ?></td>
+            <td><?php echo esc_html( $p->offre_nom ); ?></td>
+            <td style="text-align:right;font-weight:600;"><?php echo esc_html( number_format( $p->montant / 100, 2, ',', ' ' ) ); ?> €</td>
+            <td><?php echo $transition; ?></td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    </div>
+    <?php endif; ?>
+
+    <?php if ( ! empty( $offres_membre ) ) : ?>
+    <h3 style="margin-top:24px;"><?php esc_html_e( 'Paiements possibles', 'seliweb' ); ?></h3>
 
     <?php foreach ( $offres_membre as $offre ) : ?>
         <div class="seliweb-notice" style="background:#f7fbf9;border-left:4px solid #1d6a4a;padding:14px 18px;border-radius:4px;margin-bottom:14px;">
@@ -1277,6 +1313,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php endif; ?>
         </div>
     <?php endforeach; ?>
+    <?php endif; ?>
 
     <?php  endif; ?>
 

@@ -309,6 +309,30 @@ class Seliweb_Paiements {
         ) );
     }
 
+    // ----------------------------------------------------------------
+    // Méthode utilitaire — historique des paiements (hors cotisations,
+    // déjà affichées dans l'onglet "Mes cotisations") d'un membre
+    // ----------------------------------------------------------------
+    public static function get_historique_paiements_membre( $wp_user_id ) {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT p.date_paiement, p.montant, o.nom AS offre_nom,
+                    gd.nom AS depart_nom, ga.nom AS arrivee_nom
+             FROM $tp p
+             INNER JOIN $to o ON o.id = p.offre_id
+             LEFT JOIN  $tg gd ON gd.id = o.groupe_depart_id
+             LEFT JOIN  $tg ga ON ga.id = o.groupe_arrivee_id
+             WHERE p.statut = 'rattache'
+               AND p.wp_user_id = %d
+               AND o.enregistre_cotisation = 0
+             ORDER BY p.date_paiement DESC, p.id DESC",
+            intval( $wp_user_id )
+        ) );
+    }
+
     // ================================================================
     // WEBHOOK HELLOASSO  (?seliweb_helloasso_webhook=1)
     // ================================================================
