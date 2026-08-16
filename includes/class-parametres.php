@@ -209,16 +209,25 @@ class Seliweb_Parametres {
     // ----------------------------------------------------------------
     public static function display() {
         $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
+
+        // Sous-onglets regroupés sous l'onglet parent "Annonces"
+        $annonces_subtabs = array(
+            'general'    => __( 'Affichage',  'seliweb' ),
+            'categories' => __( 'Catégories', 'seliweb' ),
+            'rubriques'  => __( 'Rubriques',  'seliweb' ),
+            'statuts'    => __( 'Statuts',    'seliweb' ),
+        );
+        $is_annonces = array_key_exists( $tab, $annonces_subtabs );
+
         $tabs = array(
-            'general'    => __( 'Général',     'seliweb' ),
-            'groupes'    => __( 'Groupes',     'seliweb' ),
-            'monnaies'   => __( 'Monnaies',    'seliweb' ),
-            'categories' => __( 'Catégories',  'seliweb' ),
-            'rubriques'  => __( 'Rubriques',   'seliweb' ),
-            'statuts'    => __( 'Statuts',     'seliweb' ),
-            'sel'         => __( 'SEL',          'seliweb' ),
-            'mails'       => __( 'Mails',        'seliweb' ),
-            'cotisations' => __( 'Cotisations',  'seliweb' ),
+            'annonces'    => __( 'Annonces',    'seliweb' ),
+            'groupes'     => __( 'Groupes',     'seliweb' ),
+            'monnaies'    => __( 'Monnaies',    'seliweb' ),
+            'sel'         => __( 'SEL',         'seliweb' ),
+            'mails'       => __( 'Mails',       'seliweb' ),
+            'api'         => __( 'API',         'seliweb' ),
+            'cotisations' => __( 'Cotisations', 'seliweb' ),
+            'paiements'   => __( 'Paiements',   'seliweb' ),
         );
 
         echo '<div class="wrap">';
@@ -226,22 +235,36 @@ class Seliweb_Parametres {
 
         echo '<nav class="nav-tab-wrapper">';
         foreach ( $tabs as $key => $label ) {
-            $active = ( $tab === $key ) ? ' nav-tab-active' : '';
-            $url    = admin_url( 'admin.php?page=seliweb_parametres&tab=' . $key );
-            echo '<a href="' . esc_url( $url ) . '" class="nav-tab' . $active . '">' . esc_html( $label ) . '</a>';
+            $active = ( $key === 'annonces' ) ? $is_annonces : ( $tab === $key );
+            $url    = ( $key === 'annonces' )
+                ? admin_url( 'admin.php?page=seliweb_parametres&tab=general' )
+                : admin_url( 'admin.php?page=seliweb_parametres&tab=' . $key );
+            echo '<a href="' . esc_url( $url ) . '" class="nav-tab' . ( $active ? ' nav-tab-active' : '' ) . '">' . esc_html( $label ) . '</a>';
         }
         echo '</nav><div class="tab-content" style="margin-top:20px;">';
 
+        if ( $is_annonces ) {
+            echo '<nav class="nav-tab-wrapper" style="margin-bottom:24px;">';
+            foreach ( $annonces_subtabs as $key => $label ) {
+                $url = admin_url( 'admin.php?page=seliweb_parametres&tab=' . $key );
+                echo '<a href="' . esc_url( $url ) . '" class="nav-tab' . ( $tab === $key ? ' nav-tab-active' : '' ) . '">' . esc_html( $label ) . '</a>';
+            }
+            echo '</nav>';
+        }
+
         switch ( $tab ) {
-            case 'general':   self::tab_general();   break;
-            case 'groupes':   self::tab_groupes();   break;
-            case 'monnaies':  self::tab_monnaies();  break;
-            case 'rubriques': self::tab_rubriques(); break;
-            case 'statuts':   self::tab_statuts();   break;
+            case 'general':      self::tab_general();    break;
+            case 'categories':   self::tab_categories();  break;
+            case 'rubriques':    self::tab_rubriques();   break;
+            case 'statuts':      self::tab_statuts();     break;
+            case 'groupes':      self::tab_groupes();     break;
+            case 'monnaies':     self::tab_monnaies();    break;
             case 'sel':          self::tab_sel();                         break;
             case 'mails':        self::tab_mails();                       break;
+            case 'api':          Seliweb_Cotisations::tab_api();          break;
             case 'cotisations':  Seliweb_Cotisations::tab_cotisations();  break;
-            default:             self::tab_categories();                   break;
+            case 'paiements':    self::tab_paiements();                   break;
+            default:             self::tab_general();                    break;
         }
 
         echo '</div></div>';
@@ -271,6 +294,7 @@ class Seliweb_Parametres {
             case 'monnaies':   self::handle_monnaies( $action );   break;
             case 'sel':          self::handle_sel( $action );                       break;
             case 'mails':        self::handle_mails( $action );                     break;
+            case 'api':          Seliweb_Cotisations::handle_api( $action );        break;
             case 'cotisations':  Seliweb_Cotisations::handle_cotisations( $action ); break;
         }
     }
@@ -321,6 +345,15 @@ class Seliweb_Parametres {
         }
         wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=general&updated=1' ) );
         exit;
+    }
+
+    // ================================================================
+    // PAIEMENTS
+    // ================================================================
+    private static function tab_paiements() {
+        ?>
+        <p class="description"><?php esc_html_e( 'Aucun réglage pour le moment.', 'seliweb' ); ?></p>
+        <?php
     }
 
     // ================================================================

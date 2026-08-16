@@ -1621,16 +1621,6 @@ class Seliweb_Cotisations {
         global $wpdb;
         $tous_groupes = $wpdb->get_results( "SELECT id, nom FROM {$wpdb->prefix}seliweb_groupes ORDER BY nom" );
 
-        $ha_actif                = ! empty( $cfg['cotisations_helloasso_actif'] );
-        $helloasso_client_id     = $cfg['helloasso_client_id']     ?? '';
-        $helloasso_client_secret = $cfg['helloasso_client_secret'] ?? '';
-        $helloasso_campaign_url  = $cfg['helloasso_campaign_url']  ?? '';
-
-        $paheko_actif        = ! empty( $cfg['cotisations_paheko_actif'] );
-        $paheko_url          = $cfg['paheko_url']          ?? '';
-        $paheko_identifiant  = $cfg['paheko_identifiant']  ?? '';
-        $paheko_mot_de_passe = $cfg['paheko_mot_de_passe'] ?? '';
-
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
         }
@@ -1677,7 +1667,36 @@ class Seliweb_Cotisations {
             </tr>
         </table>
 
-        <h2 style="margin-top:32px;display:flex;align-items:center;gap:10px;">
+        <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
+        </form>
+        <?php
+    }
+
+    // ================================================================
+    // ADMIN — onglet API (paramètres) : HelloAsso + Paheko
+    // ================================================================
+    public static function tab_api() {
+        $cfg = self::cfg();
+
+        $ha_actif                = ! empty( $cfg['cotisations_helloasso_actif'] );
+        $helloasso_client_id     = $cfg['helloasso_client_id']     ?? '';
+        $helloasso_client_secret = $cfg['helloasso_client_secret'] ?? '';
+        $helloasso_campaign_url  = $cfg['helloasso_campaign_url']  ?? '';
+
+        $paheko_actif        = ! empty( $cfg['cotisations_paheko_actif'] );
+        $paheko_url          = $cfg['paheko_url']          ?? '';
+        $paheko_identifiant  = $cfg['paheko_identifiant']  ?? '';
+        $paheko_mot_de_passe = $cfg['paheko_mot_de_passe'] ?? '';
+
+        if ( isset( $_GET['updated'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
+        }
+        ?>
+        <form method="post">
+        <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+        <input type="hidden" name="seliweb_action" value="save_api">
+
+        <h2 style="margin-top:0;display:flex;align-items:center;gap:10px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:inherit;font-weight:inherit;cursor:pointer;">
                 <input type="checkbox" name="cotisations_helloasso_actif" id="toggle_ha" value="1" <?php checked( $ha_actif ); ?>>
                 <?php esc_html_e( 'Paiement en ligne — HelloAsso', 'seliweb' ); ?>
@@ -1717,7 +1736,7 @@ class Seliweb_Cotisations {
             </table>
         </div>
 
-        <h2 style="margin-top:32px;display:flex;align-items:center;gap:10px;">
+        <h2 style="margin-top:32px;padding-top:24px;border-top:1px solid #ddd;display:flex;align-items:center;gap:10px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:inherit;font-weight:inherit;cursor:pointer;">
                 <input type="checkbox" name="cotisations_paheko_actif" id="toggle_paheko" value="1" <?php checked( $paheko_actif ); ?>>
                 <?php esc_html_e( 'Synchronisation comptable — Paheko', 'seliweb' ); ?>
@@ -1957,6 +1976,26 @@ class Seliweb_Cotisations {
         }
         if ( $action !== 'save_cotisations' ) return;
 
+        $groupes_ids = array_filter( array_map( 'intval', (array) ( $_POST['cotisations_groupes'] ?? array() ) ) );
+
+        self::cfg_save( array(
+            'cotisations_actif'      => isset( $_POST['cotisations_actif'] )           ? '1' : '0',
+            'cotisations_exercice'   => sanitize_text_field( wp_unslash( $_POST['cotisations_exercice']   ?? '' ) ),
+            'cotisations_date_debut' => sanitize_text_field( wp_unslash( $_POST['cotisations_date_debut'] ?? '' ) ),
+            'cotisations_date_fin'   => sanitize_text_field( wp_unslash( $_POST['cotisations_date_fin']   ?? '' ) ),
+            'cotisations_groupes'    => implode( ',', $groupes_ids ),
+        ) );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=cotisations&updated=1' ) );
+        exit;
+    }
+
+    // ================================================================
+    // ADMIN — traitement POST onglet API (HelloAsso + Paheko)
+    // ================================================================
+    public static function handle_api( $action ) {
+        if ( $action !== 'save_api' ) return;
+
         $campaign_url = esc_url_raw( wp_unslash( $_POST['helloasso_campaign_url'] ?? '' ) );
 
         $org_slug  = '';
@@ -1968,14 +2007,7 @@ class Seliweb_Cotisations {
             }
         }
 
-        $groupes_ids = array_filter( array_map( 'intval', (array) ( $_POST['cotisations_groupes'] ?? array() ) ) );
-
         self::cfg_save( array(
-            'cotisations_actif'           => isset( $_POST['cotisations_actif'] )           ? '1' : '0',
-            'cotisations_exercice'        => sanitize_text_field( wp_unslash( $_POST['cotisations_exercice']   ?? '' ) ),
-            'cotisations_date_debut'      => sanitize_text_field( wp_unslash( $_POST['cotisations_date_debut'] ?? '' ) ),
-            'cotisations_date_fin'        => sanitize_text_field( wp_unslash( $_POST['cotisations_date_fin']   ?? '' ) ),
-            'cotisations_groupes'         => implode( ',', $groupes_ids ),
             'cotisations_helloasso_actif' => isset( $_POST['cotisations_helloasso_actif'] ) ? '1' : '0',
             'helloasso_campaign_url'      => $campaign_url,
             'helloasso_client_id'         => sanitize_text_field( wp_unslash( $_POST['helloasso_client_id']     ?? '' ) ),
@@ -1990,7 +2022,7 @@ class Seliweb_Cotisations {
 
         delete_transient( 'seliweb_ha_token' );
 
-        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=cotisations&updated=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=api&updated=1' ) );
         exit;
     }
 }
