@@ -11,6 +11,7 @@ class Seliweb_Paiements {
         add_action( 'init', array( __CLASS__, 'handle_webhook' ) );
         add_action( 'init', array( __CLASS__, 'handle_rattachement_post' ) );
         add_action( 'init', array( __CLASS__, 'handle_sync_offres_post' ) );
+        add_action( 'init', array( __CLASS__, 'handle_creer_paiement' ) );
     }
 
     public static function render_tab() {
@@ -45,11 +46,32 @@ class Seliweb_Paiements {
         $exercice              = sanitize_text_field( wp_unslash( $_POST['exercice'] ?? '' ) );
         $action                = sanitize_key( $_POST['seliweb_action'] );
 
+        // Tarifs : un ou plusieurs, chacun avec un libellé et un montant réel
+        // (envoyé tel quel à HelloAsso — un ou plusieurs choix possibles côté
+        // membre si plusieurs tarifs sont définis).
+        $labels   = (array) ( $_POST['tarif_label']   ?? array() );
+        $montants = (array) ( $_POST['tarif_montant'] ?? array() );
+        $tarifs   = array();
+        foreach ( $labels as $i => $label ) {
+            $label   = sanitize_text_field( wp_unslash( $label ) );
+            $montant = isset( $montants[ $i ] ) ? (float) str_replace( ',', '.', $montants[ $i ] ) : 0;
+            if ( $label && $montant > 0 ) {
+                $tarifs[] = array( 'label' => $label, 'montant' => (int) round( $montant * 100 ) );
+            }
+        }
+
+        $redir_action = $action === 'add_paiement' ? 'new' : 'edit';
         if ( $enregistre_cotisation && ! $exercice ) {
-            $redir_action = $action === 'add_paiement' ? 'new' : 'edit';
             wp_safe_redirect( admin_url(
                 'admin.php?page=seliweb_parametres&tab=paiements&action=' . $redir_action
                 . '&id=' . intval( $_POST['id'] ?? 0 ) . '&error=exercice_requis'
+            ) );
+            exit;
+        }
+        if ( ! $tarifs ) {
+            wp_safe_redirect( admin_url(
+                'admin.php?page=seliweb_parametres&tab=paiements&action=' . $redir_action
+                . '&id=' . intval( $_POST['id'] ?? 0 ) . '&error=tarif_requis'
             ) );
             exit;
         }
@@ -57,14 +79,15 @@ class Seliweb_Paiements {
         $data = array(
             'nom'                   => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             'description'           => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
-            'tarif'                 => sanitize_text_field( wp_unslash( $_POST['tarif'] ?? '' ) ),
+            'tarifs'                => wp_json_encode( $tarifs ),
             'groupe_depart_id'      => ! empty( $_POST['groupe_depart_id'] )  ? intval( $_POST['groupe_depart_id'] )  : null,
             'groupe_arrivee_id'     => ! empty( $_POST['groupe_arrivee_id'] ) ? intval( $_POST['groupe_arrivee_id'] ) : null,
             'enregistre_cotisation' => $enregistre_cotisation,
             'exercice'              => $enregistre_cotisation ? $exercice : null,
+            'consentement_texte'    => sanitize_textarea_field( wp_unslash( $_POST['consentement_texte'] ?? '' ) ) ?: null,
+            'est_don'               => isset( $_POST['est_don'] ) ? 1 : 0,
             'compte_paheko_banque'  => ! $enregistre_cotisation ? sanitize_text_field( wp_unslash( $_POST['compte_paheko_banque']  ?? '' ) ) ?: null : null,
             'compte_paheko_recette' => ! $enregistre_cotisation ? sanitize_text_field( wp_unslash( $_POST['compte_paheko_recette'] ?? '' ) ) ?: null : null,
-            'helloasso_url'         => esc_url_raw( wp_unslash( $_POST['helloasso_url'] ?? '' ) ),
         );
 
         if ( $action === 'add_paiement' ) {
@@ -128,12 +151,18 @@ class Seliweb_Paiements {
             <?php if ( empty( $items ) ) : ?>
                 <tr><td colspan="6"><em><?php esc_html_e( 'Aucun paiement configuré.', 'seliweb' ); ?></em></td></tr>
             <?php else : ?>
-                <?php foreach ( $items as $row ) : ?>
+                <?php foreach ( $items as $row ) :
+                    $tarifs_row = $row->tarifs ? ( json_decode( $row->tarifs, true ) ?: array() ) : array();
+                    $tarifs_aff = implode( ' / ', array_map(
+                        fn( $t ) => ( $t['label'] ?? '' ) . ' ' . number_format( ( $t['montant'] ?? 0 ) / 100, 2, ',', ' ' ) . ' €',
+                        $tarifs_row
+                    ) );
+                ?>
                 <tr>
                     <td><strong><?php echo esc_html( $row->nom ); ?></strong></td>
                     <td><?php echo $row->depart_nom ? esc_html( $row->depart_nom ) : '<em>' . esc_html__( 'Tous les groupes', 'seliweb' ) . '</em>'; ?></td>
                     <td><?php echo $row->arrivee_nom ? esc_html( $row->arrivee_nom ) : '<em>' . esc_html__( 'Aucun changement', 'seliweb' ) . '</em>'; ?></td>
-                    <td><?php echo esc_html( $row->tarif ); ?></td>
+                    <td><?php echo esc_html( $tarifs_aff ); ?></td>
                     <td style="text-align:center;">
                         <?php if ( $row->enregistre_cotisation ) : ?>
                             <span style="color:green;font-weight:700;" title="<?php esc_attr_e( 'Enregistre une cotisation', 'seliweb' ); ?>">&#10003;</span>
@@ -189,6 +218,14 @@ class Seliweb_Paiements {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'exercice_requis' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "L'exercice est obligatoire lorsque le paiement enregistre une cotisation.", 'seliweb' ) . '</p></div>';
         }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'tarif_requis' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Au moins un tarif (libellé + montant) est obligatoire.', 'seliweb' ) . '</p></div>';
+        }
+        $tarifs_item = array();
+        if ( $item && $item->tarifs ) {
+            $tarifs_item = json_decode( $item->tarifs, true ) ?: array();
+        }
+        if ( ! $tarifs_item ) $tarifs_item = array( array( 'label' => '', 'montant' => '' ) );
         ?>
         <form method="post" style="max-width:700px;">
             <?php wp_nonce_field( 'seliweb_paiements', 'seliweb_nonce' ); ?>
@@ -215,11 +252,42 @@ class Seliweb_Paiements {
                 </tr>
 
                 <tr>
-                    <th><label for="tarif"><?php esc_html_e( 'Tarif', 'seliweb' ); ?></label></th>
+                    <th><?php esc_html_e( 'Tarifs', 'seliweb' ); ?></th>
                     <td>
-                        <input type="text" id="tarif" name="tarif" class="regular-text"
-                               value="<?php echo $item ? esc_attr( $item->tarif ) : ''; ?>" placeholder="<?php esc_attr_e( 'Ex. : 20 €/an', 'seliweb' ); ?>">
-                        <p class="description"><?php esc_html_e( 'Texte libre affiché à titre indicatif — le montant réel est celui réglé sur HelloAsso.', 'seliweb' ); ?></p>
+                        <div id="tarifs_rows">
+                            <?php foreach ( $tarifs_item as $t ) : ?>
+                                <div class="tarif-row" style="display:flex;gap:8px;margin-bottom:6px;align-items:center;">
+                                    <input type="text" name="tarif_label[]" class="regular-text" style="max-width:220px;"
+                                           placeholder="<?php esc_attr_e( 'Ex. : Plein tarif', 'seliweb' ); ?>"
+                                           value="<?php echo esc_attr( $t['label'] ?? '' ); ?>">
+                                    <input type="text" name="tarif_montant[]" class="small-text"
+                                           placeholder="<?php esc_attr_e( 'Montant en €', 'seliweb' ); ?>"
+                                           value="<?php echo isset( $t['montant'] ) && $t['montant'] !== '' ? esc_attr( number_format( $t['montant'] / 100, 2, ',', '' ) ) : ''; ?>">
+                                    <span>€</span>
+                                    <button type="button" class="button tarif-remove">&minus;</button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" id="tarif_add" class="button"><?php esc_html_e( '+ Ajouter un tarif', 'seliweb' ); ?></button>
+                        <p class="description"><?php esc_html_e( 'Un seul tarif = paiement direct. Plusieurs tarifs = le membre choisit parmi les options proposées (ex. renouvellement à tarif plein ou réduit).', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><label for="consentement_texte"><?php esc_html_e( 'Texte de consentement', 'seliweb' ); ?></label></th>
+                    <td>
+                        <textarea id="consentement_texte" name="consentement_texte" class="large-text" rows="3"><?php echo $item ? esc_textarea( $item->consentement_texte ) : ''; ?></textarea>
+                        <p class="description"><?php esc_html_e( 'Facultatif. Si renseigné, le membre doit cocher une case d\'acceptation de ce texte avant de payer (ex. statuts de l\'association pour une adhésion).', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th><?php esc_html_e( 'Don', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="est_don" value="1" <?php checked( $item ? $item->est_don : 0 ); ?>>
+                            <?php esc_html_e( 'Ce paiement comprend un don', 'seliweb' ); ?>
+                        </label>
                     </td>
                 </tr>
 
@@ -322,15 +390,6 @@ class Seliweb_Paiements {
                     </td>
                 </tr>
 
-                <tr>
-                    <th><label for="helloasso_url"><?php esc_html_e( 'Lien vers le formulaire HelloAsso', 'seliweb' ); ?></label></th>
-                    <td>
-                        <input type="url" id="helloasso_url" name="helloasso_url" class="large-text"
-                               value="<?php echo $item ? esc_attr( $item->helloasso_url ) : ''; ?>"
-                               placeholder="https://www.helloasso.com/associations/mon-sel/adhesions/adhesion-2026">
-                    </td>
-                </tr>
-
             </table>
 
             <?php submit_button( $is_edit ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ) ); ?>
@@ -350,6 +409,28 @@ class Seliweb_Paiements {
                     if ( rowExercice ) rowExercice.style.display = this.checked ? '' : 'none';
                     if ( rowBanque )   rowBanque.style.display   = this.checked ? 'none' : '';
                     if ( rowRecette )  rowRecette.style.display  = this.checked ? 'none' : '';
+                });
+            }
+
+            var rows = document.getElementById('tarifs_rows');
+            var addBtn = document.getElementById('tarif_add');
+            function bindRemove(row) {
+                var btn = row.querySelector('.tarif-remove');
+                if ( btn ) btn.addEventListener('click', function(){
+                    if ( rows.querySelectorAll('.tarif-row').length > 1 ) row.remove();
+                });
+            }
+            if ( rows ) rows.querySelectorAll('.tarif-row').forEach(bindRemove);
+            if ( addBtn && rows ) {
+                addBtn.addEventListener('click', function(){
+                    var row = document.createElement('div');
+                    row.className = 'tarif-row';
+                    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
+                    row.innerHTML = '<input type="text" name="tarif_label[]" class="regular-text" style="max-width:220px;" placeholder="<?php echo esc_js( __( 'Ex. : Plein tarif', 'seliweb' ) ); ?>">'
+                        + '<input type="text" name="tarif_montant[]" class="small-text" placeholder="<?php echo esc_js( __( 'Montant en €', 'seliweb' ) ); ?>"><span>€</span>'
+                        + '<button type="button" class="button tarif-remove">&minus;</button>';
+                    rows.appendChild(row);
+                    bindRemove(row);
                 });
             }
         })();
@@ -410,6 +491,122 @@ class Seliweb_Paiements {
         ) );
     }
 
+    // ----------------------------------------------------------------
+    // Méthode utilitaire — dernier paiement rattaché d'un membre dans les
+    // 10 dernières minutes, pour afficher un message de confirmation précis
+    // au retour de HelloAsso (le webhook arrive généralement avant le
+    // navigateur, mais pas garanti — d'où la fenêtre de tolérance).
+    // ----------------------------------------------------------------
+    public static function get_dernier_paiement_recent( $wp_user_id ) {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
+        // Comparaison basée sur l'heure WordPress (celle utilisée pour
+        // enregistrer created_at via current_time('mysql')) plutôt que sur
+        // NOW() côté MySQL, qui peut être dans un fuseau horaire différent.
+        $depuis = date( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 600 );
+        return $wpdb->get_row( $wpdb->prepare(
+            "SELECT p.*, o.nom AS offre_nom, ga.nom AS arrivee_nom
+             FROM $tp p
+             LEFT JOIN $to o  ON o.id = p.offre_id
+             LEFT JOIN $tg ga ON ga.id = o.groupe_arrivee_id
+             WHERE p.wp_user_id = %d AND p.statut = 'rattache'
+               AND p.created_at >= %s
+             ORDER BY p.created_at DESC LIMIT 1",
+            intval( $wp_user_id ),
+            $depuis
+        ) );
+    }
+
+    // ----------------------------------------------------------------
+    // URL de la page "Mon compte" (contient le shortcode [seliweb_mon_compte])
+    // ----------------------------------------------------------------
+    private static function mon_compte_page_url() {
+        global $wpdb;
+        $page_id = $wpdb->get_var(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_status='publish' AND post_type='page'
+               AND post_content LIKE '%seliweb_mon_compte%' LIMIT 1"
+        );
+        return $page_id ? get_permalink( $page_id ) : '';
+    }
+
+    // ================================================================
+    // DÉCLENCHEMENT D'UN PAIEMENT — crée une Checkout Intent HelloAsso et
+    // redirige le membre vers la page de paiement. L'ID membre et l'ID de
+    // l'offre sont transmis en "metadata", renvoyés tels quels par HelloAsso
+    // dans la notification de paiement (webhook) — ce qui permet de
+    // retrouver le bon membre même si le paiement est réglé sous un autre
+    // nom/email (ex. une entreprise payant pour un adhérent).
+    // ================================================================
+    public static function handle_creer_paiement() {
+        if ( ! isset( $_POST['seliweb_action'] ) || $_POST['seliweb_action'] !== 'creer_paiement' ) return;
+        if ( ! isset( $_POST['seliweb_nonce_paiement'] ) || ! wp_verify_nonce( $_POST['seliweb_nonce_paiement'], 'seliweb_creer_paiement' ) ) return;
+        if ( ! is_user_logged_in() ) return;
+        if ( ! class_exists( 'Seliweb_Cotisations' ) ) return;
+
+        global $wpdb;
+        $wp_user_id = get_current_user_id();
+        $offre_id   = intval( $_POST['offre_id'] ?? 0 );
+        $tarif_idx  = intval( $_POST['tarif_idx'] ?? 0 );
+
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+        $tm = $wpdb->prefix . 'seliweb_membres';
+
+        $offre    = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $to WHERE id=%d", $offre_id ) );
+        $membre   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tm WHERE wp_user_id=%d", $wp_user_id ) );
+        $page_url = self::mon_compte_page_url();
+
+        if ( ! $offre || ! $membre || ! $page_url ) return;
+
+        // Re-vérifier l'éligibilité côté serveur (ne jamais faire confiance
+        // aux données du formulaire) : même groupe et offre pas déjà payée.
+        $eligibles = self::get_offres_pour_membre( $membre->groupe_id, $wp_user_id );
+        $eligible  = false;
+        foreach ( $eligibles as $e ) { if ( (int) $e->id === $offre_id ) { $eligible = true; break; } }
+
+        $erreur = '';
+        if ( ! $eligible ) {
+            $erreur = '1';
+        } elseif ( $offre->consentement_texte && empty( $_POST['consentement'] ) ) {
+            $erreur = 'consentement';
+        }
+
+        $tarifs        = $offre->tarifs ? ( json_decode( $offre->tarifs, true ) ?: array() ) : array();
+        $montant_cents = isset( $tarifs[ $tarif_idx ]['montant'] ) ? intval( $tarifs[ $tarif_idx ]['montant'] ) : 0;
+        if ( ! $erreur && $montant_cents <= 0 ) $erreur = '1';
+
+        if ( $erreur ) {
+            wp_safe_redirect( add_query_arg(
+                array( 'sel_action' => 'paiements', 'erreur_paiement' => $erreur ), $page_url
+            ) );
+            exit;
+        }
+
+        $retour_url = add_query_arg( array( 'sel_action' => 'paiements', 'retour_paiement' => '1' ), $page_url );
+
+        $intent = Seliweb_Cotisations::ha_creer_checkout_intent(
+            $offre->nom,
+            $montant_cents,
+            $retour_url,
+            $retour_url,
+            $retour_url,
+            array( 'seliweb_wp_user_id' => $wp_user_id, 'seliweb_offre_id' => $offre_id ),
+            (bool) $offre->est_don
+        );
+
+        if ( ! $intent || empty( $intent['redirectUrl'] ) ) {
+            wp_safe_redirect( add_query_arg(
+                array( 'sel_action' => 'paiements', 'erreur_paiement' => '1' ), $page_url
+            ) );
+            exit;
+        }
+
+        wp_redirect( $intent['redirectUrl'] );
+        exit;
+    }
+
     // ================================================================
     // WEBHOOK HELLOASSO  (?seliweb_helloasso_webhook=1)
     // ================================================================
@@ -431,47 +628,30 @@ class Seliweb_Paiements {
 
         $event = $data['eventType'] ?? '';
         if ( $event === 'Order' && ! empty( $data['data'] ) ) {
-            self::process_order( $data['data'] );
+            // La "metadata" (ID membre + ID offre transmis à la création du
+            // paiement) se trouve à la racine de la notification, pas dans
+            // "data" — vérifié auprès de la documentation HelloAsso.
+            self::process_order( $data['data'], (array) ( $data['metadata'] ?? array() ) );
         }
 
         http_response_code( 200 );
         exit( 'OK' );
     }
 
-    // Extrait le dernier segment d'une URL de formulaire HelloAsso
-    // (…/adhesions/adhesion-2026 → adhesion-2026), pour retrouver l'offre
-    // correspondante à partir du form_slug reçu dans le paiement.
-    private static function extract_form_slug( $url ) {
-        if ( preg_match( '~/associations/[^/]+/[^/]+/([^/?#]+)~', (string) $url, $m ) ) {
-            return $m[1];
-        }
-        return '';
-    }
-
-    private static function find_offre_par_form_slug( $form_slug ) {
-        if ( ! $form_slug ) return null;
-        global $wpdb;
-        $tp     = $wpdb->prefix . 'seliweb_paiements_offres';
-        $offres = $wpdb->get_results( "SELECT * FROM $tp WHERE helloasso_url IS NOT NULL AND helloasso_url != ''" );
-        foreach ( $offres as $offre ) {
-            if ( self::extract_form_slug( $offre->helloasso_url ) === $form_slug ) {
-                return $offre;
-            }
-        }
-        return null;
-    }
-
     // ================================================================
     // TRAITEMENT D'UN PAIEMENT
     // ================================================================
-    // Journalise systématiquement le paiement reçu. Applique les actions
-    // de l'offre (cotisation, changement de groupe) uniquement si le
-    // paiement a pu être rattaché à la fois à une offre connue (via le
-    // formulaire HelloAsso) et à un membre (via l'email du payeur) —
-    // sinon il reste "en_attente" pour un rattachement manuel.
-    public static function process_order( $order ) {
+    // Journalise systématiquement le paiement reçu. Rattachement PRIMAIRE
+    // par metadata (ID membre + ID offre transmis à la création du paiement
+    // via l'API Checkout Intent — fiable quels que soient le nom/email
+    // saisis par le payeur, ex. une entreprise payant pour un adhérent).
+    // Si la metadata est absente (paiement non initié depuis Seliweb), on
+    // retombe sur un rattachement par email du payeur, offre alors inconnue
+    // — le paiement reste "en_attente" pour un rattachement manuel.
+    public static function process_order( $order, $metadata = array() ) {
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
 
         $ha_order_id = (string) ( $order['id'] ?? '' );
         if ( ! $ha_order_id ) return;
@@ -488,16 +668,25 @@ class Seliweb_Paiements {
         $amount_cents = intval( $order['amount']['total'] ?? 0 );
         $date         = substr( $order['date'] ?? current_time( 'Y-m-d' ), 0, 10 );
 
-        // Le nom du champ exact (formSlug au niveau de la commande, ou dans
-        // le premier article) dépend de la structure réelle envoyée par
-        // HelloAsso — à confirmer avec un paiement réel une fois le webhook
-        // exposé publiquement. Reste sans effet bloquant si absent : le
-        // paiement est alors simplement journalisé en attente.
-        $form_slug = sanitize_text_field( $order['formSlug'] ?? ( $order['items'][0]['formSlug'] ?? '' ) );
-        $offre     = self::find_offre_par_form_slug( $form_slug );
+        $offre      = null;
+        $wp_user_id = 0;
 
-        $wp_user    = $email ? get_user_by( 'email', $email ) : null;
-        $wp_user_id = $wp_user ? $wp_user->ID : 0;
+        $meta_offre_id = intval( $metadata['seliweb_offre_id']   ?? 0 );
+        $meta_wp_id    = intval( $metadata['seliweb_wp_user_id'] ?? 0 );
+        if ( $meta_offre_id && $meta_wp_id && get_userdata( $meta_wp_id ) ) {
+            $offre_candidate = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $to WHERE id=%d", $meta_offre_id ) );
+            if ( $offre_candidate ) {
+                $offre      = $offre_candidate;
+                $wp_user_id = $meta_wp_id;
+            }
+        }
+
+        if ( ! $wp_user_id ) {
+            // Repli : paiement non initié depuis Seliweb (pas de metadata),
+            // ou metadata invalide — on ne peut identifier que par email.
+            $wp_user = $email ? get_user_by( 'email', $email ) : null;
+            $wp_user_id = $wp_user ? $wp_user->ID : 0;
+        }
 
         $matched       = $offre && $wp_user_id;
         $cotisation_id = $matched ? self::apply_offre_actions( $offre, $wp_user_id, $amount_cents, $date, $ha_order_id, $email, $nom ) : null;
@@ -510,7 +699,7 @@ class Seliweb_Paiements {
             'date_paiement'       => $date,
             'statut'              => $matched ? 'rattache' : 'en_attente',
             'helloasso_order_id'  => $ha_order_id,
-            'helloasso_form_slug' => $form_slug,
+            'helloasso_form_slug' => sanitize_text_field( $order['formSlug'] ?? '' ),
             'payer_email'         => $email,
             'payer_nom'           => $nom,
             'created_at'          => current_time( 'mysql' ),

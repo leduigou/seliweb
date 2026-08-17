@@ -106,8 +106,13 @@ class Seliweb_Cotisations {
                     'Authorization' => 'Basic ' . base64_encode( $id . ':' . $secret ),
                     'Content-Type'  => 'application/x-www-form-urlencoded',
                 ),
-                'body'    => 'grant_type=client_credentials',
-                'timeout' => 15,
+                'body'       => 'grant_type=client_credentials',
+                'timeout'    => 15,
+                // Le User-Agent WordPress par défaut inclut l'URL du site
+                // (ex. un domaine .local en environnement de développement),
+                // ce qui peut être bloqué par la protection de l'API
+                // HelloAsso (constaté en direct — réponse 404 générique).
+                'user-agent' => 'Seliweb-WP/' . ( defined( 'SELIWEB_VERSION' ) ? SELIWEB_VERSION : '1.0' ),
             )
         );
 
@@ -118,6 +123,55 @@ class Seliweb_Cotisations {
         $ttl = max( 60, intval( $data['expires_in'] ?? 1800 ) - 60 );
         set_transient( 'seliweb_ha_token', $data['access_token'], $ttl );
         return $data['access_token'];
+    }
+
+    // Crée une "Checkout Intent" HelloAsso (paiement généré dynamiquement,
+    // sans formulaire préexistant) et retourne ['id' => ..., 'redirectUrl' => ...]
+    // ou null en cas d'échec. $metadata (tableau associatif) est renvoyée telle
+    // quelle par HelloAsso dans la notification webhook du paiement — c'est ce
+    // qui permet de retrouver le membre concerné indépendamment du nom/email
+    // saisis par le payeur (vérifié en direct sur le sandbox HelloAsso).
+    public static function ha_creer_checkout_intent( $item_name, $montant_cents, $return_url, $back_url, $error_url, $metadata = array(), $contains_donation = false ) {
+        $cfg = self::cfg();
+        $org = trim( $cfg['helloasso_org_slug'] ?? '' );
+        // Repli si le réglage n'a jamais été (re)sauvegardé depuis l'URL de
+        // campagne — évite une panne silencieuse due à un champ non renseigné.
+        if ( ! $org && preg_match( '~/associations/([^/]+)~', (string) ( $cfg['helloasso_campaign_url'] ?? '' ), $m ) ) {
+            $org = $m[1];
+        }
+        if ( ! $org ) return null;
+
+        $token = self::ha_get_token();
+        if ( ! $token ) return null;
+
+        $body = array(
+            'totalAmount'      => intval( $montant_cents ),
+            'initialAmount'    => intval( $montant_cents ),
+            'itemName'         => substr( sanitize_text_field( $item_name ), 0, 250 ),
+            'backUrl'          => esc_url_raw( $back_url ),
+            'errorUrl'         => esc_url_raw( $error_url ),
+            'returnUrl'        => esc_url_raw( $return_url ),
+            'containsDonation' => (bool) $contains_donation,
+        );
+        if ( $metadata ) $body['metadata'] = $metadata;
+
+        $response = wp_remote_post(
+            self::ha_base_url() . '/v5/organizations/' . rawurlencode( $org ) . '/checkout-intents',
+            array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ),
+                'body'       => wp_json_encode( $body ),
+                'timeout'    => 20,
+                'user-agent' => 'Seliweb-WP/' . ( defined( 'SELIWEB_VERSION' ) ? SELIWEB_VERSION : '1.0' ),
+            )
+        );
+
+        if ( is_wp_error( $response ) ) return null;
+        $data = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( empty( $data['redirectUrl'] ) ) return null;
+        return $data;
     }
 
     public static function ha_get_orders( $from_date = null ) {
@@ -134,8 +188,9 @@ class Seliweb_Cotisations {
         if ( $from_date ) $url = add_query_arg( 'from', $from_date, $url );
 
         $response = wp_remote_get( $url, array(
-            'headers' => array( 'Authorization' => 'Bearer ' . $token ),
-            'timeout' => 20,
+            'headers'    => array( 'Authorization' => 'Bearer ' . $token ),
+            'timeout'    => 20,
+            'user-agent' => 'Seliweb-WP/' . ( defined( 'SELIWEB_VERSION' ) ? SELIWEB_VERSION : '1.0' ),
         ) );
 
         if ( is_wp_error( $response ) ) return array();

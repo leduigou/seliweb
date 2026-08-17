@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.6';
+    const DB_VERSION     = '2.7';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -222,12 +222,15 @@ class Seliweb_Database {
             id                     INT UNSIGNED NOT NULL AUTO_INCREMENT,
             nom                    VARCHAR(150) NOT NULL,
             description            TEXT,
-            tarif                  VARCHAR(100) DEFAULT NULL,
+            tarifs                 TEXT,
             groupe_depart_id       INT UNSIGNED DEFAULT NULL,
             groupe_arrivee_id      INT UNSIGNED DEFAULT NULL,
             enregistre_cotisation  TINYINT(1)   NOT NULL DEFAULT 0,
             exercice               VARCHAR(20)  DEFAULT NULL,
-            helloasso_url          VARCHAR(500) DEFAULT NULL,
+            consentement_texte     TEXT,
+            est_don                TINYINT(1)   NOT NULL DEFAULT 0,
+            compte_paheko_banque   VARCHAR(10)  DEFAULT NULL,
+            compte_paheko_recette  VARCHAR(10)  DEFAULT NULL,
             PRIMARY KEY (id)
         ) $charset;";
 
@@ -356,6 +359,19 @@ class Seliweb_Database {
         self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'compte_paheko_recette', "VARCHAR(10) DEFAULT NULL" );
         self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements', 'paheko_synced',  "TINYINT(1) NOT NULL DEFAULT 0" );
         self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements', 'paheko_id_year', "INT DEFAULT NULL" );
+
+        // Migration v2.7 : paiement via l'API Checkout Intent HelloAsso —
+        // procédure unique pour toutes les offres (cotisations comprises).
+        // Remplace le tarif en texte libre par des tarifs structurés (un ou
+        // plusieurs, montant réel envoyé à HelloAsso), ajoute un texte de
+        // consentement optionnel (ex. adhésion) et un indicateur "don". Le
+        // lien vers un formulaire HelloAsso n'est plus nécessaire : le
+        // paiement est généré dynamiquement à chaque clic.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'tarifs', "TEXT AFTER description" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'consentement_texte', "TEXT" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'est_don', "TINYINT(1) NOT NULL DEFAULT 0" );
+        self::maybe_drop_column( $wpdb->prefix . 'seliweb_paiements_offres', 'tarif' );
+        self::maybe_drop_column( $wpdb->prefix . 'seliweb_paiements_offres', 'helloasso_url' );
 
         self::insert_defaults();
     }

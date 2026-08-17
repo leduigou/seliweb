@@ -63,6 +63,8 @@ $offres_membre = class_exists( 'Seliweb_Paiements' )
 $historique_paiements = class_exists( 'Seliweb_Paiements' )
     ? Seliweb_Paiements::get_historique_paiements_membre( $wp_user_id )
     : array();
+$retour_paiement = isset( $_GET['retour_paiement'] );
+$erreur_paiement = sanitize_key( $_GET['erreur_paiement'] ?? '' );
 
 // Monnaies autorisées par le groupe
 $monnaies_dispo = array();
@@ -1261,7 +1263,34 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     </div>
     <?php endif; ?>
 
-    <?php elseif ( $action === 'paiements' && ( ! empty( $offres_membre ) || ! empty( $historique_paiements ) ) ) : ?>
+    <?php elseif ( $action === 'paiements' && ( ! empty( $offres_membre ) || ! empty( $historique_paiements ) || $retour_paiement || $erreur_paiement ) ) : ?>
+
+    <?php if ( $retour_paiement ) :
+        // Message précis si le webhook a déjà traité le paiement (souvent
+        // le cas, le webhook arrivant généralement avant le retour du
+        // navigateur), sinon message d'attente générique.
+        $dernier = class_exists( 'Seliweb_Paiements' ) ? Seliweb_Paiements::get_dernier_paiement_recent( $wp_user_id ) : null;
+    ?>
+        <div class="seliweb-notice seliweb-notice-ok" style="margin-bottom:18px;">
+            <?php if ( $dernier && $dernier->arrivee_nom ) : ?>
+                <?php printf( esc_html__( 'Félicitations, vous faites désormais partie du groupe %s !', 'seliweb' ), '<strong>' . esc_html( $dernier->arrivee_nom ) . '</strong>' ); ?>
+            <?php elseif ( $dernier ) : ?>
+                <?php esc_html_e( 'Merci, votre paiement a bien été enregistré.', 'seliweb' ); ?>
+            <?php else : ?>
+                <?php esc_html_e( 'Merci, votre paiement a bien été reçu par HelloAsso. Il sera pris en compte dans quelques instants.', 'seliweb' ); ?>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ( $erreur_paiement ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:18px;color:#b32d2e;">
+            <?php if ( $erreur_paiement === 'consentement' ) : ?>
+                <?php esc_html_e( 'Vous devez accepter les conditions proposées avant de régler ce paiement.', 'seliweb' ); ?>
+            <?php else : ?>
+                <?php esc_html_e( "Impossible de préparer ce paiement pour le moment, merci de réessayer.", 'seliweb' ); ?>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
 
     <?php if ( ! empty( $historique_paiements ) ) : ?>
     <h3><?php esc_html_e( 'Mes paiements', 'seliweb' ); ?></h3>
@@ -1297,19 +1326,47 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php if ( ! empty( $offres_membre ) ) : ?>
     <h3 style="margin-top:24px;"><?php esc_html_e( 'Paiements possibles', 'seliweb' ); ?></h3>
 
-    <?php foreach ( $offres_membre as $offre ) : ?>
+    <?php foreach ( $offres_membre as $offre ) :
+        $tarifs_offre = $offre->tarifs ? ( json_decode( $offre->tarifs, true ) ?: array() ) : array();
+    ?>
         <div class="seliweb-notice" style="background:#f7fbf9;border-left:4px solid #1d6a4a;padding:14px 18px;border-radius:4px;margin-bottom:14px;">
             <h4 style="margin:0 0 6px;"><?php echo esc_html( $offre->nom ); ?></h4>
             <?php if ( $offre->description ) : ?>
                 <p style="margin:0 0 10px;"><?php echo nl2br( esc_html( $offre->description ) ); ?></p>
             <?php endif; ?>
-            <?php if ( $offre->tarif ) : ?>
-                <p style="margin:0 0 10px;font-weight:600;"><?php echo esc_html( $offre->tarif ); ?></p>
-            <?php endif; ?>
-            <?php if ( $offre->helloasso_url ) : ?>
-                <a href="<?php echo esc_url( $offre->helloasso_url ); ?>" class="seliweb-btn" target="_blank" rel="noopener">
-                    <?php esc_html_e( 'Régler en ligne', 'seliweb' ); ?>
-                </a>
+            <?php if ( $tarifs_offre ) : ?>
+            <form method="post" action="<?php echo esc_url( $page_url ); ?>">
+                <?php wp_nonce_field( 'seliweb_creer_paiement', 'seliweb_nonce_paiement' ); ?>
+                <input type="hidden" name="seliweb_action" value="creer_paiement">
+                <input type="hidden" name="offre_id" value="<?php echo intval( $offre->id ); ?>">
+
+                <?php if ( count( $tarifs_offre ) === 1 ) : ?>
+                    <input type="hidden" name="tarif_idx" value="0">
+                    <p style="margin:0 0 10px;font-weight:600;">
+                        <?php echo esc_html( $tarifs_offre[0]['label'] . ' — ' . number_format( $tarifs_offre[0]['montant'] / 100, 2, ',', ' ' ) . ' €' ); ?>
+                    </p>
+                <?php else : ?>
+                    <div style="margin:0 0 10px;">
+                        <?php foreach ( $tarifs_offre as $i => $t ) : ?>
+                            <label style="display:block;margin-bottom:4px;">
+                                <input type="radio" name="tarif_idx" value="<?php echo intval( $i ); ?>" <?php checked( $i === 0 ); ?> required>
+                                <?php echo esc_html( $t['label'] . ' — ' . number_format( $t['montant'] / 100, 2, ',', ' ' ) . ' €' ); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ( $offre->consentement_texte ) : ?>
+                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:0 0 12px;">
+                        <input type="checkbox" name="consentement" value="1" required style="margin-top:2px;">
+                        <span><?php echo nl2br( esc_html( $offre->consentement_texte ) ); ?></span>
+                    </label>
+                <?php endif; ?>
+
+                <button type="submit" class="seliweb-btn"><?php esc_html_e( 'Régler en ligne', 'seliweb' ); ?></button>
+            </form>
+            <?php else : ?>
+                <p class="description"><?php esc_html_e( 'Ce paiement n\'est pas encore configuré (aucun tarif défini).', 'seliweb' ); ?></p>
             <?php endif; ?>
         </div>
     <?php endforeach; ?>
