@@ -58,7 +58,7 @@ $is_cotisations_membre = class_exists( 'Seliweb_Cotisations' )
 // Onglet Paiements : uniquement s'il existe au moins une offre accessible au groupe du membre,
 // ou un historique de paiements déjà effectués
 $offres_membre = class_exists( 'Seliweb_Paiements' )
-    ? Seliweb_Paiements::get_offres_pour_membre( $membre->groupe_id )
+    ? Seliweb_Paiements::get_offres_pour_membre( $membre->groupe_id, $wp_user_id )
     : array();
 $historique_paiements = class_exists( 'Seliweb_Paiements' )
     ? Seliweb_Paiements::get_historique_paiements_membre( $wp_user_id )

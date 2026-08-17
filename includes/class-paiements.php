@@ -360,13 +360,30 @@ class Seliweb_Paiements {
     // ----------------------------------------------------------------
     // Méthode utilitaire — paiements accessibles à un membre selon son groupe
     // ----------------------------------------------------------------
-    public static function get_offres_pour_membre( $groupe_id ) {
+    // $wp_user_id (facultatif) permet d'exclure les offres de cotisation déjà
+    // réglées pour leur exercice (ex. renouvellement déjà payé cette année) —
+    // sans ce filtre, une offre à groupe d'arrivée inchangé (renouvellement)
+    // resterait proposée indéfiniment puisque le groupe seul ne suffit pas à
+    // savoir si le membre est déjà à jour.
+    public static function get_offres_pour_membre( $groupe_id, $wp_user_id = 0 ) {
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements_offres';
-        return $wpdb->get_results( $wpdb->prepare(
+        $offres = $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM $tp WHERE groupe_depart_id IS NULL OR groupe_depart_id = %d ORDER BY nom ASC",
             intval( $groupe_id )
         ) );
+
+        if ( ! $wp_user_id ) return $offres;
+
+        $tc = $wpdb->prefix . 'seliweb_cotisations';
+        return array_values( array_filter( $offres, function( $offre ) use ( $wpdb, $tc, $wp_user_id ) {
+            if ( ! $offre->enregistre_cotisation || ! $offre->exercice ) return true;
+            $deja_paye = $wpdb->get_var( $wpdb->prepare(
+                "SELECT id FROM $tc WHERE wp_user_id=%d AND exercice=%s AND statut='paye' LIMIT 1",
+                $wp_user_id, $offre->exercice
+            ) );
+            return ! $deja_paye;
+        } ) );
     }
 
     // ----------------------------------------------------------------
