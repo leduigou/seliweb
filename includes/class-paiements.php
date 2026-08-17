@@ -517,11 +517,27 @@ class Seliweb_Paiements {
             );
         }
         if ( $offre->groupe_arrivee_id ) {
-            $wpdb->update(
-                $wpdb->prefix . 'seliweb_membres',
-                array( 'groupe_id' => intval( $offre->groupe_arrivee_id ) ),
-                array( 'wp_user_id' => $wp_user_id )
+            $tm = $wpdb->prefix . 'seliweb_membres';
+            $groupe_arrivee_id = intval( $offre->groupe_arrivee_id );
+            $wpdb->update( $tm, array( 'groupe_id' => $groupe_arrivee_id ), array( 'wp_user_id' => $wp_user_id ) );
+
+            // Auto-numérotation SEL si le groupe d'arrivée est le groupe SEL
+            // (même logique que le changement de groupe rapide en backoffice,
+            // templates/admin-membres.php).
+            $sel_groupe_id = (int) $wpdb->get_var(
+                "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='sel_groupe_id' LIMIT 1"
             );
+            if ( $sel_groupe_id > 0 && $groupe_arrivee_id === $sel_groupe_id ) {
+                $current_num = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT numero_sel FROM $tm WHERE wp_user_id=%d", $wp_user_id
+                ) );
+                if ( $current_num === null ) {
+                    $max = (int) $wpdb->get_var( $wpdb->prepare(
+                        "SELECT GREATEST(COALESCE(MAX(numero_sel),1),1) FROM $tm WHERE groupe_id=%d", $sel_groupe_id
+                    ) );
+                    $wpdb->update( $tm, array( 'numero_sel' => $max + 1 ), array( 'wp_user_id' => $wp_user_id ) );
+                }
+            }
         }
 
         return $cotisation_id;
