@@ -79,6 +79,7 @@ class Seliweb_Groupes {
     public static function handle_delete() {
         if ( ! is_admin() ) return;
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
+        if ( ! isset( $_GET['tab'] ) || $_GET['tab'] !== 'groupes' ) return;
         if ( ! isset( $_GET['action'], $_GET['id'] ) || $_GET['action'] !== 'delete' ) return;
         if ( ! check_admin_referer( 'seliweb_delete_groupe_' . intval( $_GET['id'] ) ) ) return;
 
