@@ -247,7 +247,7 @@ class Seliweb_Cotisations {
 
     public static function paheko_get_services() {
         $result = self::paheko_request( 'POST', 'sql', array(
-            'sql' => 'SELECT s.id AS service_id, s.label AS service_label, f.id AS fee_id, f.label AS fee_label, f.amount FROM services s JOIN services_fees f ON f.id_service=s.id ORDER BY s.id, f.id',
+            'sql' => 'SELECT s.id AS service_id, s.label AS service_label, f.id AS fee_id, f.label AS fee_label, f.amount, f.id_year FROM services s JOIN services_fees f ON f.id_service=s.id ORDER BY s.id, f.id',
         ) );
         return $result['results'] ?? array();
     }
@@ -1087,6 +1087,27 @@ class Seliweb_Cotisations {
             set_transient( 'seliweb_paheko_services', $paheko_services, 600 );
         }
 
+        // Ne garder que les exercices Paheko proches de l'exercice Seliweb
+        // choisi (année précédente, année choisie, année suivante) : sur une
+        // instance Paheko à l'historique ancien, la liste complète serait
+        // trop longue à parcourir.
+        $year_ref = null;
+        if ( $exercice_filtre && preg_match( '/^\d{4}$/', $exercice_filtre ) ) {
+            $year_ref = (int) $exercice_filtre;
+        } else {
+            foreach ( $exercices_list as $ex ) {
+                if ( $ex->libelle === $exercice_filtre && $ex->date_debut ) {
+                    $year_ref = (int) substr( $ex->date_debut, 0, 4 );
+                    break;
+                }
+            }
+        }
+        if ( ! $year_ref ) $year_ref = (int) current_time( 'Y' );
+        $paheko_years = array_values( array_filter( $paheko_years, function( $yr ) use ( $year_ref ) {
+            $y = (int) substr( $yr['start_date'] ?? '', 0, 4 );
+            return $y && abs( $y - $year_ref ) <= 1;
+        } ) );
+
         // Cotisations non synchronisées ayant au moins un règlement en monnaie légale
         $where_ex = $exercice_filtre
             ? $wpdb->prepare( "AND c.exercice = %s", $exercice_filtre )
@@ -1242,7 +1263,10 @@ class Seliweb_Cotisations {
                     </td>
                     <td>
                         <?php if ( $paheko_years && $cot->a_reglement_legal && ! $cot->paheko_synced ) : ?>
-                        <select name="paheko_year[<?php echo intval( $cot->id ); ?>]" style="max-width:180px;">
+                        <select name="paheko_year[<?php echo intval( $cot->id ); ?>]"
+                                id="paheko_year_<?php echo intval( $cot->id ); ?>"
+                                data-fee-target="paheko_fee_<?php echo intval( $cot->id ); ?>"
+                                style="max-width:180px;">
                             <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
                             <?php foreach ( $paheko_years as $yr ) : ?>
                                 <option value="<?php echo intval( $yr['id'] ); ?>" <?php selected( $default_year, $yr['id'] ); ?>>
@@ -1257,6 +1281,7 @@ class Seliweb_Cotisations {
                     <td>
                         <?php if ( $paheko_services && $cot->a_reglement_legal && ! $cot->paheko_synced ) : ?>
                         <select name="paheko_fee[<?php echo intval( $cot->id ); ?>]"
+                                id="paheko_fee_<?php echo intval( $cot->id ); ?>"
                                 data-svc-target="paheko_svc_<?php echo intval( $cot->id ); ?>"
                                 style="max-width:220px;">
                             <option value="" data-service=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
@@ -1271,6 +1296,7 @@ class Seliweb_Cotisations {
                             ?>
                                 <option value="<?php echo intval( $row['fee_id'] ); ?>"
                                         data-service="<?php echo intval( $row['service_id'] ); ?>"
+                                        data-year="<?php echo esc_attr( $row['id_year'] ?: '' ); ?>"
                                         <?php selected( $default_fee, $row['fee_id'] ); ?>>
                                     <?php echo esc_html( $row['fee_label'] . ' — ' . number_format( $row['amount'] / 100, 2, ',', ' ' ) . ' €' ); ?>
                                 </option>
@@ -1305,6 +1331,33 @@ class Seliweb_Cotisations {
                     var tgt = document.getElementById(this.dataset.svcTarget);
                     if (tgt) tgt.value = opt ? (opt.getAttribute('data-service') || '') : '';
                 });
+            });
+
+            // Filtre la liste des tarifs Paheko selon l'exercice Paheko choisi
+            // sur la même ligne : un tarif sans exercice lié (id_year vide côté
+            // Paheko) reste affiché dans tous les cas, faute de pouvoir le classer.
+            function filtrerTarifs(yearSelect) {
+                var feeSelect = document.getElementById(yearSelect.dataset.feeTarget);
+                if (!feeSelect) return;
+                var yearId = yearSelect.value;
+                var selectedHidden = false;
+                feeSelect.querySelectorAll('option[data-year]').forEach(function(opt){
+                    var visible = !yearId || !opt.dataset.year || opt.dataset.year === yearId;
+                    opt.hidden = !visible;
+                    if (opt.selected && !visible) selectedHidden = true;
+                });
+                feeSelect.querySelectorAll('optgroup').forEach(function(grp){
+                    var hasVisible = Array.prototype.some.call(grp.querySelectorAll('option'), function(o){ return !o.hidden; });
+                    grp.hidden = !hasVisible;
+                });
+                if (selectedHidden) {
+                    feeSelect.value = '';
+                    feeSelect.dispatchEvent(new Event('change'));
+                }
+            }
+            document.querySelectorAll('select[data-fee-target]').forEach(function(sel){
+                filtrerTarifs(sel);
+                sel.addEventListener('change', function(){ filtrerTarifs(sel); });
             });
         })();
         </script>
