@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.8';
+    const DB_VERSION     = '2.9';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -190,6 +190,7 @@ class Seliweb_Database {
             wp_user_id            INT UNSIGNED NOT NULL DEFAULT 0,
             exercice              VARCHAR(20)   DEFAULT NULL,
             libelle               VARCHAR(200)  DEFAULT NULL,
+            tarif_label           VARCHAR(150)  DEFAULT NULL,
             montant               INT UNSIGNED NOT NULL DEFAULT 0,
             date_paiement         DATE         NOT NULL,
             statut                ENUM('en_attente','paye','echec') NOT NULL DEFAULT 'en_attente',
@@ -379,6 +380,11 @@ class Seliweb_Database {
         // comprises (la synchronisation Paheko des cotisations reste néanmoins
         // inchangée, basée sur exercice + service/tarif Paheko).
         self::maybe_drop_column( $wpdb->prefix . 'seliweb_paiements_offres', 'est_don' );
+
+        // Migration v2.9 : mémorise le tarif choisi (ex. "Plein tarif" /
+        // "Tarif réduit") lors du paiement d'une cotisation à choix multiple,
+        // affiché dans Mon Compte à côté du libellé.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_cotisations', 'tarif_label', "VARCHAR(150) DEFAULT NULL AFTER libelle" );
 
         self::insert_defaults();
     }

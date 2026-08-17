@@ -303,7 +303,7 @@ class Seliweb_Cotisations {
     // "enregistre une cotisation" (adhésion, renouvellement...). Reste
     // la voie minoritaire : ~80% des cotisations sont encore saisies
     // manuellement par le trésorier via l'onglet Cotisations.
-    public static function enregistrer_paiement_cotisation( $wp_user_id, $montant, $date, $helloasso_order_id = '', $email = '', $nom = '', $exercice = '', $libelle = '' ) {
+    public static function enregistrer_paiement_cotisation( $wp_user_id, $montant, $date, $helloasso_order_id = '', $email = '', $nom = '', $exercice = '', $libelle = '', $tarif_label = '' ) {
         global $wpdb;
         $tc = $wpdb->prefix . 'seliweb_cotisations';
         $tr = $wpdb->prefix . 'seliweb_cotisations_reglements';
@@ -312,6 +312,7 @@ class Seliweb_Cotisations {
             'wp_user_id'            => intval( $wp_user_id ),
             'exercice'              => $exercice ?: null,
             'libelle'               => $libelle  ?: null,
+            'tarif_label'           => $tarif_label ?: null,
             'montant'               => intval( $montant ),
             'date_paiement'         => $date,
             'statut'                => 'paye',

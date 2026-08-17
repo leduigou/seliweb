@@ -560,6 +560,7 @@ class Seliweb_Paiements {
 
         $tarifs        = $offre->tarifs ? ( json_decode( $offre->tarifs, true ) ?: array() ) : array();
         $montant_cents = isset( $tarifs[ $tarif_idx ]['montant'] ) ? intval( $tarifs[ $tarif_idx ]['montant'] ) : 0;
+        $tarif_label   = sanitize_text_field( $tarifs[ $tarif_idx ]['label'] ?? '' );
         if ( ! $erreur && $montant_cents <= 0 ) $erreur = '1';
 
         if ( $erreur ) {
@@ -577,7 +578,7 @@ class Seliweb_Paiements {
             $retour_url,
             $retour_url,
             $retour_url,
-            array( 'seliweb_wp_user_id' => $wp_user_id, 'seliweb_offre_id' => $offre_id )
+            array( 'seliweb_wp_user_id' => $wp_user_id, 'seliweb_offre_id' => $offre_id, 'seliweb_tarif_label' => $tarif_label )
         );
 
         if ( ! $intent || empty( $intent['redirectUrl'] ) ) {
@@ -672,8 +673,9 @@ class Seliweb_Paiements {
             $wp_user_id = $wp_user ? $wp_user->ID : 0;
         }
 
+        $tarif_label   = sanitize_text_field( $metadata['seliweb_tarif_label'] ?? '' );
         $matched       = $offre && $wp_user_id;
-        $cotisation_id = $matched ? self::apply_offre_actions( $offre, $wp_user_id, $amount_cents, $date, $ha_order_id, $email, $nom ) : null;
+        $cotisation_id = $matched ? self::apply_offre_actions( $offre, $wp_user_id, $amount_cents, $date, $ha_order_id, $email, $nom, $tarif_label ) : null;
 
         $wpdb->insert( $tp, array(
             'offre_id'            => $offre ? $offre->id : null,
@@ -697,13 +699,13 @@ class Seliweb_Paiements {
     // automatique (webhook) comme par le rattachement manuel.
     // Retourne l'id de la cotisation créée, ou null si aucune.
     // ----------------------------------------------------------------
-    private static function apply_offre_actions( $offre, $wp_user_id, $montant, $date, $ha_order_id = '', $email = '', $nom = '' ) {
+    private static function apply_offre_actions( $offre, $wp_user_id, $montant, $date, $ha_order_id = '', $email = '', $nom = '', $tarif_label = '' ) {
         global $wpdb;
         $cotisation_id = null;
 
         if ( $offre->enregistre_cotisation && class_exists( 'Seliweb_Cotisations' ) ) {
             $cotisation_id = Seliweb_Cotisations::enregistrer_paiement_cotisation(
-                $wp_user_id, $montant, $date, $ha_order_id, $email, $nom, $offre->exercice, $offre->nom
+                $wp_user_id, $montant, $date, $ha_order_id, $email, $nom, $offre->exercice, $offre->nom, $tarif_label
             );
         }
         if ( $offre->groupe_arrivee_id ) {

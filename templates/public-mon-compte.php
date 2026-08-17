@@ -1210,6 +1210,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <th style="width:90px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
             <th style="width:110px;"><?php esc_html_e( 'Exercice', 'seliweb' ); ?></th>
             <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
+            <th style="width:130px;"><?php esc_html_e( 'Tarif', 'seliweb' ); ?></th>
             <th style="width:100px;text-align:right;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
             <th style="width:120px;"><?php esc_html_e( 'Règlement', 'seliweb' ); ?></th>
         </tr></thead>
@@ -1232,6 +1233,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             $date_fmt  = date_i18n( get_option('date_format'), strtotime( $cot->date_paiement ) );
             $exercice  = $cot->exercice ?: '—';
             $libelle   = $cot->libelle  ?: '—';
+            $tarif     = $cot->tarif_label ?: '—';
             $border    = 'border-top:2px solid #e0e0e0;';
 
             if ( empty( $reglements_cot ) ) :
@@ -1240,6 +1242,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <td style="<?php echo $border; ?>"><?php echo esc_html( $date_fmt ); ?></td>
             <td style="<?php echo $border; ?>"><?php echo esc_html( $exercice ); ?></td>
             <td style="<?php echo $border; ?>"><?php echo esc_html( $libelle ); ?></td>
+            <td style="<?php echo $border; ?>"><?php echo esc_html( $tarif ); ?></td>
             <td style="<?php echo $border; ?>text-align:right;font-weight:600;">—</td>
             <td style="<?php echo $border; ?>"><em style="color:#aaa;">—</em></td>
         </tr>
@@ -1255,6 +1258,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $date_fmt ) : ''; ?></td>
             <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $exercice ) : ''; ?></td>
             <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $libelle ) : ''; ?></td>
+            <td style="<?php echo $row_border; ?>"><?php echo $i === 0 ? esc_html( $tarif ) : ''; ?></td>
             <td style="<?php echo $row_border; ?>text-align:right;font-weight:600;">
                 <?php echo esc_html( $montant_rg . ' ' . $symbole_rg ); ?>
             </td>
@@ -1283,7 +1287,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php elseif ( $dernier ) : ?>
                 <?php esc_html_e( 'Merci, votre paiement a bien été enregistré.', 'seliweb' ); ?>
             <?php else : ?>
-                <?php esc_html_e( 'Merci, votre paiement a bien été reçu par HelloAsso. Il sera pris en compte dans quelques instants.', 'seliweb' ); ?>
+                <?php esc_html_e( 'Merci, votre paiement a bien été reçu par HelloAsso. Il sera pris en compte dans quelques instants — n\'hésitez pas à rafraîchir cette page.', 'seliweb' ); ?>
             <?php endif; ?>
         </div>
     <?php endif; ?>
