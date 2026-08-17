@@ -209,13 +209,18 @@ class Seliweb_Cotisations {
         return $result['results'] ?? array();
     }
 
-    private static function paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $amount_euros ) {
+    // $amount_cents : montant en centimes — le champ Paheko réel s'appelle
+    // "expected_amount" (pas "amount") et attend des centimes, comme le
+    // reste du plan comptable (ex. services_fees.amount). Vérifié en
+    // direct sur le sandbox : un "amount" envoyé était silencieusement
+    // ignoré, laissant expected_amount toujours vide.
+    private static function paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $amount_cents ) {
         return self::paheko_request( 'POST', 'user/' . intval( $paheko_user_id ) . '/subscribe', array(
-            'id_service' => intval( $id_service ),
-            'id_fee'     => intval( $id_fee ),
-            'date'       => $date,
-            'paid'       => 1,
-            'amount'     => $amount_euros,
+            'id_service'      => intval( $id_service ),
+            'id_fee'          => intval( $id_fee ),
+            'date'            => $date,
+            'paid'            => 1,
+            'expected_amount' => intval( $amount_cents ),
         ) );
     }
 
@@ -310,8 +315,8 @@ class Seliweb_Cotisations {
 
         // Inscrire au service (une seule fois, sur le montant total légal)
         if ( $id_service && $id_fee ) {
-            $total_euros = array_sum( array_map( fn( $r ) => round( $r->montant / 100, 2 ), $reglements ) );
-            self::paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $total_euros );
+            $total_cents = array_sum( array_map( fn( $r ) => intval( $r->montant ), $reglements ) );
+            self::paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $total_cents );
         }
 
         // Une écriture comptable par règlement (512 banque ou 530 caisse)
