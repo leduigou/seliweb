@@ -227,7 +227,7 @@ class Seliweb_Parametres {
             'mails'       => __( 'Mails',       'seliweb' ),
             'api'         => __( 'API',         'seliweb' ),
             'cotisations' => __( 'Cotisations', 'seliweb' ),
-            'paiements'   => __( 'Paiements',   'seliweb' ),
+            'paiements'   => __( 'Abonnements', 'seliweb' ),
         );
 
         echo '<div class="wrap">';

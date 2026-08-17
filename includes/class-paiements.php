@@ -85,9 +85,8 @@ class Seliweb_Paiements {
             'enregistre_cotisation' => $enregistre_cotisation,
             'exercice'              => $enregistre_cotisation ? $exercice : null,
             'consentement_texte'    => sanitize_textarea_field( wp_unslash( $_POST['consentement_texte'] ?? '' ) ) ?: null,
-            'est_don'               => isset( $_POST['est_don'] ) ? 1 : 0,
-            'compte_paheko_banque'  => ! $enregistre_cotisation ? sanitize_text_field( wp_unslash( $_POST['compte_paheko_banque']  ?? '' ) ) ?: null : null,
-            'compte_paheko_recette' => ! $enregistre_cotisation ? sanitize_text_field( wp_unslash( $_POST['compte_paheko_recette'] ?? '' ) ) ?: null : null,
+            'compte_paheko_banque'  => sanitize_text_field( wp_unslash( $_POST['compte_paheko_banque']  ?? '' ) ) ?: null,
+            'compte_paheko_recette' => sanitize_text_field( wp_unslash( $_POST['compte_paheko_recette'] ?? '' ) ) ?: null,
         );
 
         if ( $action === 'add_paiement' ) {
@@ -136,7 +135,7 @@ class Seliweb_Paiements {
         ?>
         <p>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements&action=new' ) ); ?>"
-               class="button button-primary"><?php esc_html_e( 'Ajouter un paiement', 'seliweb' ); ?></a>
+               class="button button-primary"><?php esc_html_e( 'Ajouter un abonnement', 'seliweb' ); ?></a>
         </p>
         <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
@@ -282,16 +281,6 @@ class Seliweb_Paiements {
                 </tr>
 
                 <tr>
-                    <th><?php esc_html_e( 'Don', 'seliweb' ); ?></th>
-                    <td>
-                        <label>
-                            <input type="checkbox" name="est_don" value="1" <?php checked( $item ? $item->est_don : 0 ); ?>>
-                            <?php esc_html_e( 'Ce paiement comprend un don', 'seliweb' ); ?>
-                        </label>
-                    </td>
-                </tr>
-
-                <tr>
                     <th><label for="groupe_depart_id"><?php esc_html_e( 'Groupe de départ', 'seliweb' ); ?></label></th>
                     <td>
                         <select id="groupe_depart_id" name="groupe_depart_id">
@@ -352,7 +341,7 @@ class Seliweb_Paiements {
                     </td>
                 </tr>
 
-                <tr id="row_compte_banque" style="<?php echo ( $item && $item->enregistre_cotisation ) ? 'display:none;' : ''; ?>">
+                <tr id="row_compte_banque">
                     <th><label for="compte_paheko_banque"><?php esc_html_e( 'Compte banque (Paheko)', 'seliweb' ); ?></label></th>
                     <td>
                         <?php if ( $comptes_banque ) : ?>
@@ -371,7 +360,7 @@ class Seliweb_Paiements {
                     </td>
                 </tr>
 
-                <tr id="row_compte_recette" style="<?php echo ( $item && $item->enregistre_cotisation ) ? 'display:none;' : ''; ?>">
+                <tr id="row_compte_recette">
                     <th><label for="compte_paheko_recette"><?php esc_html_e( 'Compte de recette (Paheko)', 'seliweb' ); ?></label></th>
                     <td>
                         <?php if ( $comptes_recette ) : ?>
@@ -402,13 +391,9 @@ class Seliweb_Paiements {
         (function(){
             var cb  = document.getElementById('enregistre_cotisation');
             var rowExercice = document.getElementById('row_exercice');
-            var rowBanque   = document.getElementById('row_compte_banque');
-            var rowRecette  = document.getElementById('row_compte_recette');
             if ( cb ) {
                 cb.addEventListener('change', function(){
                     if ( rowExercice ) rowExercice.style.display = this.checked ? '' : 'none';
-                    if ( rowBanque )   rowBanque.style.display   = this.checked ? 'none' : '';
-                    if ( rowRecette )  rowRecette.style.display  = this.checked ? 'none' : '';
                 });
             }
 
@@ -579,12 +564,12 @@ class Seliweb_Paiements {
 
         if ( $erreur ) {
             wp_safe_redirect( add_query_arg(
-                array( 'sel_action' => 'paiements', 'erreur_paiement' => $erreur ), $page_url
+                array( 'sel_action' => 'abonnements', 'erreur_paiement' => $erreur ), $page_url
             ) );
             exit;
         }
 
-        $retour_url = add_query_arg( array( 'sel_action' => 'paiements', 'retour_paiement' => '1' ), $page_url );
+        $retour_url = add_query_arg( array( 'sel_action' => 'abonnements', 'retour_paiement' => '1' ), $page_url );
 
         $intent = Seliweb_Cotisations::ha_creer_checkout_intent(
             $offre->nom,
@@ -592,13 +577,12 @@ class Seliweb_Paiements {
             $retour_url,
             $retour_url,
             $retour_url,
-            array( 'seliweb_wp_user_id' => $wp_user_id, 'seliweb_offre_id' => $offre_id ),
-            (bool) $offre->est_don
+            array( 'seliweb_wp_user_id' => $wp_user_id, 'seliweb_offre_id' => $offre_id )
         );
 
         if ( ! $intent || empty( $intent['redirectUrl'] ) ) {
             wp_safe_redirect( add_query_arg(
-                array( 'sel_action' => 'paiements', 'erreur_paiement' => '1' ), $page_url
+                array( 'sel_action' => 'abonnements', 'erreur_paiement' => '1' ), $page_url
             ) );
             exit;
         }

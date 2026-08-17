@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.7';
+    const DB_VERSION     = '2.8';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -228,7 +228,6 @@ class Seliweb_Database {
             enregistre_cotisation  TINYINT(1)   NOT NULL DEFAULT 0,
             exercice               VARCHAR(20)  DEFAULT NULL,
             consentement_texte     TEXT,
-            est_don                TINYINT(1)   NOT NULL DEFAULT 0,
             compte_paheko_banque   VARCHAR(10)  DEFAULT NULL,
             compte_paheko_recette  VARCHAR(10)  DEFAULT NULL,
             PRIMARY KEY (id)
@@ -372,6 +371,14 @@ class Seliweb_Database {
         self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'est_don', "TINYINT(1) NOT NULL DEFAULT 0" );
         self::maybe_drop_column( $wpdb->prefix . 'seliweb_paiements_offres', 'tarif' );
         self::maybe_drop_column( $wpdb->prefix . 'seliweb_paiements_offres', 'helloasso_url' );
+
+        // Migration v2.8 : "Paiements" devient "Abonnements" — les offres sont
+        // désormais génériques (cotisation, don, ou autre). Le champ "don" est
+        // retiré (un don se distingue simplement par son titre) et les comptes
+        // Paheko banque/recette sont saisis pour tous les abonnements, cotisations
+        // comprises (la synchronisation Paheko des cotisations reste néanmoins
+        // inchangée, basée sur exercice + service/tarif Paheko).
+        self::maybe_drop_column( $wpdb->prefix . 'seliweb_paiements_offres', 'est_don' );
 
         self::insert_defaults();
     }
