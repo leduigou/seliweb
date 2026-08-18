@@ -226,6 +226,11 @@ class Seliweb_Paiements {
         }
         if ( ! $tarifs_item ) $tarifs_item = array( array( 'label' => '', 'montant' => '' ) );
         ?>
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=paiements' ) ); ?>">
+                &larr; <?php esc_html_e( 'Revenir aux abonnements', 'seliweb' ); ?>
+            </a>
+        </p>
         <form method="post" style="max-width:700px;">
             <?php wp_nonce_field( 'seliweb_paiements', 'seliweb_nonce' ); ?>
             <input type="hidden" name="seliweb_action" value="<?php echo $is_edit ? 'update_paiement' : 'add_paiement'; ?>">
