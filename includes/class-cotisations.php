@@ -1516,11 +1516,14 @@ class Seliweb_Cotisations {
             $id_fee     = intval( $fees[ $cot_id ]     ?? 0 );
             $id_service = intval( $services[ $cot_id ] ?? 0 );
 
-            // Récupérer email et nom du membre
-            $email = $cot->helloasso_payer_email ?: '';
-            $nom   = $cot->helloasso_payer_nom   ?: '';
-
-            if ( ! $email && $cot->wp_user_id ) {
+            // Identité utilisée pour Paheko : toujours celle du membre Seliweb
+            // qui a initié le paiement (email/nom/prénom de son compte), jamais
+            // celle du payeur HelloAsso — Seliweb ne s'occupe pas de qui a
+            // réglé, seulement de qui a passé la commande (ex. quelqu'un peut
+            // régler par CB pour un tiers qui ne sait pas payer en ligne).
+            $email = '';
+            $nom   = '';
+            if ( $cot->wp_user_id ) {
                 $user  = get_userdata( $cot->wp_user_id );
                 $email = $user ? $user->user_email : '';
                 $insc  = $wpdb->get_row( $wpdb->prepare(
