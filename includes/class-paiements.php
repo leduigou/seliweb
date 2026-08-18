@@ -565,7 +565,7 @@ class Seliweb_Paiements {
 
         if ( $erreur ) {
             wp_safe_redirect( add_query_arg(
-                array( 'sel_action' => 'abonnements', 'erreur_paiement' => $erreur ), $page_url
+                array( 'sel_action' => 'abonnements', 'erreur_paiement' => $erreur, 'sel_offre_id' => $offre_id ), $page_url
             ) );
             exit;
         }
@@ -583,7 +583,7 @@ class Seliweb_Paiements {
 
         if ( ! $intent || empty( $intent['redirectUrl'] ) ) {
             wp_safe_redirect( add_query_arg(
-                array( 'sel_action' => 'abonnements', 'erreur_paiement' => '1' ), $page_url
+                array( 'sel_action' => 'abonnements', 'erreur_paiement' => '1', 'sel_offre_id' => $offre_id ), $page_url
             ) );
             exit;
         }

@@ -84,6 +84,7 @@ $statuts    = $wpdb->get_results( "SELECT * FROM $ts ORDER BY id ASC" );
 
 $action     = isset( $_GET['sel_action'] ) ? sanitize_key( $_GET['sel_action'] ) : 'liste';
 $annonce_id = isset( $_GET['sel_id'] )     ? intval( $_GET['sel_id'] )           : 0;
+$offre_id_detail = isset( $_GET['sel_offre_id'] ) ? intval( $_GET['sel_offre_id'] ) : 0;
 
 // Mes annonces
 $mes_annonces       = $wpdb->get_results( $wpdb->prepare(
@@ -1302,51 +1303,100 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         </div>
     <?php endif; ?>
 
-    <?php if ( ! empty( $offres_membre ) ) : ?>
+    <?php
+    // Retrouve l'offre demandée en détail parmi celles réellement accessibles
+    // au membre — jamais faire confiance à l'ID brut de l'URL.
+    $offre_detail = null;
+    if ( $offre_id_detail ) {
+        foreach ( $offres_membre as $o ) {
+            if ( (int) $o->id === $offre_id_detail ) { $offre_detail = $o; break; }
+        }
+    }
+    ?>
+
+    <?php if ( $offre_detail ) :
+        $tarifs_offre = $offre_detail->tarifs ? ( json_decode( $offre_detail->tarifs, true ) ?: array() ) : array();
+        $retour_liste_url = add_query_arg( 'sel_action', 'abonnements', $page_url );
+    ?>
+
+    <div style="max-width:640px;">
+        <h3 style="margin:0 0 6px;"><?php echo esc_html( $offre_detail->nom ); ?></h3>
+        <?php if ( $offre_detail->description ) : ?>
+            <p style="margin:0 0 18px;"><?php echo nl2br( esc_html( $offre_detail->description ) ); ?></p>
+        <?php endif; ?>
+
+        <?php if ( $tarifs_offre ) : ?>
+        <form method="post" action="<?php echo esc_url( $page_url ); ?>" id="sel-form-abonnement">
+            <?php wp_nonce_field( 'seliweb_creer_paiement', 'seliweb_nonce_paiement' ); ?>
+            <input type="hidden" name="seliweb_action" value="creer_paiement">
+            <input type="hidden" name="offre_id" value="<?php echo intval( $offre_detail->id ); ?>">
+
+            <?php if ( count( $tarifs_offre ) === 1 ) : ?>
+                <input type="hidden" name="tarif_idx" value="0">
+                <p style="margin:0 0 16px;font-weight:600;">
+                    <?php echo esc_html( $tarifs_offre[0]['label'] . ' — ' . number_format( $tarifs_offre[0]['montant'] / 100, 2, ',', ' ' ) . ' €' ); ?>
+                </p>
+            <?php else : ?>
+                <div style="margin:0 0 16px;">
+                    <?php foreach ( $tarifs_offre as $i => $t ) : ?>
+                        <label style="display:block;margin-bottom:4px;">
+                            <input type="radio" name="tarif_idx" value="<?php echo intval( $i ); ?>" <?php checked( $i === 0 ); ?> required>
+                            <?php echo esc_html( $t['label'] . ' — ' . number_format( $t['montant'] / 100, 2, ',', ' ' ) . ' €' ); ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ( $offre_detail->consentement_texte ) : ?>
+                <div style="max-height:220px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;padding:12px 14px;background:#fafafa;font-size:13px;margin:0 0 12px;">
+                    <?php echo nl2br( esc_html( $offre_detail->consentement_texte ) ); ?>
+                </div>
+                <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:0 0 18px;">
+                    <input type="checkbox" id="sel-consentement" name="consentement" value="1" required style="margin-top:2px;">
+                    <span><?php esc_html_e( "J'accepte les CGU", 'seliweb' ); ?></span>
+                </label>
+            <?php endif; ?>
+
+            <div style="display:flex;gap:10px;">
+                <a href="<?php echo esc_url( $retour_liste_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                    <?php esc_html_e( 'Revenir aux abonnements', 'seliweb' ); ?>
+                </a>
+                <button type="submit" id="sel-btn-payer" class="seliweb-btn" <?php echo $offre_detail->consentement_texte ? 'disabled' : ''; ?>>
+                    <?php esc_html_e( 'Régler en ligne', 'seliweb' ); ?>
+                </button>
+            </div>
+        </form>
+        <?php if ( $offre_detail->consentement_texte ) : ?>
+        <script>
+        (function(){
+            var cb  = document.getElementById('sel-consentement');
+            var btn = document.getElementById('sel-btn-payer');
+            if ( cb && btn ) {
+                cb.addEventListener('change', function(){ btn.disabled = ! this.checked; });
+            }
+        })();
+        </script>
+        <?php endif; ?>
+        <?php else : ?>
+            <p class="description"><?php esc_html_e( 'Ce paiement n\'est pas encore configuré (aucun tarif défini).', 'seliweb' ); ?></p>
+            <p><a href="<?php echo esc_url( $retour_liste_url ); ?>" class="seliweb-btn seliweb-btn-secondary">
+                <?php esc_html_e( 'Revenir aux abonnements', 'seliweb' ); ?>
+            </a></p>
+        <?php endif; ?>
+    </div>
+
+    <?php elseif ( ! empty( $offres_membre ) ) : ?>
     <h3><?php esc_html_e( 'Abonnements disponibles', 'seliweb' ); ?></h3>
 
-    <?php foreach ( $offres_membre as $offre ) :
-        $tarifs_offre = $offre->tarifs ? ( json_decode( $offre->tarifs, true ) ?: array() ) : array();
-    ?>
+    <?php foreach ( $offres_membre as $offre ) : ?>
         <div class="seliweb-notice" style="background:#f7fbf9;border-left:4px solid #1d6a4a;padding:14px 18px;border-radius:4px;margin-bottom:14px;">
             <h4 style="margin:0 0 6px;"><?php echo esc_html( $offre->nom ); ?></h4>
             <?php if ( $offre->description ) : ?>
                 <p style="margin:0 0 10px;"><?php echo nl2br( esc_html( $offre->description ) ); ?></p>
             <?php endif; ?>
-            <?php if ( $tarifs_offre ) : ?>
-            <form method="post" action="<?php echo esc_url( $page_url ); ?>">
-                <?php wp_nonce_field( 'seliweb_creer_paiement', 'seliweb_nonce_paiement' ); ?>
-                <input type="hidden" name="seliweb_action" value="creer_paiement">
-                <input type="hidden" name="offre_id" value="<?php echo intval( $offre->id ); ?>">
-
-                <?php if ( count( $tarifs_offre ) === 1 ) : ?>
-                    <input type="hidden" name="tarif_idx" value="0">
-                    <p style="margin:0 0 10px;font-weight:600;">
-                        <?php echo esc_html( $tarifs_offre[0]['label'] . ' — ' . number_format( $tarifs_offre[0]['montant'] / 100, 2, ',', ' ' ) . ' €' ); ?>
-                    </p>
-                <?php else : ?>
-                    <div style="margin:0 0 10px;">
-                        <?php foreach ( $tarifs_offre as $i => $t ) : ?>
-                            <label style="display:block;margin-bottom:4px;">
-                                <input type="radio" name="tarif_idx" value="<?php echo intval( $i ); ?>" <?php checked( $i === 0 ); ?> required>
-                                <?php echo esc_html( $t['label'] . ' — ' . number_format( $t['montant'] / 100, 2, ',', ' ' ) . ' €' ); ?>
-                            </label>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-
-                <?php if ( $offre->consentement_texte ) : ?>
-                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:0 0 12px;">
-                        <input type="checkbox" name="consentement" value="1" required style="margin-top:2px;">
-                        <span><?php echo nl2br( esc_html( $offre->consentement_texte ) ); ?></span>
-                    </label>
-                <?php endif; ?>
-
-                <button type="submit" class="seliweb-btn"><?php esc_html_e( 'Régler en ligne', 'seliweb' ); ?></button>
-            </form>
-            <?php else : ?>
-                <p class="description"><?php esc_html_e( 'Ce paiement n\'est pas encore configuré (aucun tarif défini).', 'seliweb' ); ?></p>
-            <?php endif; ?>
+            <a href="<?php echo esc_url( add_query_arg( array( 'sel_action' => 'abonnements', 'sel_offre_id' => $offre->id ), $page_url ) ); ?>" class="seliweb-btn">
+                <?php esc_html_e( 'Voir le détail', 'seliweb' ); ?>
+            </a>
         </div>
     <?php endforeach; ?>
     <?php endif; ?>
