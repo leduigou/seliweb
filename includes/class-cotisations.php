@@ -269,22 +269,27 @@ class Seliweb_Cotisations {
         return $result['results'] ?? array();
     }
 
-    // $amount_cents : montant en centimes — le champ Paheko réel s'appelle
-    // "expected_amount" (pas "amount") et attend des centimes, comme le
-    // reste du plan comptable (ex. services_fees.amount). Vérifié en
-    // direct sur le sandbox : un "amount" envoyé était silencieusement
-    // ignoré, laissant expected_amount toujours vide.
+    // $amount_cents : montant en centimes côté Seliweb, converti en euros
+    // (nombre flottant) pour l'API — d'après la documentation officielle de
+    // l'API Paheko (fournie par le trésorier), expected_amount attend "un
+    // nombre flottant (exemple : 42,99)", pas des centimes. Vérifié en
+    // direct : envoyer 1500 (centimes) stocke 1500 (soit 1500 €, pas 15 €) ;
+    // envoyer 10.00 stocke bien 10.
     private static function paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $amount_cents ) {
         return self::paheko_request( 'POST', 'user/' . intval( $paheko_user_id ) . '/subscribe', array(
             'id_service'      => intval( $id_service ),
             'id_fee'          => intval( $id_fee ),
             'date'            => $date,
             'paid'            => 1,
-            'expected_amount' => intval( $amount_cents ),
+            'expected_amount' => round( $amount_cents / 100, 2 ),
         ) );
     }
 
-    public static function paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit = '512', $paheko_user_id = null, $compte_credit = '756' ) {
+    // $id_subscription : ID de l'inscription à l'activité (retourné par
+    // paheko_subscribe()) à relier à cette écriture via linked_subscriptions
+    // — documenté dans l'API Paheko. Sans ce lien, l'inscription reste créée
+    // mais son montant n'apparaît pas dans l'écran des activités du membre.
+    public static function paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit = '512', $paheko_user_id = null, $compte_credit = '756', $id_subscription = null ) {
         $body = array(
             'id_year' => intval( $id_year ),
             'type'    => 'revenue',
@@ -295,9 +300,12 @@ class Seliweb_Cotisations {
             'credit'  => $compte_credit,
         );
         if ( $paheko_user_id ) {
-            // Tableau PHP réel : paheko_request() encode tout le corps en
+            // Tableaux PHP réels : paheko_request() encode tout le corps en
             // JSON, un pré-encodage ici produirait un double encodage.
             $body['linked_users'] = [ intval( $paheko_user_id ) ];
+        }
+        if ( $id_subscription ) {
+            $body['linked_subscriptions'] = [ intval( $id_subscription ) ];
         }
         return self::paheko_request( 'POST', 'accounting/transaction', $body );
     }
@@ -406,18 +414,23 @@ class Seliweb_Cotisations {
         if ( ! $paheko_user_id ) return array( 'ok' => false, 'error' => __( "Membre introuvable/non créé dans Paheko.", 'seliweb' ) );
 
         // Inscrire au service (une seule fois, sur le montant total légal)
+        $id_subscription = null;
         if ( $id_service && $id_fee ) {
             $total_cents = array_sum( array_map( fn( $r ) => intval( $r->montant ), $reglements ) );
             $sub_result  = self::paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $total_cents );
             if ( ! is_array( $sub_result ) || ! empty( $sub_result['error'] ) ) {
                 return array( 'ok' => false, 'error' => $sub_result['error'] ?? __( 'Échec inscription au service Paheko.', 'seliweb' ) );
             }
+            $id_subscription = $sub_result['id'] ?? null;
         }
 
         // Une écriture comptable par règlement. Compte banque : celui
         // configuré sur l'abonnement à l'origine du paiement s'il existe
         // (ex. "512A"), sinon repli sur la convention historique
         // (530 = caisse pour les espèces, 512 = banque générique sinon).
+        // Reliée à l'inscription au service ci-dessus (linked_subscriptions)
+        // pour que son montant apparaisse dans l'écran des activités du
+        // membre — sans ce lien l'inscription reste créée mais vide.
         if ( $id_year ) {
             $date_fr = date( 'd/m/Y', strtotime( $date ) );
             foreach ( $reglements as $rg ) {
@@ -425,7 +438,7 @@ class Seliweb_Cotisations {
                 $compte_credit = $compte_recette ?: '756';
                 $amount_euros  = round( $rg->montant / 100, 2 );
                 $label         = sprintf( __( 'Cotisation - %s', 'seliweb' ), $nom );
-                $txn_result    = self::paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit, $paheko_user_id, $compte_credit );
+                $txn_result    = self::paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit, $paheko_user_id, $compte_credit, $id_subscription );
                 if ( ! is_array( $txn_result ) || ! empty( $txn_result['error'] ) ) {
                     return array( 'ok' => false, 'error' => $txn_result['error'] ?? __( "Échec de l'écriture comptable Paheko.", 'seliweb' ) );
                 }
