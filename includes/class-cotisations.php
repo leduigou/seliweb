@@ -1455,13 +1455,24 @@ class Seliweb_Cotisations {
         $tt = $wpdb->prefix . 'seliweb_transactions';
         $te = $wpdb->prefix . 'seliweb_ecritures';
 
-        // Règlements en monnaie SEL (est_defaut = 1)
+        // Règlements dans la monnaie du SEL — identifiée par le réglage
+        // sel_monnaie_id (Paramètres > SEL), la même référence déjà utilisée
+        // par le module Transactions pour les échanges entre membres.
+        // "est_defaut" ne convient pas : c'est juste l'ordre d'affichage des
+        // prix dans les annonces, sans rapport avec la monnaie du SEL — sur
+        // ce site l'Euro (monnaie légale) était coché par défaut, ce qui
+        // déclenchait à tort une transaction SEL pour des cotisations payées
+        // en euros via HelloAsso.
+        $sel_monnaie_id = (int) $wpdb->get_var(
+            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='sel_monnaie_id'"
+        );
+        if ( ! $sel_monnaie_id ) return false;
+
         $reglements_sel = $wpdb->get_results( $wpdb->prepare(
             "SELECT r.montant FROM $tr r
-             LEFT JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
-             WHERE r.cotisation_id = %d AND mo.est_defaut = 1
+             WHERE r.cotisation_id = %d AND r.monnaie_id = %d
              ORDER BY r.id",
-            $cotisation_id
+            $cotisation_id, $sel_monnaie_id
         ) );
         if ( ! $reglements_sel ) return false;
 
