@@ -330,6 +330,7 @@ class Seliweb_Cotisations {
             'tarif_label'           => $tarif_label ?: null,
             'montant'               => intval( $montant ),
             'date_paiement'         => $date,
+            'date_ecriture'         => $date,
             'statut'                => 'paye',
             'helloasso_order_id'    => $helloasso_order_id,
             'helloasso_payer_email' => $email,
@@ -449,6 +450,7 @@ class Seliweb_Cotisations {
             'paheko_synced'  => 1,
             'paheko_id_year' => $id_year ?: null,
             'paheko_id_fee'  => $id_fee  ?: null,
+            'date_ecriture'  => $date,
         ), array( 'id' => $cotisation_id ) );
 
         return array( 'ok' => true, 'error' => '' );
@@ -569,7 +571,12 @@ class Seliweb_Cotisations {
             $wpdb->update( $tc, $cot_data, array( 'id' => $cotisation_id ) );
             $wpdb->delete( $tr, array( 'cotisation_id' => $cotisation_id ) );
         } else {
-            $cot_data['created_at'] = current_time( 'mysql' );
+            // Date d'écriture par défaut = date de règlement ; ajustable
+            // ensuite dans l'écran de synchronisation Paheko en cas de
+            // chevauchement d'exercice (cotisation réglée fin décembre pour
+            // l'exercice suivant, par exemple).
+            $cot_data['date_ecriture'] = $date_paiement;
+            $cot_data['created_at']    = current_time( 'mysql' );
             $wpdb->insert( $tc, $cot_data );
             $cotisation_id = (int) $wpdb->insert_id;
         }
@@ -1172,6 +1179,12 @@ class Seliweb_Cotisations {
             ? $wpdb->prepare( "AND c.exercice = %s", $exercice_filtre )
             : '';
 
+        // Monnaie du SEL (Paramètres > SEL) — même référence que
+        // create_transaction_sel(), pas "est_defaut" (voir plus bas).
+        $sel_monnaie_id = (int) $wpdb->get_var(
+            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='sel_monnaie_id'"
+        );
+
         $cotisations = $wpdb->get_results(
             "SELECT c.*,
                     COALESCE( i.nom, u.display_name ) AS nom_membre,
@@ -1184,8 +1197,7 @@ class Seliweb_Cotisations {
                     ) AS a_reglement_legal,
                     EXISTS (
                         SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
-                        JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
-                        WHERE r.cotisation_id = c.id AND mo.est_defaut = 1
+                        WHERE r.cotisation_id = c.id AND r.monnaie_id = " . intval( $sel_monnaie_id ) . "
                     ) AS a_reglement_sel
              FROM $tc c
              LEFT JOIN {$wpdb->users} u ON u.ID = c.wp_user_id
@@ -1203,8 +1215,7 @@ class Seliweb_Cotisations {
                    OR
                    ( c.sel_synced = 0 AND EXISTS (
                        SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
-                       JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
-                       WHERE r.cotisation_id = c.id AND mo.est_defaut = 1
+                       WHERE r.cotisation_id = c.id AND r.monnaie_id = " . intval( $sel_monnaie_id ) . "
                    ) )
                )
              $where_ex
@@ -1295,10 +1306,9 @@ class Seliweb_Cotisations {
                     <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
                     <th style="width:90px;"><?php esc_html_e( 'Exercice Seliweb', 'seliweb' ); ?></th>
                     <th style="width:80px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
-                    <th style="width:80px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
-                    <th style="width:110px;"><?php esc_html_e( 'À faire', 'seliweb' ); ?></th>
-                    <th style="width:130px;"><?php esc_html_e( 'Comptes (banque / recette)', 'seliweb' ); ?></th>
+                    <th style="width:90px;"><?php esc_html_e( 'Date règlement', 'seliweb' ); ?></th>
                     <th style="width:120px;"><?php esc_html_e( 'Exercice Paheko', 'seliweb' ); ?></th>
+                    <th style="width:130px;"><?php esc_html_e( "Date d'écriture", 'seliweb' ); ?></th>
                     <th><?php esc_html_e( 'Tarif Paheko', 'seliweb' ); ?></th>
                 </tr></thead>
                 <tbody>
@@ -1319,44 +1329,40 @@ class Seliweb_Cotisations {
                     <td><?php echo esc_html( $cot->exercice ?: '—' ); ?></td>
                     <td><?php echo esc_html( $montant_aff ); ?></td>
                     <td><?php echo esc_html( $cot->date_paiement ? date_i18n( 'd/m/Y', strtotime( $cot->date_paiement ) ) : '—' ); ?></td>
-                    <td style="font-size:12px;line-height:1.6;">
-                        <?php if ( $cot->a_reglement_legal && ! $cot->paheko_synced ) : ?>
-                            <span style="color:#0073aa;">↗ Paheko</span><br>
-                        <?php endif; ?>
-                        <?php if ( $cot->a_reglement_sel && ! $cot->sel_synced ) : ?>
-                            <span style="color:#46b450;">↗ Transaction SEL</span>
-                        <?php endif; ?>
-                    </td>
-                    <td style="color:#888;font-size:12px;">
-                        <?php
-                        $comptes_offre_cot = ( $cot->a_reglement_legal && ! $cot->paheko_synced )
-                            ? self::get_offre_comptes_pour_cotisation( $cot->id ) : null;
-                        ?>
-                        <?php if ( $comptes_offre_cot ) : ?>
-                            <?php echo esc_html( $comptes_offre_cot->compte_paheko_banque . ' / ' . $comptes_offre_cot->compte_paheko_recette ); ?>
-                        <?php elseif ( $cot->a_reglement_legal && ! $cot->paheko_synced ) : ?>
-                            <em title="<?php esc_attr_e( "Pas d'abonnement associé : convention par défaut (512/530 banque, 756 recette).", 'seliweb' ); ?>">
-                                <?php esc_html_e( 'Défaut (512/530 · 756)', 'seliweb' ); ?>
-                            </em>
-                        <?php else : ?>
-                            —
-                        <?php endif; ?>
-                    </td>
                     <td>
                         <?php if ( $paheko_years && $cot->a_reglement_legal && ! $cot->paheko_synced ) : ?>
                         <select name="paheko_year[<?php echo intval( $cot->id ); ?>]"
                                 id="paheko_year_<?php echo intval( $cot->id ); ?>"
                                 data-fee-target="paheko_fee_<?php echo intval( $cot->id ); ?>"
+                                data-date-target="date_ecriture_<?php echo intval( $cot->id ); ?>"
                                 style="max-width:180px;">
                             <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
                             <?php foreach ( $paheko_years as $yr ) : ?>
-                                <option value="<?php echo intval( $yr['id'] ); ?>" <?php selected( $default_year, $yr['id'] ); ?>>
+                                <option value="<?php echo intval( $yr['id'] ); ?>"
+                                        data-start="<?php echo esc_attr( $yr['start_date'] ?? '' ); ?>"
+                                        data-end="<?php echo esc_attr( $yr['end_date'] ?? '' ); ?>"
+                                        <?php selected( $default_year, $yr['id'] ); ?>>
                                     <?php echo esc_html( $yr['label'] ); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                         <?php else : ?>
                             <em class="description"><?php esc_html_e( 'Non disponible', 'seliweb' ); ?></em>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ( $cot->a_reglement_legal && ! $cot->paheko_synced ) :
+                            $date_ecriture_val = $cot->date_ecriture ?: $cot->date_paiement;
+                        ?>
+                        <input type="date" name="date_ecriture[<?php echo intval( $cot->id ); ?>]"
+                               id="date_ecriture_<?php echo intval( $cot->id ); ?>"
+                               value="<?php echo esc_attr( $date_ecriture_val ); ?>"
+                               style="max-width:140px;">
+                        <div class="date-ecriture-warning" style="display:none;color:#b32d2e;font-size:11px;margin-top:2px;">
+                            <?php esc_html_e( "Hors de l'exercice Paheko choisi", 'seliweb' ); ?>
+                        </div>
+                        <?php else : ?>
+                            —
                         <?php endif; ?>
                     </td>
                     <td>
@@ -1440,6 +1446,27 @@ class Seliweb_Cotisations {
                 filtrerTarifs(sel);
                 sel.addEventListener('change', function(){ filtrerTarifs(sel); });
             });
+
+            // Avertit si la date d'écriture saisie tombe hors des bornes de
+            // l'exercice Paheko choisi sur la même ligne — la vérification
+            // qui compte reste faite côté serveur avant l'envoi à Paheko,
+            // ceci n'est qu'un repère visuel immédiat pour le trésorier.
+            function verifierDateEcriture(yearSelect) {
+                var dateInput = document.getElementById(yearSelect.dataset.dateTarget);
+                if (!dateInput) return;
+                var warning = dateInput.parentElement.querySelector('.date-ecriture-warning');
+                var opt = yearSelect.options[yearSelect.selectedIndex];
+                var start = opt ? opt.dataset.start : '';
+                var end   = opt ? opt.dataset.end   : '';
+                var hors  = start && end && dateInput.value && (dateInput.value < start || dateInput.value > end);
+                if (warning) warning.style.display = hors ? '' : 'none';
+            }
+            document.querySelectorAll('select[data-date-target]').forEach(function(sel){
+                verifierDateEcriture(sel);
+                sel.addEventListener('change', function(){ verifierDateEcriture(sel); });
+                var dateInput = document.getElementById(sel.dataset.dateTarget);
+                if (dateInput) dateInput.addEventListener('change', function(){ verifierDateEcriture(sel); });
+            });
         })();
         </script>
 
@@ -1522,10 +1549,11 @@ class Seliweb_Cotisations {
         $ti  = $wpdb->prefix . 'seliweb_inscriptions';
         $cfg = self::cfg();
 
-        $cot_ids   = array_map( 'intval', (array) ( $_POST['cot_ids'] ?? array() ) );
-        $years     = $_POST['paheko_year'] ?? array();
-        $fees      = $_POST['paheko_fee']  ?? array();
-        $services  = $_POST['paheko_svc']  ?? array();
+        $cot_ids        = array_map( 'intval', (array) ( $_POST['cot_ids'] ?? array() ) );
+        $years          = $_POST['paheko_year']    ?? array();
+        $fees           = $_POST['paheko_fee']     ?? array();
+        $services       = $_POST['paheko_svc']     ?? array();
+        $dates_ecriture = $_POST['date_ecriture']  ?? array();
 
         $exercice_filtre = sanitize_text_field( wp_unslash( $_GET['exercice'] ?? '' ) );
 
@@ -1533,6 +1561,20 @@ class Seliweb_Cotisations {
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_cotisations&view=sync'
                 . ( $exercice_filtre ? '&exercice=' . urlencode( $exercice_filtre ) : '' ) ) );
             exit;
+        }
+
+        // Bornes des exercices Paheko, pour vérifier que la date d'écriture
+        // saisie correspond bien à l'exercice choisi avant d'envoyer quoi que
+        // ce soit à Paheko (évite de créer une inscription au service puis
+        // d'échouer sur l'écriture avec une date incohérente).
+        $paheko_years = get_transient( 'seliweb_paheko_years' );
+        if ( false === $paheko_years ) {
+            $paheko_years = self::paheko_get_years();
+            set_transient( 'seliweb_paheko_years', $paheko_years, 600 );
+        }
+        $bornes_annee = array();
+        foreach ( (array) $paheko_years as $yr ) {
+            $bornes_annee[ $yr['id'] ] = array( $yr['start_date'] ?? '', $yr['end_date'] ?? '' );
         }
 
         $ok            = 0;
@@ -1566,6 +1608,12 @@ class Seliweb_Cotisations {
             $date    = $cot->date_paiement ?: current_time( 'Y-m-d' );
             $libelle = sprintf( __( 'Cotisation %s - %s', 'seliweb' ), $cot->exercice ?: '', $nom );
 
+            // Date d'écriture envoyée à Paheko : distincte de la date de
+            // règlement, modifiable pour les cotisations réglées à cheval sur
+            // deux exercices (ex. adhésion 2027 réglée le 15/12/2026).
+            $date_ecriture = sanitize_text_field( wp_unslash( $dates_ecriture[ $cot_id ] ?? '' ) )
+                ?: ( $cot->date_ecriture ?: $date );
+
             // Comptes Paheko de l'abonnement à l'origine du paiement, si connu
             // (paiement HelloAsso initié depuis Seliweb) — sinon repli sur la
             // convention historique dans sync_to_paheko().
@@ -1573,11 +1621,24 @@ class Seliweb_Cotisations {
             $compte_banque  = $comptes_offre->compte_paheko_banque  ?? '';
             $compte_recette = $comptes_offre->compte_paheko_recette ?? '';
 
-            // Sync Paheko (règlements en monnaie légale)
-            $paheko_result = self::sync_to_paheko( $cot_id, $email, $nom, $date, $id_year, $id_fee, $id_service, $compte_banque, $compte_recette );
-            $paheko_ok     = $paheko_result['ok'];
+            // Contrôle de cohérence : la date d'écriture doit tomber dans les
+            // bornes de l'exercice Paheko choisi, sinon Paheko refuserait de
+            // toute façon l'écriture — autant l'éviter avant de créer une
+            // éventuelle inscription au service pour rien.
+            list( $borne_debut, $borne_fin ) = $bornes_annee[ $id_year ] ?? array( '', '' );
+            $date_hors_exercice = $id_year && $borne_debut && $borne_fin
+                && ( $date_ecriture < $borne_debut || $date_ecriture > $borne_fin );
 
-            // Transaction SEL (règlements en monnaie SEL)
+            if ( $date_hors_exercice ) {
+                $paheko_result = array( 'ok' => false, 'error' => __( "Date d'écriture hors de l'exercice Paheko choisi.", 'seliweb' ) );
+            } else {
+                // Sync Paheko (règlements en monnaie légale)
+                $paheko_result = self::sync_to_paheko( $cot_id, $email, $nom, $date_ecriture, $id_year, $id_fee, $id_service, $compte_banque, $compte_recette );
+            }
+            $paheko_ok = $paheko_result['ok'];
+
+            // Transaction SEL (règlements en monnaie SEL) — date de règlement
+            // réelle, sans rapport avec l'exercice Paheko.
             $sel_ok = self::create_transaction_sel( $cot_id, $cot->wp_user_id, $date, $libelle );
 
             // On compte comme succès si au moins une des deux a réussi

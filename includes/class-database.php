@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '2.9';
+    const DB_VERSION     = '3.0';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -193,6 +193,7 @@ class Seliweb_Database {
             tarif_label           VARCHAR(150)  DEFAULT NULL,
             montant               INT UNSIGNED NOT NULL DEFAULT 0,
             date_paiement         DATE         NOT NULL,
+            date_ecriture         DATE         DEFAULT NULL,
             statut                ENUM('en_attente','paye','echec') NOT NULL DEFAULT 'en_attente',
             helloasso_order_id    VARCHAR(100)  DEFAULT NULL,
             helloasso_payer_email VARCHAR(200)  DEFAULT NULL,
@@ -385,6 +386,14 @@ class Seliweb_Database {
         // "Tarif réduit") lors du paiement d'une cotisation à choix multiple,
         // affiché dans Mon Compte à côté du libellé.
         self::maybe_add_column( $wpdb->prefix . 'seliweb_cotisations', 'tarif_label', "VARCHAR(150) DEFAULT NULL AFTER libelle" );
+
+        // Migration v3.0 : date d'écriture Paheko distincte de la date de
+        // règlement — une cotisation réglée en fin d'exercice pour l'exercice
+        // suivant (ou l'inverse) doit pouvoir être envoyée à Paheko avec une
+        // date qui tombe dans l'exercice choisi, sans changer la date de
+        // règlement réelle. Reprend la date de règlement par défaut.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_cotisations', 'date_ecriture', "DATE DEFAULT NULL AFTER date_paiement" );
+        $wpdb->query( "UPDATE {$wpdb->prefix}seliweb_cotisations SET date_ecriture = date_paiement WHERE date_ecriture IS NULL" );
 
         self::insert_defaults();
     }
