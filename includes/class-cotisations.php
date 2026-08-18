@@ -216,7 +216,12 @@ class Seliweb_Cotisations {
             'timeout' => 20,
         );
         if ( $data && strtoupper( $method ) !== 'GET' ) {
-            $args['body'] = $data;
+            // En JSON, pas en corps form-encodé par défaut : un paramètre
+            // tableau (ex. linked_users) envoyé en form-encodé est reçu par
+            // Paheko comme une chaîne brute ("[19]") plutôt qu'un tableau,
+            // et rejeté — constaté en direct sur accounting/transaction.
+            $args['headers']['Content-Type'] = 'application/json';
+            $args['body'] = wp_json_encode( $data );
         }
 
         $response = wp_remote_request( $base . '/api/' . ltrim( $path, '/' ), $args );
@@ -290,7 +295,9 @@ class Seliweb_Cotisations {
             'credit'  => $compte_credit,
         );
         if ( $paheko_user_id ) {
-            $body['linked_users'] = json_encode( [ intval( $paheko_user_id ) ] );
+            // Tableau PHP réel : paheko_request() encode tout le corps en
+            // JSON, un pré-encodage ici produirait un double encodage.
+            $body['linked_users'] = [ intval( $paheko_user_id ) ];
         }
         return self::paheko_request( 'POST', 'accounting/transaction', $body );
     }
