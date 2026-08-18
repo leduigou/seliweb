@@ -620,7 +620,7 @@ class Seliweb_Cotisations {
             echo '<a href="' . esc_url( $base . '&section=cotisations' ) . '" class="nav-tab ' . ( $section === 'cotisations' ? 'nav-tab-active' : '' ) . '">'
                 . esc_html__( 'Cotisations', 'seliweb' ) . '</a>';
             echo '<a href="' . esc_url( $base . '&section=offres' ) . '" class="nav-tab ' . ( $section === 'offres' ? 'nav-tab-active' : '' ) . '">'
-                . esc_html__( 'Offres', 'seliweb' ) . '</a>';
+                . esc_html__( 'Abonnements', 'seliweb' ) . '</a>';
             echo '</h2>';
         }
 
@@ -632,12 +632,12 @@ class Seliweb_Cotisations {
             echo '<nav class="nav-tab-wrapper" style="margin:12px 0 20px;">';
             echo '<a href="' . esc_url( $base . '&section=offres&view=liste_offres' ) . '" class="nav-tab ' . ( $view === 'liste_offres' ? 'nav-tab-active' : '' ) . '">'
                 . esc_html__( 'Paiements', 'seliweb' ) . '</a>';
-            echo '<a href="' . esc_url( $base . '&section=offres&view=a_rattacher' ) . '" class="nav-tab ' . ( $view === 'a_rattacher' ? 'nav-tab-active' : '' ) . '">'
-                . esc_html__( 'Paiements à rattacher', 'seliweb' ) . '</a>';
             if ( $paheko_actif ) {
                 echo '<a href="' . esc_url( $base . '&section=offres&view=sync_offres' ) . '" class="nav-tab ' . ( $view === 'sync_offres' ? 'nav-tab-active' : '' ) . '">'
                     . esc_html__( 'Synchronisation Paheko', 'seliweb' ) . '</a>';
             }
+            echo '<a href="' . esc_url( $base . '&section=offres&view=a_rattacher' ) . '" class="nav-tab ' . ( $view === 'a_rattacher' ? 'nav-tab-active' : '' ) . '">'
+                . esc_html__( 'Paiements à rattacher', 'seliweb' ) . '</a>';
             echo '</nav>';
 
             if ( class_exists( 'Seliweb_Paiements' ) ) {

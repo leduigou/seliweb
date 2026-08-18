@@ -688,6 +688,7 @@ class Seliweb_Paiements {
             'cotisation_id'       => $cotisation_id,
             'montant'             => $amount_cents,
             'date_paiement'       => $date,
+            'date_ecriture'       => $date,
             'statut'              => $matched ? 'rattache' : 'en_attente',
             'helloasso_order_id'  => $ha_order_id,
             'helloasso_form_slug' => sanitize_text_field( $order['formSlug'] ?? '' ),
@@ -921,20 +922,42 @@ class Seliweb_Paiements {
                 <thead><tr>
                     <th style="width:30px;"><input type="checkbox" id="check_all_offres" title="<?php esc_attr_e( 'Tout sélectionner', 'seliweb' ); ?>"></th>
                     <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
-                    <th><?php esc_html_e( 'Offre', 'seliweb' ); ?></th>
+                    <th><?php esc_html_e( 'Abonnement', 'seliweb' ); ?></th>
+                    <th style="width:90px;"><?php esc_html_e( 'Date de paiement', 'seliweb' ); ?></th>
                     <th style="width:80px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
-                    <th style="width:80px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
-                    <th style="width:140px;"><?php esc_html_e( 'Comptes (banque / recette)', 'seliweb' ); ?></th>
-                    <th style="width:160px;"><?php esc_html_e( 'Exercice Paheko', 'seliweb' ); ?></th>
+                    <th style="width:130px;"><?php esc_html_e( 'Exercice Paheko', 'seliweb' ); ?></th>
+                    <th style="width:120px;"><?php esc_html_e( 'Comptes (banque / recette)', 'seliweb' ); ?></th>
+                    <th style="width:130px;"><?php esc_html_e( "Date d'écriture", 'seliweb' ); ?></th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ( $paiements as $p ) : ?>
+                <?php foreach ( $paiements as $p ) :
+                    $date_ecriture_val = $p->date_ecriture ?: $p->date_paiement;
+                ?>
                     <tr>
                         <td><input type="checkbox" name="paiement_ids[]" value="<?php echo intval( $p->id ); ?>"></td>
                         <td><?php echo esc_html( $p->display_name ?: $p->payer_nom ); ?></td>
                         <td><?php echo esc_html( $p->offre_nom ); ?></td>
-                        <td><?php echo esc_html( number_format( $p->montant / 100, 2, ',', ' ' ) ); ?> €</td>
                         <td><?php echo esc_html( date_i18n( 'd/m/Y', strtotime( $p->date_paiement ) ) ); ?></td>
+                        <td><?php echo esc_html( number_format( $p->montant / 100, 2, ',', ' ' ) ); ?> €</td>
+                        <td>
+                            <?php if ( $paheko_years ) : ?>
+                                <select name="paheko_year[<?php echo intval( $p->id ); ?>]"
+                                        id="paheko_year_<?php echo intval( $p->id ); ?>"
+                                        data-date-target="date_ecriture_<?php echo intval( $p->id ); ?>"
+                                        style="max-width:150px;">
+                                    <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
+                                    <?php foreach ( $paheko_years as $yr ) : ?>
+                                        <option value="<?php echo intval( $yr['id'] ); ?>"
+                                                data-start="<?php echo esc_attr( $yr['start_date'] ?? '' ); ?>"
+                                                data-end="<?php echo esc_attr( $yr['end_date'] ?? '' ); ?>">
+                                            <?php echo esc_html( $yr['label'] ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else : ?>
+                                <em class="description"><?php esc_html_e( 'Non disponible', 'seliweb' ); ?></em>
+                            <?php endif; ?>
+                        </td>
                         <td style="color:#888;">
                             <?php if ( $p->compte_paheko_banque && $p->compte_paheko_recette ) : ?>
                                 <?php echo esc_html( $p->compte_paheko_banque . ' / ' . $p->compte_paheko_recette ); ?>
@@ -943,16 +966,13 @@ class Seliweb_Paiements {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <?php if ( $paheko_years ) : ?>
-                                <select name="paheko_year[<?php echo intval( $p->id ); ?>]" style="max-width:150px;">
-                                    <option value=""><?php esc_html_e( '— Choisir —', 'seliweb' ); ?></option>
-                                    <?php foreach ( $paheko_years as $yr ) : ?>
-                                        <option value="<?php echo intval( $yr['id'] ); ?>"><?php echo esc_html( $yr['label'] ); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            <?php else : ?>
-                                <em class="description"><?php esc_html_e( 'Non disponible', 'seliweb' ); ?></em>
-                            <?php endif; ?>
+                            <input type="date" name="date_ecriture[<?php echo intval( $p->id ); ?>]"
+                                   id="date_ecriture_<?php echo intval( $p->id ); ?>"
+                                   value="<?php echo esc_attr( $date_ecriture_val ); ?>"
+                                   style="max-width:135px;">
+                            <div class="date-ecriture-warning" style="display:none;color:#b32d2e;font-size:11px;margin-top:2px;">
+                                <?php esc_html_e( "Hors de l'exercice Paheko choisi", 'seliweb' ); ?>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -972,6 +992,27 @@ class Seliweb_Paiements {
                     document.querySelectorAll('input[name="paiement_ids[]"]').forEach(function(cb){ cb.checked = this.checked; }, this);
                 });
             }
+
+            // Avertit si la date d'écriture saisie tombe hors des bornes de
+            // l'exercice Paheko choisi sur la même ligne — même contrôle
+            // visuel que dans la synchro Paheko des cotisations, la
+            // vérification qui compte reste faite côté serveur.
+            function verifierDateEcriture(yearSelect) {
+                var dateInput = document.getElementById(yearSelect.dataset.dateTarget);
+                if (!dateInput) return;
+                var warning = dateInput.parentElement.querySelector('.date-ecriture-warning');
+                var opt = yearSelect.options[yearSelect.selectedIndex];
+                var start = opt ? opt.dataset.start : '';
+                var end   = opt ? opt.dataset.end   : '';
+                var hors  = start && end && dateInput.value && (dateInput.value < start || dateInput.value > end);
+                if (warning) warning.style.display = hors ? '' : 'none';
+            }
+            document.querySelectorAll('select[data-date-target]').forEach(function(sel){
+                verifierDateEcriture(sel);
+                sel.addEventListener('change', function(){ verifierDateEcriture(sel); });
+                var dateInput = document.getElementById(sel.dataset.dateTarget);
+                if (dateInput) dateInput.addEventListener('change', function(){ verifierDateEcriture(sel); });
+            });
         })();
         </script>
         <?php
@@ -988,9 +1029,24 @@ class Seliweb_Paiements {
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements';
         $to = $wpdb->prefix . 'seliweb_paiements_offres';
+        $ti = $wpdb->prefix . 'seliweb_inscriptions';
 
-        $ids   = array_map( 'intval', (array) ( $_POST['paiement_ids'] ?? array() ) );
-        $years = $_POST['paheko_year'] ?? array();
+        $ids            = array_map( 'intval', (array) ( $_POST['paiement_ids'] ?? array() ) );
+        $years          = $_POST['paheko_year']   ?? array();
+        $dates_ecriture = $_POST['date_ecriture'] ?? array();
+
+        // Bornes des exercices Paheko, pour vérifier que la date d'écriture
+        // saisie correspond bien à l'exercice choisi avant d'envoyer quoi
+        // que ce soit à Paheko.
+        $paheko_years = get_transient( 'seliweb_paheko_years' );
+        if ( false === $paheko_years && class_exists( 'Seliweb_Cotisations' ) ) {
+            $paheko_years = Seliweb_Cotisations::paheko_get_years();
+            set_transient( 'seliweb_paheko_years', $paheko_years, 600 );
+        }
+        $bornes_annee = array();
+        foreach ( (array) $paheko_years as $yr ) {
+            $bornes_annee[ $yr['id'] ] = array( $yr['start_date'] ?? '', $yr['end_date'] ?? '' );
+        }
 
         $ok = 0; $errors = 0;
 
@@ -1007,27 +1063,54 @@ class Seliweb_Paiements {
                 continue;
             }
 
-            $email = $p->payer_email;
-            $nom   = $p->payer_nom;
-            if ( ! $email && $p->wp_user_id ) {
+            $date_ecriture = sanitize_text_field( wp_unslash( $dates_ecriture[ $paiement_id ] ?? '' ) )
+                ?: ( $p->date_ecriture ?: $p->date_paiement );
+
+            // Contrôle de cohérence : la date d'écriture doit tomber dans les
+            // bornes de l'exercice Paheko choisi (même règle que la synchro
+            // des cotisations).
+            list( $borne_debut, $borne_fin ) = $bornes_annee[ $id_year ] ?? array( '', '' );
+            if ( $borne_debut && $borne_fin && ( $date_ecriture < $borne_debut || $date_ecriture > $borne_fin ) ) {
+                $errors++;
+                continue;
+            }
+
+            // Identité utilisée pour Paheko : toujours celle du membre
+            // Seliweb qui a initié le paiement, jamais celle du payeur
+            // HelloAsso — Seliweb ne s'occupe pas de qui a réglé, seulement
+            // de qui a passé la commande.
+            $email = '';
+            $nom   = '';
+            if ( $p->wp_user_id ) {
                 $user  = get_userdata( $p->wp_user_id );
                 $email = $user ? $user->user_email : '';
-                $nom   = $user ? $user->display_name : $nom;
+                $insc  = $wpdb->get_row( $wpdb->prepare(
+                    "SELECT nom, prenom FROM $ti WHERE wp_user_id = %d", $p->wp_user_id
+                ) );
+                $nom = $insc ? trim( $insc->prenom . ' ' . $insc->nom ) : ( $user ? $user->display_name : '' );
             }
 
             $paheko_user = $email ? Seliweb_Cotisations::paheko_find_user_by_email( $email ) : null;
             $paheko_user_id = $paheko_user ? $paheko_user['id'] : ( $nom ? Seliweb_Cotisations::paheko_create_user( $nom, $email ) : null );
             if ( ! $paheko_user_id ) { $errors++; continue; }
 
-            $date_fr = date( 'd/m/Y', strtotime( $p->date_paiement ) );
+            $date_fr = date( 'd/m/Y', strtotime( $date_ecriture ) );
             $label   = sanitize_text_field( $nom );
             $result  = Seliweb_Cotisations::paheko_create_transaction(
                 $id_year, $label, $date_fr, round( $p->montant / 100, 2 ),
                 $p->compte_paheko_banque, $paheko_user_id, $p->compte_paheko_recette
             );
 
-            if ( $result ) {
-                $wpdb->update( $tp, array( 'paheko_synced' => 1, 'paheko_id_year' => $id_year ), array( 'id' => $paiement_id ) );
+            // La réponse de l'API doit être vérifiée : Paheko renvoie
+            // {"error": "..."} sans échec HTTP en cas de problème (compte
+            // invalide, date hors exercice...) — un simple test de vérité
+            // sur $result traiterait ce tableau comme un succès.
+            if ( is_array( $result ) && empty( $result['error'] ) ) {
+                $wpdb->update( $tp, array(
+                    'paheko_synced'  => 1,
+                    'paheko_id_year' => $id_year,
+                    'date_ecriture'  => $date_ecriture,
+                ), array( 'id' => $paiement_id ) );
                 $ok++;
             } else {
                 $errors++;

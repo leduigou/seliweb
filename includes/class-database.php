@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '3.0';
+    const DB_VERSION     = '3.1';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -245,6 +245,7 @@ class Seliweb_Database {
             cotisation_id        INT UNSIGNED DEFAULT NULL,
             montant              INT UNSIGNED NOT NULL DEFAULT 0,
             date_paiement        DATE         NOT NULL,
+            date_ecriture        DATE         DEFAULT NULL,
             statut               ENUM('rattache','en_attente') NOT NULL DEFAULT 'en_attente',
             helloasso_order_id   VARCHAR(100) DEFAULT NULL,
             helloasso_form_slug  VARCHAR(150) DEFAULT NULL,
@@ -394,6 +395,11 @@ class Seliweb_Database {
         // règlement réelle. Reprend la date de règlement par défaut.
         self::maybe_add_column( $wpdb->prefix . 'seliweb_cotisations', 'date_ecriture', "DATE DEFAULT NULL AFTER date_paiement" );
         $wpdb->query( "UPDATE {$wpdb->prefix}seliweb_cotisations SET date_ecriture = date_paiement WHERE date_ecriture IS NULL" );
+
+        // Migration v3.1 : même principe pour les abonnements (Offres) —
+        // date d'écriture Paheko distincte de la date de paiement.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements', 'date_ecriture', "DATE DEFAULT NULL AFTER date_paiement" );
+        $wpdb->query( "UPDATE {$wpdb->prefix}seliweb_paiements SET date_ecriture = date_paiement WHERE date_ecriture IS NULL" );
 
         self::insert_defaults();
     }
