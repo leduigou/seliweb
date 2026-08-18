@@ -342,7 +342,36 @@ class Seliweb_Cotisations {
         return $cotisation_id;
     }
 
-    private static function sync_to_paheko( $cotisation_id, $email, $nom, $date, $id_year, $id_fee, $id_service ) {
+    // ----------------------------------------------------------------
+    // Comptes Paheko (banque/recette) configurés sur l'abonnement à
+    // l'origine d'une cotisation, quand elle vient d'un paiement HelloAsso
+    // initié depuis Seliweb (Checkout Intent). Une cotisation saisie
+    // manuellement par le trésorier n'a pas d'abonnement lié — retourne
+    // alors des comptes vides, et sync_to_paheko() garde son repli habituel.
+    // ----------------------------------------------------------------
+    public static function get_offre_comptes_pour_cotisation( $cotisation_id ) {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_paiements';
+        $to = $wpdb->prefix . 'seliweb_paiements_offres';
+        return $wpdb->get_row( $wpdb->prepare(
+            "SELECT o.compte_paheko_banque, o.compte_paheko_recette
+             FROM $tp p
+             INNER JOIN $to o ON o.id = p.offre_id
+             WHERE p.cotisation_id = %d
+               AND o.compte_paheko_banque IS NOT NULL AND o.compte_paheko_banque != ''
+               AND o.compte_paheko_recette IS NOT NULL AND o.compte_paheko_recette != ''
+             LIMIT 1",
+            $cotisation_id
+        ) );
+    }
+
+    // Retourne un tableau [ 'ok' => bool, 'error' => string ] plutôt qu'un
+    // simple booléen : la réponse de l'API Paheko doit être vérifiée (elle
+    // renvoie {"error": "..."} sans code HTTP d'échec en cas de problème,
+    // ex. compte comptable invalide) — auparavant ignorée, une cotisation
+    // pouvait être marquée synchronisée alors que rien n'existait dans
+    // Paheko.
+    private static function sync_to_paheko( $cotisation_id, $email, $nom, $date, $id_year, $id_fee, $id_service, $compte_banque = '', $compte_recette = '' ) {
         global $wpdb;
         $tc  = $wpdb->prefix . 'seliweb_cotisations';
         $tr  = $wpdb->prefix . 'seliweb_cotisations_reglements';
@@ -358,7 +387,7 @@ class Seliweb_Cotisations {
             $cotisation_id
         ) );
 
-        if ( ! $reglements ) return false;
+        if ( ! $reglements ) return array( 'ok' => false, 'error' => __( 'Aucun règlement en monnaie légale.', 'seliweb' ) );
 
         // Trouver ou créer le membre dans Paheko
         $paheko_user = $email ? self::paheko_find_user_by_email( $email ) : null;
@@ -367,22 +396,32 @@ class Seliweb_Cotisations {
         } else {
             $paheko_user_id = $nom ? self::paheko_create_user( $nom, $email ) : null;
         }
-        if ( ! $paheko_user_id ) return false;
+        if ( ! $paheko_user_id ) return array( 'ok' => false, 'error' => __( "Membre introuvable/non créé dans Paheko.", 'seliweb' ) );
 
         // Inscrire au service (une seule fois, sur le montant total légal)
         if ( $id_service && $id_fee ) {
             $total_cents = array_sum( array_map( fn( $r ) => intval( $r->montant ), $reglements ) );
-            self::paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $total_cents );
+            $sub_result  = self::paheko_subscribe( $paheko_user_id, $id_service, $id_fee, $date, $total_cents );
+            if ( ! is_array( $sub_result ) || ! empty( $sub_result['error'] ) ) {
+                return array( 'ok' => false, 'error' => $sub_result['error'] ?? __( 'Échec inscription au service Paheko.', 'seliweb' ) );
+            }
         }
 
-        // Une écriture comptable par règlement (512 banque ou 530 caisse)
+        // Une écriture comptable par règlement. Compte banque : celui
+        // configuré sur l'abonnement à l'origine du paiement s'il existe
+        // (ex. "512A"), sinon repli sur la convention historique
+        // (530 = caisse pour les espèces, 512 = banque générique sinon).
         if ( $id_year ) {
             $date_fr = date( 'd/m/Y', strtotime( $date ) );
             foreach ( $reglements as $rg ) {
-                $compte_debit = ( $rg->mode_paiement === 'especes' ) ? '530' : '512';
-                $amount_euros = round( $rg->montant / 100, 2 );
-                $label        = sprintf( __( 'Cotisation - %s', 'seliweb' ), $nom );
-                self::paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit, $paheko_user_id );
+                $compte_debit  = $compte_banque  ?: ( ( $rg->mode_paiement === 'especes' ) ? '530' : '512' );
+                $compte_credit = $compte_recette ?: '756';
+                $amount_euros  = round( $rg->montant / 100, 2 );
+                $label         = sprintf( __( 'Cotisation - %s', 'seliweb' ), $nom );
+                $txn_result    = self::paheko_create_transaction( $id_year, $label, $date_fr, $amount_euros, $compte_debit, $paheko_user_id, $compte_credit );
+                if ( ! is_array( $txn_result ) || ! empty( $txn_result['error'] ) ) {
+                    return array( 'ok' => false, 'error' => $txn_result['error'] ?? __( "Échec de l'écriture comptable Paheko.", 'seliweb' ) );
+                }
             }
         }
 
@@ -392,7 +431,7 @@ class Seliweb_Cotisations {
             'paheko_id_fee'  => $id_fee  ?: null,
         ), array( 'id' => $cotisation_id ) );
 
-        return true;
+        return array( 'ok' => true, 'error' => '' );
     }
 
     // ================================================================
@@ -1178,12 +1217,18 @@ class Seliweb_Cotisations {
         if ( isset( $_GET['synced'] ) ) {
             $nb = intval( $_GET['synced'] );
             echo '<div class="notice notice-success is-dismissible"><p>'
-                . sprintf( esc_html__( '%d cotisation(s) synchronisée(s) avec Paheko.', 'seliweb' ), $nb )
+                . sprintf( esc_html__( '%d cotisation(s) synchronisée(s).', 'seliweb' ), $nb )
                 . '</p></div>';
         }
         if ( isset( $_GET['sync_errors'] ) ) {
             echo '<div class="notice notice-warning is-dismissible"><p>'
                 . esc_html__( 'Certaines synchronisations ont échoué (membre introuvable ou non créé dans Paheko).', 'seliweb' )
+                . '</p></div>';
+        }
+        if ( isset( $_GET['paheko_errors'] ) ) {
+            $nb = intval( $_GET['paheko_errors'] );
+            echo '<div class="notice notice-error is-dismissible"><p>'
+                . sprintf( esc_html__( "%d cotisation(s) n'ont pas pu être écrites dans Paheko (compte comptable invalide ou autre erreur de l'API) — elles restent dans la liste pour un nouvel essai.", 'seliweb' ), $nb )
                 . '</p></div>';
         }
         ?>
@@ -1232,6 +1277,7 @@ class Seliweb_Cotisations {
                     <th style="width:80px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></th>
                     <th style="width:80px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
                     <th style="width:110px;"><?php esc_html_e( 'À faire', 'seliweb' ); ?></th>
+                    <th style="width:130px;"><?php esc_html_e( 'Comptes (banque / recette)', 'seliweb' ); ?></th>
                     <th style="width:120px;"><?php esc_html_e( 'Exercice Paheko', 'seliweb' ); ?></th>
                     <th><?php esc_html_e( 'Tarif Paheko', 'seliweb' ); ?></th>
                 </tr></thead>
@@ -1259,6 +1305,21 @@ class Seliweb_Cotisations {
                         <?php endif; ?>
                         <?php if ( $cot->a_reglement_sel && ! $cot->sel_synced ) : ?>
                             <span style="color:#46b450;">↗ Transaction SEL</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="color:#888;font-size:12px;">
+                        <?php
+                        $comptes_offre_cot = ( $cot->a_reglement_legal && ! $cot->paheko_synced )
+                            ? self::get_offre_comptes_pour_cotisation( $cot->id ) : null;
+                        ?>
+                        <?php if ( $comptes_offre_cot ) : ?>
+                            <?php echo esc_html( $comptes_offre_cot->compte_paheko_banque . ' / ' . $comptes_offre_cot->compte_paheko_recette ); ?>
+                        <?php elseif ( $cot->a_reglement_legal && ! $cot->paheko_synced ) : ?>
+                            <em title="<?php esc_attr_e( "Pas d'abonnement associé : convention par défaut (512/530 banque, 756 recette).", 'seliweb' ); ?>">
+                                <?php esc_html_e( 'Défaut (512/530 · 756)', 'seliweb' ); ?>
+                            </em>
+                        <?php else : ?>
+                            —
                         <?php endif; ?>
                     </td>
                     <td>
@@ -1443,8 +1504,9 @@ class Seliweb_Cotisations {
             exit;
         }
 
-        $ok     = 0;
-        $errors = 0;
+        $ok            = 0;
+        $errors        = 0;
+        $paheko_errors = 0;
 
         foreach ( $cot_ids as $cot_id ) {
             $cot = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tc WHERE id = %d", $cot_id ) );
@@ -1470,8 +1532,16 @@ class Seliweb_Cotisations {
             $date    = $cot->date_paiement ?: current_time( 'Y-m-d' );
             $libelle = sprintf( __( 'Cotisation %s - %s', 'seliweb' ), $cot->exercice ?: '', $nom );
 
+            // Comptes Paheko de l'abonnement à l'origine du paiement, si connu
+            // (paiement HelloAsso initié depuis Seliweb) — sinon repli sur la
+            // convention historique dans sync_to_paheko().
+            $comptes_offre  = self::get_offre_comptes_pour_cotisation( $cot_id );
+            $compte_banque  = $comptes_offre->compte_paheko_banque  ?? '';
+            $compte_recette = $comptes_offre->compte_paheko_recette ?? '';
+
             // Sync Paheko (règlements en monnaie légale)
-            $paheko_ok = self::sync_to_paheko( $cot_id, $email, $nom, $date, $id_year, $id_fee, $id_service );
+            $paheko_result = self::sync_to_paheko( $cot_id, $email, $nom, $date, $id_year, $id_fee, $id_service, $compte_banque, $compte_recette );
+            $paheko_ok     = $paheko_result['ok'];
 
             // Transaction SEL (règlements en monnaie SEL)
             $sel_ok = self::create_transaction_sel( $cot_id, $cot->wp_user_id, $date, $libelle );
@@ -1481,6 +1551,12 @@ class Seliweb_Cotisations {
                 $ok++;
             } else {
                 $errors++;
+            }
+            // Signalé séparément : un échec Paheko reste visible même quand
+            // la transaction SEL, elle, a réussi (sinon "synchronisé" masque
+            // l'échec Paheko côté trésorier).
+            if ( $id_year && ! $paheko_ok ) {
+                $paheko_errors++;
             }
 
             // Mémorise la dernière sélection comme nouveau défaut de
@@ -1493,9 +1569,10 @@ class Seliweb_Cotisations {
         }
 
         $redirect = admin_url( 'admin.php?page=seliweb_cotisations&view=sync'
-            . ( $exercice_filtre ? '&exercice=' . urlencode( $exercice_filtre ) : '' )
-            . ( $ok     ? '&synced='      . $ok     : '' )
-            . ( $errors ? '&sync_errors=' . $errors  : '' ) );
+            . ( $exercice_filtre  ? '&exercice=' . urlencode( $exercice_filtre )  : '' )
+            . ( $ok              ? '&synced='        . $ok             : '' )
+            . ( $errors          ? '&sync_errors='   . $errors         : '' )
+            . ( $paheko_errors   ? '&paheko_errors=' . $paheko_errors  : '' ) );
 
         wp_safe_redirect( $redirect );
         exit;
