@@ -1179,12 +1179,10 @@ class Seliweb_Cotisations {
             ? $wpdb->prepare( "AND c.exercice = %s", $exercice_filtre )
             : '';
 
-        // Monnaie du SEL (Paramètres > SEL) — même référence que
-        // create_transaction_sel(), pas "est_defaut" (voir plus bas).
-        $sel_monnaie_id = (int) $wpdb->get_var(
-            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='sel_monnaie_id'"
-        );
-
+        // Ce tableau ne concerne que la synchronisation Paheko (monnaie
+        // légale) — les cotisations réglées en monnaie SEL n'y figurent plus
+        // (leur transaction SEL, elle, reste créée normalement si un jour
+        // une cotisation mixte passe par un autre écran de traitement).
         $cotisations = $wpdb->get_results(
             "SELECT c.*,
                     COALESCE( i.nom, u.display_name ) AS nom_membre,
@@ -1194,29 +1192,18 @@ class Seliweb_Cotisations {
                         SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
                         JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
                         WHERE r.cotisation_id = c.id AND mo.est_legale = 1
-                    ) AS a_reglement_legal,
-                    EXISTS (
-                        SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
-                        WHERE r.cotisation_id = c.id AND r.monnaie_id = " . intval( $sel_monnaie_id ) . "
-                    ) AS a_reglement_sel
+                    ) AS a_reglement_legal
              FROM $tc c
              LEFT JOIN {$wpdb->users} u ON u.ID = c.wp_user_id
              LEFT JOIN $ti i ON i.wp_user_id = c.wp_user_id
              LEFT JOIN $tm m ON m.wp_user_id = c.wp_user_id
              WHERE c.statut = 'paye'
                AND c.sync_exclu = 0
-               AND ( c.paheko_synced = 0 OR c.sel_synced = 0 )
-               AND (
-                   ( c.paheko_synced = 0 AND EXISTS (
-                       SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
-                       JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
-                       WHERE r.cotisation_id = c.id AND mo.est_legale = 1
-                   ) )
-                   OR
-                   ( c.sel_synced = 0 AND EXISTS (
-                       SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
-                       WHERE r.cotisation_id = c.id AND r.monnaie_id = " . intval( $sel_monnaie_id ) . "
-                   ) )
+               AND c.paheko_synced = 0
+               AND EXISTS (
+                   SELECT 1 FROM {$wpdb->prefix}seliweb_cotisations_reglements r
+                   JOIN {$wpdb->prefix}seliweb_monnaies mo ON mo.id = r.monnaie_id
+                   WHERE r.cotisation_id = c.id AND mo.est_legale = 1
                )
              $where_ex
              ORDER BY c.date_paiement DESC, c.id DESC"
