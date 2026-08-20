@@ -2043,7 +2043,7 @@ class Seliweb_Cotisations {
                         <input type="url" id="helloasso_campaign_url" name="helloasso_campaign_url" class="large-text"
                                value="<?php echo esc_attr( $helloasso_campaign_url ); ?>"
                                placeholder="https://www.helloasso.com/associations/mon-sel">
-                        <p class="description"><?php esc_html_e( 'Page de votre association sur HelloAsso — un seul lien pour tous les paiements (adhésions, offres, dons), plus besoin d\'un formulaire précis. Utilisez le lien "sandbox" pendant les tests, celui de production une fois en réel — c\'est ce qui détermine automatiquement lequel des deux est utilisé.', 'seliweb' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'Page de votre association sur HelloAsso. Utilisez le lien "sandbox" pendant les tests. Remettez celui de production une fois le site en service réel.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
                 <tr>
