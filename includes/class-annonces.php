@@ -1049,6 +1049,7 @@ class Seliweb_Annonces {
         if ( ! empty( $filters['type_annonce'] ) ) { $where[] = "a.type_annonce = %s"; $values[] = sanitize_key( $filters['type_annonce'] ); }
         if ( ! empty( $filters['rubrique_id'] ) )  { $where[] = "a.rubrique_id = %d";  $values[] = intval( $filters['rubrique_id'] ); }
         if ( ! empty( $filters['ville'] ) )         { $where[] = "m.ville = %s";        $values[] = sanitize_text_field( $filters['ville'] ); }
+        if ( ! empty( $filters['groupe_id'] ) )     { $where[] = "m.groupe_id = %d";    $values[] = intval( $filters['groupe_id'] ); }
 
         $sql = $wpdb->prepare(
             "SELECT a.*, c.nom AS cat_nom, c.slug AS cat_slug,

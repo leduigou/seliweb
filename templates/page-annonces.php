@@ -14,6 +14,16 @@ $filters = array(
     'ville'        => isset( $_GET['ville'] )         ? sanitize_text_field( $_GET['ville'] ) : '',
 );
 
+// Page "Annonces — groupe SEL uniquement" : restreint aux membres du
+// groupe SEL, indépendamment de tout filtre choisi par le visiteur.
+if ( get_page_template_slug() === 'template-annonces-sel.php'
+     && class_exists( 'Seliweb_Transactions' ) && Seliweb_Transactions::sel_actif() ) {
+    $sel_info = Seliweb_Transactions::get_sel_info();
+    if ( ! empty( $sel_info['groupe_id'] ) ) {
+        $filters['groupe_id'] = $sel_info['groupe_id'];
+    }
+}
+
 $par_page      = swv_per_page();
 $page_courante = max( 1, intval( $_GET['sel_page'] ?? 1 ) );
 $offset        = ( $page_courante - 1 ) * $par_page;

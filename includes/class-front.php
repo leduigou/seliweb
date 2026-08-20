@@ -456,6 +456,11 @@ if ( ! function_exists( 'swv_render_card' ) ) {
 if ( ! function_exists( 'swv_register_page_template' ) ) {
     function swv_register_page_template( $templates ) {
         $templates['template-annonces.php'] = __( 'Annonces SEL', 'seliweb' );
+        // Variante "groupe SEL uniquement" — seulement proposée si le SEL est
+        // actif, sans intérêt sinon.
+        if ( class_exists( 'Seliweb_Transactions' ) && Seliweb_Transactions::sel_actif() ) {
+            $templates['template-annonces-sel.php'] = __( 'Annonces — groupe SEL uniquement', 'seliweb' );
+        }
         return $templates;
     }
     add_filter( 'theme_page_templates', 'swv_register_page_template' );
@@ -463,7 +468,8 @@ if ( ! function_exists( 'swv_register_page_template' ) ) {
 
 if ( ! function_exists( 'swv_load_page_template' ) ) {
     function swv_load_page_template( $template ) {
-        if ( is_page() && get_page_template_slug() === 'template-annonces.php' ) {
+        $slug = get_page_template_slug();
+        if ( is_page() && in_array( $slug, array( 'template-annonces.php', 'template-annonces-sel.php' ), true ) ) {
             $plugin_template = SELIWEB_DIR . 'templates/page-annonces.php';
             if ( file_exists( $plugin_template ) ) {
                 return $plugin_template;

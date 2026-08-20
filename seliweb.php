@@ -1278,4 +1278,35 @@ add_action( 'admin_init', function() {
     update_option( 'seliweb_migrated_annonces_template', '1' );
 } );
 
+// Page "/sel/" — annonces du groupe SEL uniquement, créée automatiquement
+// dès que le SEL est actif (installation neuve, ou site existant où le SEL
+// vient d'être activé) — pas seulement à l'activation du plugin, puisque le
+// SEL peut être activé bien plus tard depuis les réglages.
+add_action( 'admin_init', function() {
+    $page_ids = get_option( 'seliweb_page_ids', array() );
+    if ( ! empty( $page_ids['seliweb_sel'] ) ) return;
+    if ( ! class_exists( 'Seliweb_Transactions' ) || ! Seliweb_Transactions::sel_actif() ) return;
+
+    $existing = get_page_by_path( 'sel' );
+    if ( $existing ) {
+        $page_ids['seliweb_sel'] = $existing->ID;
+        update_post_meta( $existing->ID, '_wp_page_template', 'template-annonces-sel.php' );
+        update_option( 'seliweb_page_ids', $page_ids );
+        return;
+    }
+
+    $pid = wp_insert_post( array(
+        'post_title'   => __( 'SEL', 'seliweb' ),
+        'post_content' => '',
+        'post_status'  => 'publish',
+        'post_type'    => 'page',
+        'post_name'    => 'sel',
+    ) );
+    if ( ! is_wp_error( $pid ) ) {
+        update_post_meta( $pid, '_wp_page_template', 'template-annonces-sel.php' );
+        $page_ids['seliweb_sel'] = $pid;
+        update_option( 'seliweb_page_ids', $page_ids );
+    }
+} );
+
 new Seliweb();
