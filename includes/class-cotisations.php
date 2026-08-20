@@ -2038,12 +2038,12 @@ class Seliweb_Cotisations {
             </p>
             <table class="form-table">
                 <tr>
-                    <th><label for="helloasso_campaign_url"><?php esc_html_e( 'URL de la campagne', 'seliweb' ); ?></label></th>
+                    <th><label for="helloasso_campaign_url"><?php esc_html_e( 'Lien vers votre association HelloAsso', 'seliweb' ); ?></label></th>
                     <td>
                         <input type="url" id="helloasso_campaign_url" name="helloasso_campaign_url" class="large-text"
                                value="<?php echo esc_attr( $helloasso_campaign_url ); ?>"
-                               placeholder="https://www.helloasso.com/associations/mon-sel/adhesions/cotisation-2026">
-                        <p class="description"><?php esc_html_e( 'URL complète de votre formulaire d\'adhésion HelloAsso.', 'seliweb' ); ?></p>
+                               placeholder="https://www.helloasso.com/associations/mon-sel">
+                        <p class="description"><?php esc_html_e( 'Page de votre association sur HelloAsso — un seul lien pour tous les paiements (adhésions, offres, dons), plus besoin d\'un formulaire précis. Utilisez le lien "sandbox" pendant les tests, celui de production une fois en réel — c\'est ce qui détermine automatiquement lequel des deux est utilisé.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -2328,13 +2328,14 @@ class Seliweb_Cotisations {
 
         $campaign_url = esc_url_raw( wp_unslash( $_POST['helloasso_campaign_url'] ?? '' ) );
 
-        $org_slug  = '';
-        $form_slug = '';
-        if ( $campaign_url ) {
-            if ( preg_match( '~/associations/([^/]+)/[^/]+/([^/?#]+)~', $campaign_url, $m ) ) {
-                $org_slug  = $m[1];
-                $form_slug = $m[2];
-            }
+        // Simple lien vers l'association (ex. .../associations/mon-sel) depuis
+        // le passage à l'API Checkout Intent — plus besoin d'un formulaire
+        // précis. Reste tolérant à un ancien lien de formulaire complet
+        // (.../associations/mon-sel/adhesions/xxx) : le slug d'association
+        // est toujours le premier segment après "associations/".
+        $org_slug = '';
+        if ( $campaign_url && preg_match( '~/associations/([^/?#]+)~', $campaign_url, $m ) ) {
+            $org_slug = $m[1];
         }
 
         self::cfg_save( array(
@@ -2343,7 +2344,6 @@ class Seliweb_Cotisations {
             'helloasso_client_id'         => sanitize_text_field( wp_unslash( $_POST['helloasso_client_id']     ?? '' ) ),
             'helloasso_client_secret'     => sanitize_text_field( wp_unslash( $_POST['helloasso_client_secret'] ?? '' ) ),
             'helloasso_org_slug'          => sanitize_key( $org_slug ),
-            'helloasso_form_slug'         => sanitize_key( $form_slug ),
             'cotisations_paheko_actif'    => isset( $_POST['cotisations_paheko_actif'] )    ? '1' : '0',
             'paheko_url'                  => esc_url_raw( wp_unslash( $_POST['paheko_url']          ?? '' ) ),
             'paheko_identifiant'          => sanitize_text_field( wp_unslash( $_POST['paheko_identifiant']   ?? '' ) ),
