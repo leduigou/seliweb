@@ -63,18 +63,44 @@ if ( ! function_exists( 'swv_filter_primary_menu' ) ) {
 }
 
 // ================================================================
-// URL DE LA PAGE ANNONCES (page contenant [seliweb_annonces])
+// URL DE LA PAGE ANNONCES
 // ================================================================
 if ( ! function_exists( 'swv_annonces_page_url' ) ) {
     function swv_annonces_page_url() {
         static $url = null;
         if ( $url ) return $url;
-        global $wpdb;
-        $page_id = $wpdb->get_var(
-            "SELECT ID FROM {$wpdb->posts}
-             WHERE post_status='publish' AND post_type='page'
-               AND post_content LIKE '%seliweb_annonces%' LIMIT 1"
-        );
+
+        // Référence fiable, déjà utilisée par le reste du plugin (création
+        // des pages, migration du modèle) — l'ID est toujours enregistré ici
+        // à la création de la page.
+        $page_ids = get_option( 'seliweb_page_ids', array() );
+        $page_id  = ! empty( $page_ids['seliweb_annonces'] ) ? intval( $page_ids['seliweb_annonces'] ) : 0;
+
+        // Repli : recherche par modèle de page assigné (installations plus
+        // anciennes que l'option seliweb_page_ids).
+        if ( ! $page_id ) {
+            global $wpdb;
+            $page_id = (int) $wpdb->get_var(
+                "SELECT p.ID FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
+                 WHERE p.post_status='publish' AND p.post_type='page'
+                   AND pm.meta_key='_wp_page_template'
+                   AND pm.meta_value='template-annonces.php'
+                 LIMIT 1"
+            );
+        }
+
+        // Dernier repli : ancien système par shortcode dans le contenu
+        // (avant le passage au modèle de page dédié).
+        if ( ! $page_id ) {
+            global $wpdb;
+            $page_id = (int) $wpdb->get_var(
+                "SELECT ID FROM {$wpdb->posts}
+                 WHERE post_status='publish' AND post_type='page'
+                   AND post_content LIKE '%seliweb_annonces%' LIMIT 1"
+            );
+        }
+
         $url = $page_id ? get_permalink( $page_id ) : home_url('/');
         return $url;
     }
