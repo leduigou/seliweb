@@ -189,26 +189,26 @@ if ( ! function_exists( 'swv_render_pagination' ) ) {
         <div class="swv-pagination-bar swv-pagination-bar-top">
             <div class="swv-pagination-bar-inner">
 
-                <span class="swv-page-info">
-                    <?php printf(
-                        esc_html( _n('%d annonce','%d annonces',$total,'seliweb') ),
-                        $total
-                    ); ?>
-                    &nbsp;&mdash;&nbsp;
-                    <?php printf( esc_html__('Page %1$d / %2$d','seliweb'), $page_courante, $nb_pages ); ?>
-                </span>
+                <div class="swv-vue-toggle">
+                    <button type="button" id="swv-vue-liste" class="swv-vue-btn" title="<?php esc_attr_e('Vue liste','seliweb'); ?>">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="1" width="16" height="2" rx="1"/><rect x="0" y="7" width="16" height="2" rx="1"/><rect x="0" y="13" width="16" height="2" rx="1"/></svg>
+                        <?php esc_html_e('Liste','seliweb'); ?>
+                    </button>
+                    <button type="button" id="swv-vue-grille" class="swv-vue-btn" title="<?php esc_attr_e('Vue colonnes','seliweb'); ?>">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="7" height="7" rx="1"/><rect x="9" y="0" width="7" height="7" rx="1"/><rect x="0" y="9" width="7" height="7" rx="1"/><rect x="9" y="9" width="7" height="7" rx="1"/></svg>
+                        <?php esc_html_e('Colonnes','seliweb'); ?>
+                    </button>
+                </div>
 
                 <div class="swv-bar-controls">
-                    <div class="swv-vue-toggle">
-                        <button type="button" id="swv-vue-liste" class="swv-vue-btn" title="<?php esc_attr_e('Vue liste','seliweb'); ?>">
-                            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="1" width="16" height="2" rx="1"/><rect x="0" y="7" width="16" height="2" rx="1"/><rect x="0" y="13" width="16" height="2" rx="1"/></svg>
-                            <?php esc_html_e('Liste','seliweb'); ?>
-                        </button>
-                        <button type="button" id="swv-vue-grille" class="swv-vue-btn" title="<?php esc_attr_e('Vue colonnes','seliweb'); ?>">
-                            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="7" height="7" rx="1"/><rect x="9" y="0" width="7" height="7" rx="1"/><rect x="0" y="9" width="7" height="7" rx="1"/><rect x="9" y="9" width="7" height="7" rx="1"/></svg>
-                            <?php esc_html_e('Colonnes','seliweb'); ?>
-                        </button>
-                    </div>
+                    <span class="swv-page-info">
+                        <?php printf(
+                            esc_html( _n('%d annonce','%d annonces',$total,'seliweb') ),
+                            $total
+                        ); ?>
+                        &nbsp;&mdash;&nbsp;
+                        <?php printf( esc_html__('Page %1$d / %2$d','seliweb'), $page_courante, $nb_pages ); ?>
+                    </span>
 
                     <nav class="swv-pages-nav">
                         <?php if ( $page_courante > 1 ) : ?>

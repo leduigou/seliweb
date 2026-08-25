@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.0
+ * Version: 0.9.1
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.0' );
+define( 'SELIWEB_VERSION', '0.9.1' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -52,9 +52,6 @@ class Seliweb {
         // Rattachement au groupe par défaut à l'inscription
         add_action( 'user_register',         array( $this, 'rattacher_groupe_defaut' ) );
 
-        // Enregistrer les query vars personnalisées pour que WP ne les supprime pas
-        add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
-
         // Redirection connexion / déconnexion vers le front-end
         add_filter( 'login_redirect',        array( $this, 'redirect_apres_connexion' ), 10, 3 );
         add_action( 'wp_logout',             array( $this, 'redirect_apres_deconnexion' ) );
@@ -73,16 +70,6 @@ class Seliweb {
         if ( ! wp_next_scheduled( 'seliweb_cron_expire' ) ) {
             wp_schedule_event( strtotime( 'tomorrow midnight' ), 'daily', 'seliweb_cron_expire' );
         }
-    }
-
-    public function register_query_vars( $vars ) {
-        $vars[] = 'seliweb_annonce';
-        $vars[] = 'sel_page';
-        $vars[] = 'categorie_id';
-        $vars[] = 'rubrique_id';
-        $vars[] = 'type_annonce';
-        $vars[] = 'ville';
-        return $vars;
     }
 
     public function load_textdomain() {
@@ -1247,20 +1234,6 @@ function seliweb_deactivate() {
     Seliweb_Database::delete_pages_and_menu();
 }
 
-// -----------------------------------------------------------------------
-// Enregistrer les query vars via plugins_loaded (avant parse_request WP)
-// -----------------------------------------------------------------------
-add_action( 'plugins_loaded', function() {
-    add_filter( 'query_vars', function( $vars ) {
-        $vars[] = 'seliweb_annonce';
-        $vars[] = 'sel_page';
-        $vars[] = 'categorie_id';
-        $vars[] = 'rubrique_id';
-        $vars[] = 'type_annonce';
-        $vars[] = 'ville';
-        return $vars;
-    } );
-} );
 
 // Flush rewrite rules à l'activation et désactivation
 register_activation_hook( __FILE__, function() {
