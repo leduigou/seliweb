@@ -9,8 +9,9 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Il est chargé par le plugin afin que le thème n'ait plus à embarquer
  * de logique métier dans son functions.php.
  *
- * Le thème peut personnaliser le mode d'affichage via le filtre :
- *   add_filter( 'seliweb_display_mode', 'swv_display_mode' );
+ * Un thème tiers peut surcharger le mode d'affichage / le nombre de
+ * colonnes en accrochant ses propres callbacks aux filtres
+ * 'seliweb_display_mode' et 'seliweb_grid_cols'.
  */
 
 // ================================================================
@@ -23,6 +24,29 @@ if ( ! function_exists( 'swv_per_page' ) ) {
         return ( $val !== null && intval( $val ) > 0 ) ? intval( $val ) : 12;
     }
 }
+
+// ================================================================
+// AFFICHAGE PAR DÉFAUT DE LA PAGE ANNONCES (mode + colonnes)
+// Réglages : Seliweb > Paramétrage > Annonces > Affichage.
+// Exposés en filtres pour qu'un thème tiers puisse les surcharger.
+// ================================================================
+if ( ! function_exists( 'swv_display_mode' ) ) {
+    function swv_display_mode() {
+        global $wpdb;
+        $val = $wpdb->get_var( "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='annonces_mode_affichage' LIMIT 1" );
+        return in_array( $val, array( 'grille', 'liste' ), true ) ? $val : 'grille';
+    }
+}
+add_filter( 'seliweb_display_mode', 'swv_display_mode' );
+
+if ( ! function_exists( 'swv_grid_cols' ) ) {
+    function swv_grid_cols() {
+        global $wpdb;
+        $val = (int) $wpdb->get_var( "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='annonces_colonnes_grille' LIMIT 1" );
+        return in_array( $val, array( 2, 3, 4 ), true ) ? $val : 3;
+    }
+}
+add_filter( 'seliweb_grid_cols', 'swv_grid_cols' );
 
 // ================================================================
 // FILTRE MENU PRINCIPAL

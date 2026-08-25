@@ -70,11 +70,19 @@ class Seliweb_Updater {
         $body = json_decode( wp_remote_retrieve_body( $response ) );
         if ( empty( $body->tag_name ) ) return false;
 
+        // Préférer le zip joint à la release (construit par build-zip.sh, avec le
+        // bon nom de dossier à la racine) plutôt que l'archive source générée
+        // automatiquement par GitHub (leduigou-seliweb-{hash}/, qui casse la
+        // détection de mise à jour et l'installation manuelle — cf. Seliweb_Updater).
+        $zip_url = ( ! empty( $body->assets[0]->browser_download_url ) )
+            ? $body->assets[0]->browser_download_url
+            : ( $body->zipball_url ?? '' );
+
         $release = array(
             'version'  => ltrim( $body->tag_name, 'v' ),
-            'zip_url'  => $body->zipball_url ?? '',
-            'page_url' => $body->html_url    ?? '',
-            'notes'    => $body->body        ?? '',
+            'zip_url'  => $zip_url,
+            'page_url' => $body->html_url ?? '',
+            'notes'    => $body->body     ?? '',
         );
 
         set_transient( $transient_key, $release, 6 * HOUR_IN_SECONDS );

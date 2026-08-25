@@ -309,6 +309,12 @@ class Seliweb_Parametres {
         $par_page = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_par_page' LIMIT 1" );
         if ( $par_page < 1 ) $par_page = 12;
 
+        $mode_affichage = $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_mode_affichage' LIMIT 1" );
+        if ( ! in_array( $mode_affichage, array( 'grille', 'liste' ), true ) ) $mode_affichage = 'grille';
+
+        $colonnes_grille = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_colonnes_grille' LIMIT 1" );
+        if ( ! in_array( $colonnes_grille, array( 2, 3, 4 ), true ) ) $colonnes_grille = 3;
+
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
         }
@@ -325,6 +331,27 @@ class Seliweb_Parametres {
                         <p class="description"><?php esc_html_e( 'Nombre d\'annonces affichées par page sur le site. La dernière page affiche le reste.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
+                <tr>
+                    <th><label for="annonces_mode_affichage"><?php esc_html_e( 'Mode d\'affichage par défaut', 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="annonces_mode_affichage" name="annonces_mode_affichage">
+                            <option value="grille" <?php selected( $mode_affichage, 'grille' ); ?>><?php esc_html_e( 'Grille (colonnes)', 'seliweb' ); ?></option>
+                            <option value="liste" <?php selected( $mode_affichage, 'liste' ); ?>><?php esc_html_e( 'Liste', 'seliweb' ); ?></option>
+                        </select>
+                        <p class="description"><?php esc_html_e( "Mode proposé par défaut sur la page Annonces. Chaque visiteur peut ensuite choisir un autre mode dans son navigateur.", 'seliweb' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="annonces_colonnes_grille"><?php esc_html_e( 'Colonnes en mode grille', 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="annonces_colonnes_grille" name="annonces_colonnes_grille">
+                            <option value="2" <?php selected( $colonnes_grille, 2 ); ?>>2</option>
+                            <option value="3" <?php selected( $colonnes_grille, 3 ); ?>>3</option>
+                            <option value="4" <?php selected( $colonnes_grille, 4 ); ?>>4</option>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Ignoré en mode liste.', 'seliweb' ); ?></p>
+                    </td>
+                </tr>
             </table>
             <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
         </form>
@@ -336,7 +363,17 @@ class Seliweb_Parametres {
         $tp         = $wpdb->prefix . 'seliweb_parametres';
         $par_page   = max( 1, intval( $_POST['annonces_par_page'] ?? 12 ) );
 
-        foreach ( array( 'annonces_par_page' => $par_page ) as $cle => $valeur ) {
+        $mode_affichage = in_array( $_POST['annonces_mode_affichage'] ?? '', array( 'grille', 'liste' ), true )
+            ? $_POST['annonces_mode_affichage'] : 'grille';
+
+        $colonnes_grille = intval( $_POST['annonces_colonnes_grille'] ?? 3 );
+        if ( ! in_array( $colonnes_grille, array( 2, 3, 4 ), true ) ) $colonnes_grille = 3;
+
+        foreach ( array(
+            'annonces_par_page'        => $par_page,
+            'annonces_mode_affichage'  => $mode_affichage,
+            'annonces_colonnes_grille' => $colonnes_grille,
+        ) as $cle => $valeur ) {
             $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
             if ( $exists ) {
                 $wpdb->update( $tp, array( 'valeur' => $valeur ), array( 'cle' => $cle ) );

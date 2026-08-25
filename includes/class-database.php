@@ -734,8 +734,8 @@ class Seliweb_Database {
             }
 
             // Assigner le menu à l'emplacement "primary" du thème actif si disponible
-            $locations = get_theme_mod( 'nav_menu_locations' );
-            if ( isset( $locations['primary'] ) && empty( $locations['primary'] ) ) {
+            $locations = get_theme_mod( 'nav_menu_locations', array() );
+            if ( empty( $locations['primary'] ) ) {
                 $locations['primary'] = $menu_id;
                 set_theme_mod( 'nav_menu_locations', $locations );
             }
@@ -955,3 +955,7 @@ class Seliweb_Database {
 
 add_action( 'plugins_loaded', array( 'Seliweb_Database', 'install' ) );
 add_action( 'admin_init',     array( 'Seliweb_Database', 'maybe_migrate_coordination' ) );
+// Se relance à chaque chargement d'admin (idempotent, ne touche que les
+// rubriques sans image) pour rattraper le cas d'une installation manuelle où
+// assets/img/rubriques/ n'était pas encore présent au premier chargement.
+add_action( 'admin_init',     array( 'Seliweb_Database', 'seed_rubrique_images_defaut' ) );
