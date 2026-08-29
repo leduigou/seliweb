@@ -49,6 +49,83 @@ if ( ! function_exists( 'swv_grid_cols' ) ) {
 add_filter( 'seliweb_grid_cols', 'swv_grid_cols' );
 
 // ================================================================
+// RECHERCHE PLEIN-TEXTE DANS LES ANNONCES (titre + texte)
+//
+// Le terme est un paramètre GET « q », traité comme un critère de plus
+// par Seliweb_Annonces::get_annonces_publiques(). L'emplacement du champ
+// dans la liste des annonces (barre de filtres / barre liste-colonnes)
+// est réglé dans Réglages Seliweb > Annonces > Affichage. Le même champ
+// est aussi disponible en widget (barre latérale) — voir class-recherche.php.
+// La recherche WordPress native (posts/pages) n'est pas touchée.
+// ================================================================
+if ( ! function_exists( 'swv_search_term' ) ) {
+    function swv_search_term() {
+        return isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
+    }
+}
+
+if ( ! function_exists( 'swv_recherche_emplacement' ) ) {
+    function swv_recherche_emplacement() {
+        global $wpdb;
+        $val = $wpdb->get_var( "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='annonces_recherche_emplacement' LIMIT 1" );
+        return in_array( $val, array( 'aucun', 'filtres', 'barre', 'les_deux' ), true ) ? $val : 'filtres';
+    }
+}
+
+// true si le champ visible « q » est déjà rendu à l'intérieur du
+// formulaire de filtres (emplacement filtres / les_deux).
+if ( ! function_exists( 'swv_recherche_dans_filtres' ) ) {
+    function swv_recherche_dans_filtres() {
+        return in_array( swv_recherche_emplacement(), array( 'filtres', 'les_deux' ), true );
+    }
+}
+if ( ! function_exists( 'swv_recherche_dans_barre' ) ) {
+    function swv_recherche_dans_barre() {
+        return in_array( swv_recherche_emplacement(), array( 'barre', 'les_deux' ), true );
+    }
+}
+
+// Champs cachés reprenant les filtres actuellement actifs (hors q et
+// pagination) : une recherche lancée depuis un formulaire autonome ne
+// perd pas un filtre déjà posé.
+if ( ! function_exists( 'swv_search_hidden_filters' ) ) {
+    function swv_search_hidden_filters() {
+        $out = '';
+        foreach ( array( 'categorie_id', 'rubrique_id', 'type_annonce', 'ville' ) as $k ) {
+            if ( ! empty( $_GET[ $k ] ) ) {
+                $out .= '<input type="hidden" name="' . esc_attr( $k ) . '" value="'
+                      . esc_attr( sanitize_text_field( wp_unslash( $_GET[ $k ] ) ) ) . '">';
+            }
+        }
+        return $out;
+    }
+}
+
+// Formulaire de recherche autonome (barre liste/colonnes, widget, ou
+// tout thème/emplacement tiers). GET vers la page des annonces avec « q ».
+if ( ! function_exists( 'swv_render_search_box' ) ) {
+    function swv_render_search_box( $args = array() ) {
+        $args = wp_parse_args( $args, array(
+            'class'       => '',
+            'placeholder' => __( 'Rechercher une annonce…', 'seliweb' ),
+            'label'       => __( 'Rechercher', 'seliweb' ),
+        ) );
+        ?>
+        <form method="get" role="search"
+              action="<?php echo esc_url( swv_annonces_page_url() ); ?>"
+              class="swv-searchbox <?php echo esc_attr( $args['class'] ); ?>">
+            <?php echo swv_search_hidden_filters(); // déjà échappé ?>
+            <input type="search" name="q" value="<?php echo esc_attr( swv_search_term() ); ?>"
+                   class="swv-searchbox-input"
+                   aria-label="<?php echo esc_attr( $args['label'] ); ?>"
+                   placeholder="<?php echo esc_attr( $args['placeholder'] ); ?>">
+            <button type="submit" class="swv-searchbox-btn"><?php echo esc_html( $args['label'] ); ?></button>
+        </form>
+        <?php
+    }
+}
+
+// ================================================================
 // FILTRE MENU PRINCIPAL
 // — Masque Connexion et Inscription en permanence
 // — Masque Mon Compte si non connecté
@@ -200,6 +277,8 @@ if ( ! function_exists( 'swv_render_pagination' ) ) {
                     </button>
                 </div>
 
+                <?php if ( swv_recherche_dans_barre() ) swv_render_search_box( array( 'class' => 'swv-searchbox-bar' ) ); ?>
+
                 <div class="swv-bar-controls">
                     <span class="swv-page-info">
                         <?php printf(
@@ -328,6 +407,11 @@ if ( ! function_exists( 'swv_render_search' ) ) {
             <div class="swv-search-inner">
                 <form method="get" action="<?php echo esc_url($page_url); ?>" class="swv-search-form">
 
+                    <?php // Recherche active mais champ « q » placé ailleurs : on la conserve. ?>
+                    <?php if ( swv_search_term() !== '' && ! swv_recherche_dans_filtres() ) : ?>
+                        <input type="hidden" name="q" value="<?php echo esc_attr( swv_search_term() ); ?>">
+                    <?php endif; ?>
+
                     <select name="categorie_id"
                             onchange="swvRubUpdate(this.value); swvTypeUpdate(this.value)">
                         <option value=""><?php esc_html_e('Toutes catégories','seliweb'); ?></option>
@@ -373,12 +457,23 @@ if ( ! function_exists( 'swv_render_search' ) ) {
 
                     <button type="submit" class="swv-search-btn"
                             title="<?php esc_attr_e('Cliquer pour valider la recherche','seliweb'); ?>">
-                        <?php esc_html_e('Rechercher','seliweb'); ?>
+                        <?php esc_html_e('Filtrer','seliweb'); ?>
                     </button>
                     <button type="button" class="swv-reset-btn"
                             onclick="window.location=<?php echo esc_attr( wp_json_encode( $page_url ) ); ?>">
                         <?php esc_html_e('Réinitialiser','seliweb'); ?>
                     </button>
+
+                    <?php if ( swv_recherche_dans_filtres() ) : ?>
+                        <span class="swv-search-q">
+                            <input type="search" name="q" value="<?php echo esc_attr( swv_search_term() ); ?>"
+                                   class="swv-search-q-input"
+                                   placeholder="<?php esc_attr_e('Mot-clé dans le titre ou le texte…','seliweb'); ?>">
+                            <button type="submit" class="swv-search-btn swv-search-btn-q">
+                                <?php esc_html_e('Rechercher','seliweb'); ?>
+                            </button>
+                        </span>
+                    <?php endif; ?>
 
                 </form>
             </div>

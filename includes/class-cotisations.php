@@ -1925,13 +1925,13 @@ class Seliweb_Cotisations {
         $base   = admin_url( 'admin.php?page=seliweb_parametres&tab=cotisations' );
         ?>
         <nav class="nav-tab-wrapper" style="margin-bottom:24px;">
-            <a href="<?php echo esc_url( $base . '&subtab=activation' ); ?>"
-               class="nav-tab <?php echo $subtab === 'activation' ? 'nav-tab-active' : ''; ?>">
-                <?php esc_html_e( 'Activation', 'seliweb' ); ?>
-            </a>
             <a href="<?php echo esc_url( $base . '&subtab=exercices' ); ?>"
                class="nav-tab <?php echo $subtab === 'exercices' ? 'nav-tab-active' : ''; ?>">
                 <?php esc_html_e( 'Exercices', 'seliweb' ); ?>
+            </a>
+            <a href="<?php echo esc_url( $base . '&subtab=activation' ); ?>"
+               class="nav-tab <?php echo $subtab === 'activation' ? 'nav-tab-active' : ''; ?>">
+                <?php esc_html_e( 'Activation', 'seliweb' ); ?>
             </a>
         </nav>
         <?php

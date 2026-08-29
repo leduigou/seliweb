@@ -1051,6 +1051,18 @@ class Seliweb_Annonces {
         if ( ! empty( $filters['ville'] ) )         { $where[] = "m.ville = %s";        $values[] = sanitize_text_field( $filters['ville'] ); }
         if ( ! empty( $filters['groupe_id'] ) )     { $where[] = "m.groupe_id = %d";    $values[] = intval( $filters['groupe_id'] ); }
 
+        if ( ! empty( $filters['q'] ) ) {
+            // Recherche plein-texte simple sur le titre et le texte de l'annonce.
+            // Chaque mot saisi doit se retrouver dans l'un ou l'autre (ET entre les mots).
+            $termes = preg_split( '/\s+/', trim( (string) $filters['q'] ), -1, PREG_SPLIT_NO_EMPTY );
+            foreach ( array_slice( $termes, 0, 6 ) as $terme ) {
+                $like     = '%' . $wpdb->esc_like( $terme ) . '%';
+                $where[]  = '( a.titre LIKE %s OR a.texte LIKE %s )';
+                $values[] = $like;
+                $values[] = $like;
+            }
+        }
+
         $sql = $wpdb->prepare(
             "SELECT a.*, c.nom AS cat_nom, c.slug AS cat_slug,
                     r.nom AS rub_nom, r.image AS rub_image, s.nom AS statut_nom, s.slug AS statut_slug,

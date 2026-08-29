@@ -221,8 +221,8 @@ class Seliweb_Parametres {
 
         $tabs = array(
             'annonces'    => __( 'Annonces',    'seliweb' ),
-            'groupes'     => __( 'Groupes',     'seliweb' ),
             'monnaies'    => __( 'Monnaies',    'seliweb' ),
+            'groupes'     => __( 'Groupes',     'seliweb' ),
             'sel'         => __( 'SEL',         'seliweb' ),
             'mails'       => __( 'Mails',       'seliweb' ),
             'api'         => __( 'API',         'seliweb' ),
@@ -315,6 +315,9 @@ class Seliweb_Parametres {
         $colonnes_grille = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_colonnes_grille' LIMIT 1" );
         if ( ! in_array( $colonnes_grille, array( 2, 3, 4 ), true ) ) $colonnes_grille = 3;
 
+        $recherche_empl = $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='annonces_recherche_emplacement' LIMIT 1" );
+        if ( ! in_array( $recherche_empl, array( 'aucun', 'filtres', 'barre', 'les_deux' ), true ) ) $recherche_empl = 'filtres';
+
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
         }
@@ -352,6 +355,20 @@ class Seliweb_Parametres {
                         <p class="description"><?php esc_html_e( 'Ignoré en mode liste.', 'seliweb' ); ?></p>
                     </td>
                 </tr>
+                <tr>
+                    <th><label for="annonces_recherche_emplacement"><?php esc_html_e( 'Champ de recherche', 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="annonces_recherche_emplacement" name="annonces_recherche_emplacement">
+                            <option value="aucun"    <?php selected( $recherche_empl, 'aucun' ); ?>><?php esc_html_e( 'Masqué', 'seliweb' ); ?></option>
+                            <option value="filtres"  <?php selected( $recherche_empl, 'filtres' ); ?>><?php esc_html_e( 'Dans la barre de filtres', 'seliweb' ); ?></option>
+                            <option value="barre"    <?php selected( $recherche_empl, 'barre' ); ?>><?php esc_html_e( 'Dans la barre liste / colonnes', 'seliweb' ); ?></option>
+                            <option value="les_deux" <?php selected( $recherche_empl, 'les_deux' ); ?>><?php esc_html_e( 'Aux deux endroits', 'seliweb' ); ?></option>
+                        </select>
+                        <p class="description">
+                            <?php esc_html_e( "Recherche plein-texte dans le titre et le texte des annonces. Un widget « Recherche d'annonces (Seliweb) » est aussi disponible dans Apparence → Widgets pour la barre latérale (par ex. à la place du bloc « Recherche » natif de WordPress).", 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
             </table>
             <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
         </form>
@@ -369,10 +386,14 @@ class Seliweb_Parametres {
         $colonnes_grille = intval( $_POST['annonces_colonnes_grille'] ?? 3 );
         if ( ! in_array( $colonnes_grille, array( 2, 3, 4 ), true ) ) $colonnes_grille = 3;
 
+        $recherche_empl = in_array( $_POST['annonces_recherche_emplacement'] ?? '', array( 'aucun', 'filtres', 'barre', 'les_deux' ), true )
+            ? $_POST['annonces_recherche_emplacement'] : 'filtres';
+
         foreach ( array(
-            'annonces_par_page'        => $par_page,
-            'annonces_mode_affichage'  => $mode_affichage,
-            'annonces_colonnes_grille' => $colonnes_grille,
+            'annonces_par_page'              => $par_page,
+            'annonces_mode_affichage'        => $mode_affichage,
+            'annonces_colonnes_grille'       => $colonnes_grille,
+            'annonces_recherche_emplacement' => $recherche_empl,
         ) as $cle => $valeur ) {
             $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
             if ( $exists ) {

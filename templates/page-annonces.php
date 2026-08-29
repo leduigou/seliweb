@@ -12,6 +12,7 @@ $filters = array(
     'rubrique_id'  => isset( $_GET['rubrique_id'] )  ? intval( $_GET['rubrique_id'] )        : 0,
     'type_annonce' => isset( $_GET['type_annonce'] ) ? sanitize_key( $_GET['type_annonce'] ) : '',
     'ville'        => isset( $_GET['ville'] )         ? sanitize_text_field( $_GET['ville'] ) : '',
+    'q'            => isset( $_GET['q'] )             ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '',
 );
 
 // Page "Annonces — groupe SEL uniquement" : restreint aux membres du
@@ -65,7 +66,21 @@ swv_render_pagination( $page_courante, $nb_pages, $total, true );
         <section id="swv-annonces">
             <?php if ( empty( $annonces ) ) : ?>
                 <div class="swv-annonces-empty">
-                    <?php esc_html_e( 'Aucune annonce trouvée.', 'seliweb-view' ); ?>
+                    <?php
+                    if ( ! empty( $filters['q'] ) ) {
+                        printf(
+                            esc_html__( 'Aucune annonce ne correspond à « %s ».', 'seliweb-view' ),
+                            esc_html( $filters['q'] )
+                        );
+                        if ( function_exists( 'swv_render_search_box' ) ) {
+                            echo '<div class="swv-annonces-empty-search">';
+                            swv_render_search_box();
+                            echo '</div>';
+                        }
+                    } else {
+                        esc_html_e( 'Aucune annonce trouvée.', 'seliweb-view' );
+                    }
+                    ?>
                 </div>
             <?php else : ?>
                 <?php

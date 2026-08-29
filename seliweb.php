@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.1
+ * Version: 0.9.2
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.1' );
+define( 'SELIWEB_VERSION', '0.9.2' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -28,6 +28,7 @@ require_once SELIWEB_DIR . 'includes/class-transactions.php';
 require_once SELIWEB_DIR . 'includes/class-cotisations.php';
 require_once SELIWEB_DIR . 'includes/class-updater.php';
 require_once SELIWEB_DIR . 'includes/class-front.php';
+require_once SELIWEB_DIR . 'includes/class-recherche.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -36,6 +37,7 @@ Seliweb_Parametres::init();
 Seliweb_Transactions::init();
 Seliweb_Cotisations::init();
 Seliweb_Updater::init();
+Seliweb_Recherche::init();
 
 class Seliweb {
 
