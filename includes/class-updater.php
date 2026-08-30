@@ -172,8 +172,19 @@ class Seliweb_Updater {
     }
 
     // ----------------------------------------------------------------
-    // Post-installation : renomme le dossier extrait (GitHub l'appelle
-    // leduigou-seliweb-{hash}/) en nom canonique (seliweb/ ou seliweb-view/)
+    // Post-installation : garantit que le dossier porte le nom canonique
+    // (seliweb/ ou seliweb-view/).
+    //
+    // Le zip joint à la release (build-zip.sh) a déjà le bon nom de dossier
+    // à la racine : WordPress installe donc directement au bon endroit et il
+    // n'y a RIEN à faire. On ne renomme que si le dossier extrait porte un
+    // autre nom — cas de l'archive source auto-générée par GitHub
+    // (leduigou-<repo>-<hash>/).
+    //
+    // Important : ne jamais appeler $wp_filesystem->move() quand la source
+    // est déjà la destination. move($x, $x, true) supprime d'abord $x puis
+    // échoue à le renommer → le dossier (thème ou extension) disparaît.
+    // C'est ce qui effaçait le thème/l'extension à chaque mise à jour.
     // ----------------------------------------------------------------
     public static function post_install( $response, $hook_extra, $result ) {
         global $wp_filesystem;
@@ -182,27 +193,41 @@ class Seliweb_Updater {
         $plugin_file_avant = self::plugin_file();
         if ( ( $hook_extra['plugin'] ?? '' ) === $plugin_file_avant ) {
             $dest = WP_PLUGIN_DIR . '/' . self::PLUGIN_SLUG;
-            $etait_actif = is_plugin_active( $plugin_file_avant );
-            $wp_filesystem->move( $result['destination'], $dest, true );
-            $result['destination'] = $dest;
-            delete_transient( 'seliweb_gh_release_' . self::GH_REPO_PLUGIN );
-            // Le dossier vient d'être renommé en nom canonique : réactiver
-            // sous le nouveau chemin, pas l'ancien (qui n'existe plus).
-            if ( $etait_actif ) {
-                activate_plugin( self::PLUGIN_SLUG . '/seliweb.php' );
+            if ( self::needs_rename( $result['destination'], self::PLUGIN_SLUG ) ) {
+                $etait_actif = is_plugin_active( $plugin_file_avant );
+                $wp_filesystem->move( $result['destination'], $dest, true );
+                $result['destination']        = $dest;
+                $result['destination_name']   = self::PLUGIN_SLUG;
+                $result['remote_destination']  = $dest;
+                // Le dossier vient d'être renommé : réactiver sous le nouveau
+                // chemin, pas l'ancien (qui n'existe plus).
+                if ( $etait_actif ) {
+                    activate_plugin( self::PLUGIN_SLUG . '/seliweb.php' );
+                }
             }
+            delete_transient( 'seliweb_gh_release_' . self::GH_REPO_PLUGIN );
             return $result;
         }
 
         // Thème
         if ( ( $hook_extra['theme'] ?? '' ) === self::THEME_SLUG ) {
             $dest = get_theme_root() . '/' . self::THEME_SLUG;
-            $wp_filesystem->move( $result['destination'], $dest, true );
-            $result['destination'] = $dest;
+            if ( self::needs_rename( $result['destination'], self::THEME_SLUG ) ) {
+                $wp_filesystem->move( $result['destination'], $dest, true );
+                $result['destination']        = $dest;
+                $result['destination_name']   = self::THEME_SLUG;
+                $result['remote_destination']  = $dest;
+            }
             delete_transient( 'seliweb_gh_release_' . self::GH_REPO_THEME );
             return $result;
         }
 
         return $result;
+    }
+
+    // Le dossier fraîchement installé doit-il être renommé en nom canonique ?
+    // Non si WordPress l'a déjà posé au bon nom (zip de release).
+    private static function needs_rename( $destination, $slug ) {
+        return basename( untrailingslashit( (string) $destination ) ) !== $slug;
     }
 }
