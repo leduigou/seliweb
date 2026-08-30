@@ -543,6 +543,12 @@
     color: #145c3e;
 }
 
+.seliweb-notice-error {
+    background: #fdeceb;
+    border-left: 4px solid #d63638;
+    color: #8a1f1f;
+}
+
 @media (max-width: 600px) {
     .seliweb-pagination {
         justify-content: center;
@@ -908,3 +914,133 @@
         gap: 0;
     }
 }
+
+/* =============================================================
+   Événements — liste publique ([seliweb_evenements])
+   ============================================================= */
+.seliweb-evenements {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.seliweb-evt-carte {
+    display: flex;
+    gap: 20px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 20px;
+}
+
+.seliweb-evt-image {
+    flex: 0 0 220px;
+}
+.seliweb-evt-image img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
+}
+
+.seliweb-evt-corps {
+    flex: 1;
+    min-width: 0;
+}
+
+.seliweb-evt-titre {
+    margin: 0 0 6px;
+    font-size: 1.25rem;
+    color: var(--color-primary, #1d6a4a);
+}
+
+.seliweb-evt-date {
+    margin: 0 0 2px;
+    font-weight: 600;
+    color: #333;
+}
+
+.seliweb-evt-horaires,
+.seliweb-evt-lieu {
+    margin: 0 0 2px;
+    font-size: .92rem;
+    color: #555;
+}
+
+.seliweb-evt-presentation {
+    margin-top: 10px;
+    color: #333;
+    line-height: 1.6;
+}
+.seliweb-evt-presentation p { margin: 0 0 8px; }
+
+.seliweb-evt-vide {
+    color: #666;
+    font-style: italic;
+}
+
+@media (max-width: 600px) {
+    .seliweb-evt-carte { flex-direction: column; }
+    .seliweb-evt-image { flex-basis: auto; }
+}
+
+/* Événements — onglet « Mon compte » */
+.seliweb-evt-mc {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 14px;
+    background: #fff;
+}
+.seliweb-evt-mc-tete {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.seliweb-evt-mc-tete strong { font-size: 1.05rem; }
+.seliweb-evt-mc-date { color: #555; font-size: .9rem; }
+.seliweb-evt-mc-info { margin: 0 0 2px; font-size: .9rem; color: #555; }
+.seliweb-evt-mc-pres { margin: 8px 0; color: #333; line-height: 1.55; }
+.seliweb-evt-mc-pres p { margin: 0 0 6px; }
+.seliweb-evt-mc-inscription {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+.seliweb-evt-mc-ok { color: #1d6a4a; font-weight: 600; }
+.seliweb-evt-mc-clos { color: #888; font-style: italic; font-size: .9rem; }
+.seliweb-evt-mc-passes { margin: 8px 0 0; padding-left: 18px; color: #555; }
+.seliweb-evt-mc-passes li { margin-bottom: 4px; }
+.seliweb-evt-groupes {
+    margin: 0 0 4px;
+    font-size: .82rem;
+    color: #777;
+    font-style: italic;
+}
+
+/* Questions personnalisées à l'inscription (phase 3) */
+.seliweb-evt-mc-form { margin-top: 8px; }
+.seliweb-evt-mc-questions {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    background: #f7f7f7;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+}
+.seliweb-evt-q { margin: 0 0 10px; }
+.seliweb-evt-q:last-child { margin-bottom: 0; }
+.seliweb-evt-q-label { display: block; font-weight: 600; margin-bottom: 3px; font-size: .92rem; }
+.seliweb-evt-q .seliweb-req { color: #b32d2e; }
+.seliweb-evt-q-radios label { margin-right: 12px; font-weight: 400; }
+.seliweb-evt-q-horaire input[type="time"] { margin: 0 4px; }
+.seliweb-evt-mc-reponses {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-size: .88rem;
+    color: #555;
+}
+.seliweb-evt-mc-reponses li { margin-bottom: 2px; }
+.seliweb-evt-mc-rq { font-weight: 600; }

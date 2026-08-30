@@ -66,6 +66,11 @@ $historique_paiements = class_exists( 'Seliweb_Paiements' )
 $retour_paiement = isset( $_GET['retour_paiement'] );
 $erreur_paiement = sanitize_key( $_GET['erreur_paiement'] ?? '' );
 
+// Onglet Événements : événements à venir concernant le groupe du membre.
+$evt_du_membre = class_exists( 'Seliweb_Evenements' )
+    ? Seliweb_Evenements::get_pour_membre( (int) $membre->groupe_id )
+    : array();
+
 // Monnaies autorisées par le groupe
 $monnaies_dispo = array();
 if ( $membre->groupe_id ) {
@@ -186,6 +191,12 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         <a href="<?php echo esc_url( add_query_arg('sel_action','paiements',$page_url) ); ?>"
            class="seliweb-tab <?php echo $action==='paiements' ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Paiements', 'seliweb' ); ?>
+        </a>
+        <?php endif; ?>
+        <?php if ( ! empty( $evt_du_membre ) ) : ?>
+        <a href="<?php echo esc_url( add_query_arg('sel_action','evenements',$page_url) ); ?>"
+           class="seliweb-tab <?php echo $action==='evenements' ? 'seliweb-tab-active' : ''; ?>">
+            <?php esc_html_e( 'Événements', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
     </div>
@@ -1431,6 +1442,10 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
         </tbody>
     </table>
     </div>
+
+    <?php elseif ( $action === 'evenements' && class_exists( 'Seliweb_Evenements' ) ) : ?>
+
+    <?php Seliweb_Evenements::render_mon_compte( (int) $membre->id, (int) $membre->groupe_id ); ?>
 
     <?php  endif; ?>
 

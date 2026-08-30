@@ -1443,6 +1443,12 @@ class Seliweb_Parametres {
                 'label' => __( 'Email destinataire', 'seliweb' ),
                 'desc'  => __( 'Adresse qui recevra les messages du formulaire de contact.', 'seliweb' ),
             ),
+            'inscription_evenement' => array(
+                'key'   => 'mail_inscrevt_to_email',
+                'field' => 'mail_inscrevt_to',
+                'label' => __( 'Email par défaut de l\'organisateur', 'seliweb' ),
+                'desc'  => __( 'Utilisé quand l\'événement n\'a pas d\'e-mail d\'organisateur renseigné.', 'seliweb' ),
+            ),
         );
         return $c[ $slug ] ?? null;
     }
@@ -1482,6 +1488,11 @@ class Seliweb_Parametres {
                 'label'   => __( 'Formulaire de contact', 'seliweb' ),
                 'desc'    => __( 'Envoyé à l\'association lorsqu\'un visiteur utilise la page Contact.', 'seliweb' ),
                 'to_only' => true, // seul l'e-mail destinataire est configurable
+            ),
+            'inscription_evenement' => array(
+                'label'   => __( 'Inscription à un événement', 'seliweb' ),
+                'desc'    => __( 'Envoyé à l\'organisateur quand un adhérent s\'inscrit ou se désinscrit d\'un événement.', 'seliweb' ),
+                'to_only' => true,
             ),
         );
     }
@@ -1599,6 +1610,14 @@ class Seliweb_Parametres {
                 $key_intro       = 'mail_contactsite_intro';
                 $key_sig         = 'mail_contactsite_signature';
                 $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Message via le formulaire de contact', 'seliweb' ) );
+                break;
+            case 'inscription_evenement':
+                $key_from_email  = 'mail_inscrevt_from_email';
+                $key_from_name   = 'mail_inscrevt_from_name';
+                $key_subject     = 'mail_inscrevt_subject';
+                $key_intro       = 'mail_inscrevt_intro';
+                $key_sig         = 'mail_inscrevt_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle inscription à un événement', 'seliweb' ) );
                 break;
             default:
                 return;
@@ -1883,6 +1902,13 @@ class Seliweb_Parametres {
                 $key_subject    = 'mail_contactsite_subject';
                 $key_intro      = 'mail_contactsite_intro';
                 $key_sig        = 'mail_contactsite_signature';
+                break;
+            case 'inscription_evenement':
+                $key_from_email = 'mail_inscrevt_from_email';
+                $key_from_name  = 'mail_inscrevt_from_name';
+                $key_subject    = 'mail_inscrevt_subject';
+                $key_intro      = 'mail_inscrevt_intro';
+                $key_sig        = 'mail_inscrevt_signature';
                 break;
             default:
                 return;

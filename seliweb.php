@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.5
+ * Version: 0.9.8
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.5' );
+define( 'SELIWEB_VERSION', '0.9.8' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -30,6 +30,7 @@ require_once SELIWEB_DIR . 'includes/class-updater.php';
 require_once SELIWEB_DIR . 'includes/class-front.php';
 require_once SELIWEB_DIR . 'includes/class-recherche.php';
 require_once SELIWEB_DIR . 'includes/class-contact.php';
+require_once SELIWEB_DIR . 'includes/class-evenements.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -40,6 +41,7 @@ Seliweb_Cotisations::init();
 Seliweb_Updater::init();
 Seliweb_Recherche::init();
 Seliweb_Contact::init();
+Seliweb_Evenements::init();
 
 class Seliweb {
 
@@ -86,6 +88,10 @@ class Seliweb {
         if ( strpos( $hook, 'seliweb' ) === false ) return;
         wp_enqueue_style(  'seliweb-admin', SELIWEB_URL . 'assets/css/admin.css',  array(), SELIWEB_VERSION );
         wp_enqueue_script( 'seliweb-admin', SELIWEB_URL . 'assets/js/admin.js', array( 'jquery' ), SELIWEB_VERSION, true );
+        // Sélecteur d'image (médiathèque) sur l'écran Événements.
+        if ( strpos( $hook, 'seliweb_evenements' ) !== false ) {
+            wp_enqueue_media();
+        }
     }
 
     public function enqueue_public_assets() {
@@ -95,7 +101,8 @@ class Seliweb {
             || has_shortcode( $post->post_content, 'seliweb_mon_compte' )
             || has_shortcode( $post->post_content, 'seliweb_login' )
             || has_shortcode( $post->post_content, 'seliweb_inscription' )
-            || has_shortcode( $post->post_content, 'seliweb_contact' );
+            || has_shortcode( $post->post_content, 'seliweb_contact' )
+            || has_shortcode( $post->post_content, 'seliweb_evenements' );
         if ( $has ) {
             wp_enqueue_style( 'seliweb-public', SELIWEB_URL . 'assets/css/public.css', array(), SELIWEB_VERSION );
         }
@@ -113,6 +120,7 @@ class Seliweb {
         if ( Seliweb_Cotisations::cotisations_actif() ) {
             add_submenu_page( 'seliweb', __('Trésorerie','seliweb'), __('Cotis. Abo.','seliweb'), 'manage_options', 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
         }
+        add_submenu_page( 'seliweb', __('Événements','seliweb'),      __('Événements','seliweb'),      'manage_options', 'seliweb_evenements', array('Seliweb_Evenements','display') );
     }
 
     public function display_dashboard() { include SELIWEB_DIR . 'templates/admin-dashboard.php'; }

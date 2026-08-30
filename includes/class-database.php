@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '3.1';
+    const DB_VERSION     = '3.4';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -270,6 +270,72 @@ class Seliweb_Database {
             KEY cotisation_id (cotisation_id)
         ) $charset;";
 
+        // Migration v3.2 : événements. Visibilité publique et restriction par
+        // groupe sont indépendantes : un événement « visible par tous » l'est
+        // sur la page publique (titre + présentation au minimum, lieu/adresse
+        // et horaires optionnels) ; les groupes (liste d'IDs séparés par des
+        // virgules, vide = tous) déterminent qui peut s'inscrire.
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_evenements (
+            id                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            titre               VARCHAR(255) NOT NULL,
+            presentation        TEXT,
+            lieu                VARCHAR(255) DEFAULT NULL,
+            adresse             VARCHAR(255) DEFAULT NULL,
+            date_debut          DATETIME     NOT NULL,
+            date_fin            DATETIME     DEFAULT NULL,
+            horaires            VARCHAR(255) DEFAULT NULL,
+            image_id            INT UNSIGNED DEFAULT NULL,
+            visible_par_tous    TINYINT(1)   NOT NULL DEFAULT 0,
+            afficher_lieu       TINYINT(1)   NOT NULL DEFAULT 1,
+            afficher_horaires   TINYINT(1)   NOT NULL DEFAULT 1,
+            inscription_requise TINYINT(1)   NOT NULL DEFAULT 0,
+            groupes             VARCHAR(255) DEFAULT NULL,
+            organisateur_email  VARCHAR(200) DEFAULT NULL,
+            statut              ENUM('brouillon','publie') NOT NULL DEFAULT 'brouillon',
+            date_creation       DATETIME     NOT NULL,
+            PRIMARY KEY (id),
+            KEY date_debut (date_debut),
+            KEY statut (statut)
+        ) $charset;";
+
+        // Migration v3.3 : inscriptions aux événements (adhérents connectés).
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_evenement_inscriptions (
+            id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            evenement_id     INT UNSIGNED NOT NULL,
+            membre_id        INT UNSIGNED NOT NULL,
+            date_inscription DATETIME     NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY evt_membre (evenement_id, membre_id),
+            KEY evenement_id (evenement_id),
+            KEY membre_id (membre_id)
+        ) $charset;";
+
+        // Migration v3.4 : questions personnalisées par événement + réponses.
+        // Les IDs de questions sont conservés à travers les éditions (référencés
+        // par les réponses, indispensables à la synthèse — phase 4).
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_evenement_questions (
+            id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            evenement_id INT UNSIGNED NOT NULL,
+            ordre        INT UNSIGNED NOT NULL DEFAULT 0,
+            libelle      VARCHAR(255) NOT NULL,
+            type         ENUM('texte','nombre','oui_non','choix','horaire') NOT NULL DEFAULT 'texte',
+            obligatoire  TINYINT(1)   NOT NULL DEFAULT 0,
+            options      TEXT,
+            PRIMARY KEY (id),
+            KEY evenement_id (evenement_id)
+        ) $charset;";
+
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_evenement_reponses (
+            id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            inscription_id INT UNSIGNED NOT NULL,
+            question_id    INT UNSIGNED NOT NULL,
+            valeur         TEXT,
+            PRIMARY KEY (id),
+            UNIQUE KEY inscr_question (inscription_id, question_id),
+            KEY inscription_id (inscription_id),
+            KEY question_id (question_id)
+        ) $charset;";
+
         foreach ( $sql as $query ) {
             dbDelta( $query );
         }
@@ -400,6 +466,9 @@ class Seliweb_Database {
         // date d'écriture Paheko distincte de la date de paiement.
         self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements', 'date_ecriture', "DATE DEFAULT NULL AFTER date_paiement" );
         $wpdb->query( "UPDATE {$wpdb->prefix}seliweb_paiements SET date_ecriture = date_paiement WHERE date_ecriture IS NULL" );
+
+        // Migration v3.3 : e-mail de l'organisateur pour les notifications d'inscription.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_evenements', 'organisateur_email', "VARCHAR(200) DEFAULT NULL AFTER groupes" );
 
         self::insert_defaults();
     }
@@ -655,6 +724,7 @@ class Seliweb_Database {
             'seliweb_inscription' => array( 'title' => __( "S'inscrire", 'seliweb' ),  'slug' => 'inscription-sel', 'content' => '[seliweb_inscription]', 'template' => '' ),
             'seliweb_mon_compte'  => array( 'title' => __( 'Mon compte', 'seliweb' ), 'slug' => 'mon-compte-sel',  'content' => '[seliweb_mon_compte]',  'template' => '' ),
             'seliweb_contact'     => array( 'title' => __( 'Contact', 'seliweb' ),    'slug' => 'contact-sel',     'content' => '[seliweb_contact]',     'template' => '' ),
+            'seliweb_evenements'  => array( 'title' => __( 'Événements', 'seliweb' ), 'slug' => 'evenements-sel',  'content' => '[seliweb_evenements]',  'template' => '' ),
         );
 
         // Page "/sel/" (annonces du groupe SEL) : seulement si le module SEL est actif.
