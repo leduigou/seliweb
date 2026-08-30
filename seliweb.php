@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.4
+ * Version: 0.9.5
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.4' );
+define( 'SELIWEB_VERSION', '0.9.5' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -29,6 +29,7 @@ require_once SELIWEB_DIR . 'includes/class-cotisations.php';
 require_once SELIWEB_DIR . 'includes/class-updater.php';
 require_once SELIWEB_DIR . 'includes/class-front.php';
 require_once SELIWEB_DIR . 'includes/class-recherche.php';
+require_once SELIWEB_DIR . 'includes/class-contact.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -38,12 +39,15 @@ Seliweb_Transactions::init();
 Seliweb_Cotisations::init();
 Seliweb_Updater::init();
 Seliweb_Recherche::init();
+Seliweb_Contact::init();
 
 class Seliweb {
 
     public function __construct() {
         add_action( 'plugins_loaded',        array( $this, 'load_textdomain' ) );
         add_action( 'admin_init',            array( 'Seliweb_Database', 'install' ) );
+        add_action( 'admin_init',            array( 'Seliweb_Database', 'heal_pages' ) );
+        add_filter( 'display_post_states',   array( 'Seliweb_Database', 'page_states' ), 10, 2 );
         add_action( 'admin_menu',            array( $this, 'create_menu' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
         add_action( 'wp_enqueue_scripts',    array( $this, 'enqueue_public_assets' ) );
@@ -89,7 +93,9 @@ class Seliweb {
         if ( ! is_a( $post, 'WP_Post' ) ) return;
         $has = has_shortcode( $post->post_content, 'seliweb_annonces' )
             || has_shortcode( $post->post_content, 'seliweb_mon_compte' )
-            || has_shortcode( $post->post_content, 'seliweb_login' );
+            || has_shortcode( $post->post_content, 'seliweb_login' )
+            || has_shortcode( $post->post_content, 'seliweb_inscription' )
+            || has_shortcode( $post->post_content, 'seliweb_contact' );
         if ( $has ) {
             wp_enqueue_style( 'seliweb-public', SELIWEB_URL . 'assets/css/public.css', array(), SELIWEB_VERSION );
         }
@@ -1253,35 +1259,8 @@ add_action( 'admin_init', function() {
     update_option( 'seliweb_migrated_annonces_template', '1' );
 } );
 
-// Page "/sel/" — annonces du groupe SEL uniquement, créée automatiquement
-// dès que le SEL est actif (installation neuve, ou site existant où le SEL
-// vient d'être activé) — pas seulement à l'activation du plugin, puisque le
-// SEL peut être activé bien plus tard depuis les réglages.
-add_action( 'admin_init', function() {
-    $page_ids = get_option( 'seliweb_page_ids', array() );
-    if ( ! empty( $page_ids['seliweb_sel'] ) ) return;
-    if ( ! class_exists( 'Seliweb_Transactions' ) || ! Seliweb_Transactions::sel_actif() ) return;
-
-    $existing = get_page_by_path( 'sel' );
-    if ( $existing ) {
-        $page_ids['seliweb_sel'] = $existing->ID;
-        update_post_meta( $existing->ID, '_wp_page_template', 'template-annonces-sel.php' );
-        update_option( 'seliweb_page_ids', $page_ids );
-        return;
-    }
-
-    $pid = wp_insert_post( array(
-        'post_title'   => __( 'SEL', 'seliweb' ),
-        'post_content' => '',
-        'post_status'  => 'publish',
-        'post_type'    => 'page',
-        'post_name'    => 'sel',
-    ) );
-    if ( ! is_wp_error( $pid ) ) {
-        update_post_meta( $pid, '_wp_page_template', 'template-annonces-sel.php' );
-        $page_ids['seliweb_sel'] = $pid;
-        update_option( 'seliweb_page_ids', $page_ids );
-    }
-} );
+// La page "/sel/" (annonces du groupe SEL, dès que le module SEL est actif)
+// et l'auto-réparation de toutes les pages Seliweb sont gérées par
+// Seliweb_Database::heal_pages() (hook admin_init, voir pages_spec()).
 
 new Seliweb();

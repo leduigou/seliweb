@@ -644,68 +644,113 @@ class Seliweb_Database {
     }
 
     // ================================================================
+    // Spécification des pages front-end indispensables de Seliweb.
+    // Source unique, utilisée par create_pages_and_menu() (activation)
+    // et par heal_pages() (auto-réparation).
+    // ================================================================
+    public static function pages_spec() {
+        $spec = array(
+            'seliweb_annonces'    => array( 'title' => __( 'Annonces', 'seliweb' ),   'slug' => 'annonces-sel',    'content' => '',                      'template' => 'template-annonces.php' ),
+            'seliweb_login'       => array( 'title' => __( 'Connexion', 'seliweb' ),  'slug' => 'connexion-sel',   'content' => '[seliweb_login]',       'template' => '' ),
+            'seliweb_inscription' => array( 'title' => __( "S'inscrire", 'seliweb' ),  'slug' => 'inscription-sel', 'content' => '[seliweb_inscription]', 'template' => '' ),
+            'seliweb_mon_compte'  => array( 'title' => __( 'Mon compte', 'seliweb' ), 'slug' => 'mon-compte-sel',  'content' => '[seliweb_mon_compte]',  'template' => '' ),
+            'seliweb_contact'     => array( 'title' => __( 'Contact', 'seliweb' ),    'slug' => 'contact-sel',     'content' => '[seliweb_contact]',     'template' => '' ),
+        );
+
+        // Page "/sel/" (annonces du groupe SEL) : seulement si le module SEL est actif.
+        if ( class_exists( 'Seliweb_Transactions' ) && Seliweb_Transactions::sel_actif() ) {
+            $spec['seliweb_sel'] = array( 'title' => __( 'SEL', 'seliweb' ), 'slug' => 'sel', 'content' => '', 'template' => 'template-annonces-sel.php' );
+        }
+
+        return $spec;
+    }
+
+    // ================================================================
+    // Auto-réparation des pages front-end.
+    //
+    // Branchée sur admin_init : si un administrateur supprime une page
+    // Seliweb, elle est restaurée au chargement suivant de l'admin.
+    //  - page en corbeille           -> sortie de corbeille (même ID,
+    //                                   les éléments de menu sont préservés)
+    //  - page définitivement supprimée -> recréée (nouvel ID)
+    //  - page retrouvée par son slug -> ré-adoptée
+    // Ne fait aucune écriture quand tout est en ordre.
+    // ================================================================
+    public static function heal_pages( $force = false ) {
+        // Sur admin_init : ne rien faire pour les utilisateurs non-admin.
+        // $force = true à l'activation (aucun utilisateur courant en WP-CLI).
+        if ( ! $force && ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+
+        $page_ids = get_option( 'seliweb_page_ids', array() );
+        if ( ! is_array( $page_ids ) ) {
+            $page_ids = array();
+        }
+        $changed = false;
+
+        foreach ( self::pages_spec() as $key => $spec ) {
+            $id   = ! empty( $page_ids[ $key ] ) ? (int) $page_ids[ $key ] : 0;
+            $post = $id ? get_post( $id ) : null;
+
+            if ( $post instanceof WP_Post && 'page' === $post->post_type ) {
+                if ( 'trash' === $post->post_status ) {
+                    wp_untrash_post( $id );
+                    wp_update_post( array( 'ID' => $id, 'post_status' => 'publish' ) );
+                }
+            } else {
+                $found = get_page_by_path( $spec['slug'] );
+                if ( $found instanceof WP_Post && 'trash' !== $found->post_status ) {
+                    $id = $found->ID;
+                } else {
+                    $new = wp_insert_post( array(
+                        'post_title'   => $spec['title'],
+                        'post_content' => $spec['content'],
+                        'post_status'  => 'publish',
+                        'post_type'    => 'page',
+                        'post_name'    => $spec['slug'],
+                    ) );
+                    if ( is_wp_error( $new ) || ! $new ) {
+                        continue;
+                    }
+                    $id = (int) $new;
+                }
+                $page_ids[ $key ] = $id;
+                $changed = true;
+            }
+
+            if ( $id && ! empty( $spec['template'] )
+                && get_page_template_slug( $id ) !== $spec['template'] ) {
+                update_post_meta( $id, '_wp_page_template', $spec['template'] );
+            }
+        }
+
+        if ( $changed ) {
+            update_option( 'seliweb_page_ids', $page_ids );
+        }
+    }
+
+    // Libellé "Page Seliweb" dans la liste des pages (Pages → Toutes les pages),
+    // comme WordPress le fait pour "Page d'accueil" ou "Politique de confidentialité".
+    public static function page_states( $states, $post ) {
+        if ( $post instanceof WP_Post && 'page' === $post->post_type ) {
+            $ids = array_map( 'intval', (array) get_option( 'seliweb_page_ids', array() ) );
+            if ( in_array( (int) $post->ID, $ids, true ) ) {
+                $states['seliweb_page'] = __( 'Page Seliweb', 'seliweb' );
+            }
+        }
+        return $states;
+    }
+
+    // ================================================================
     // Création automatique des pages front-end et du menu
     // Appelée à l'activation du plugin (register_activation_hook)
     // ================================================================
     public static function create_pages_and_menu() {
 
-        // ---- Pages à créer ----
-        $pages = array(
-            array(
-                'title'    => __( 'Annonces', 'seliweb' ),
-                'key'      => 'seliweb_annonces',
-                'slug'     => 'annonces-sel',
-                'content'  => '',
-                'template' => 'template-annonces.php',
-            ),
-            array(
-                'title'   => __( 'Connexion', 'seliweb' ),
-                'key'     => 'seliweb_login',
-                'slug'    => 'connexion-sel',
-                'content' => '[seliweb_login]',
-            ),
-            array(
-                'title'   => __( "S'inscrire", 'seliweb' ),
-                'key'     => 'seliweb_inscription',
-                'slug'    => 'inscription-sel',
-                'content' => '[seliweb_inscription]',
-            ),
-            array(
-                'title'   => __( 'Mon compte', 'seliweb' ),
-                'key'     => 'seliweb_mon_compte',
-                'slug'    => 'mon-compte-sel',
-                'content' => '[seliweb_mon_compte]',
-            ),
-        );
-
-        $page_ids = array();
-        foreach ( $pages as $page ) {
-            // Ne créer la page que si elle n'existe pas déjà
-            $existing = get_page_by_path( $page['slug'] );
-            if ( $existing ) {
-                $page_ids[ $page['key'] ] = $existing->ID;
-                if ( ! empty( $page['template'] ) ) {
-                    update_post_meta( $existing->ID, '_wp_page_template', $page['template'] );
-                }
-                continue;
-            }
-            $id = wp_insert_post( array(
-                'post_title'   => $page['title'],
-                'post_content' => $page['content'],
-                'post_status'  => 'publish',
-                'post_type'    => 'page',
-                'post_name'    => $page['slug'],
-            ) );
-            if ( ! is_wp_error( $id ) ) {
-                $page_ids[ $page['key'] ] = $id;
-                if ( ! empty( $page['template'] ) ) {
-                    update_post_meta( $id, '_wp_page_template', $page['template'] );
-                }
-            }
-        }
-
-        // Sauvegarder les IDs pour usage ultérieur
-        update_option( 'seliweb_page_ids', $page_ids );
+        // Création (ou réparation) de toutes les pages via la source unique.
+        self::heal_pages( true );
+        $page_ids = get_option( 'seliweb_page_ids', array() );
 
         // ---- Menu "Seliweb Navigation" ----
         $menu_name = __( 'Seliweb Navigation', 'seliweb' );

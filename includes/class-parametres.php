@@ -1428,6 +1428,25 @@ class Seliweb_Parametres {
     // MAILS
     // ================================================================
 
+    // Adresse de destination configurable, pour les mails qui en ont une.
+    private static function mail_to_config( $slug ) {
+        $c = array(
+            'signalement_annonce' => array(
+                'key'   => 'mail_signal_to_email',
+                'field' => 'mail_signal_to',
+                'label' => __( 'Email du webmaster', 'seliweb' ),
+                'desc'  => __( 'Adresse qui recevra les signalements.', 'seliweb' ),
+            ),
+            'contact' => array(
+                'key'   => 'mail_contactsite_to_email',
+                'field' => 'mail_contact_to',
+                'label' => __( 'Email destinataire', 'seliweb' ),
+                'desc'  => __( 'Adresse qui recevra les messages du formulaire de contact.', 'seliweb' ),
+            ),
+        );
+        return $c[ $slug ] ?? null;
+    }
+
     // Catalogue statique des emails configurables
     private static function mail_list() {
         return array(
@@ -1458,6 +1477,11 @@ class Seliweb_Parametres {
             'signalement_annonce' => array(
                 'label' => __( 'Signalement d\'une annonce', 'seliweb' ),
                 'desc'  => __( 'Envoyé au webmaster lorsqu\'un visiteur signale une annonce comme inappropriée.', 'seliweb' ),
+            ),
+            'contact' => array(
+                'label'   => __( 'Formulaire de contact', 'seliweb' ),
+                'desc'    => __( 'Envoyé à l\'association lorsqu\'un visiteur utilise la page Contact.', 'seliweb' ),
+                'to_only' => true, // seul l'e-mail destinataire est configurable
             ),
         );
     }
@@ -1568,6 +1592,14 @@ class Seliweb_Parametres {
                 $key_sig         = 'mail_signal_signature';
                 $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Signalement d\'une annonce', 'seliweb' ) );
                 break;
+            case 'contact':
+                $key_from_email  = 'mail_contactsite_from_email';
+                $key_from_name   = 'mail_contactsite_from_name';
+                $key_subject     = 'mail_contactsite_subject';
+                $key_intro       = 'mail_contactsite_intro';
+                $key_sig         = 'mail_contactsite_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Message via le formulaire de contact', 'seliweb' ) );
+                break;
             default:
                 return;
         }
@@ -1578,12 +1610,12 @@ class Seliweb_Parametres {
         $intro      = $cfg[ $key_intro ]      ?? '';
         $signature  = $cfg[ $key_sig ]        ?? '';
 
-        $signal_to_email = '';
-        $signal_prompt   = '';
-        if ( $slug === 'signalement_annonce' ) {
-            $signal_to_email = $cfg['mail_signal_to_email'] ?? '';
-            $signal_prompt   = $cfg['mail_signal_prompt']   ?? '';
-        }
+        $to_info  = self::mail_to_config( $slug );
+        $to_email = $to_info ? ( $cfg[ $to_info['key'] ] ?? '' ) : '';
+        $signal_prompt = ( $slug === 'signalement_annonce' ) ? ( $cfg['mail_signal_prompt'] ?? '' ) : '';
+        // Certains mails (formulaire de contact) n'exposent que l'adresse
+        // destinataire : expéditeur, sujet et corps viennent du formulaire.
+        $only_to = ! empty( self::mail_list()[ $slug ]['to_only'] );
         ?>
         <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
         <?php if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_email' ) : ?>
@@ -1610,22 +1642,31 @@ class Seliweb_Parametres {
             <input type="hidden" name="seliweb_action" value="save_mail">
             <input type="hidden" name="mail_slug" value="<?php echo esc_attr( $slug ); ?>">
 
-            <?php if ( $slug === 'signalement_annonce' ) : ?>
+            <?php if ( $to_info ) : ?>
             <h3 style="margin-top:8px;"><?php esc_html_e( 'Destinataire', 'seliweb' ); ?></h3>
             <table class="form-table">
                 <tr>
-                    <th><label for="mail_signal_to"><?php esc_html_e( 'Email du webmaster', 'seliweb' ); ?></label></th>
+                    <th><label for="mail_to"><?php echo esc_html( $to_info['label'] ); ?></label></th>
                     <td>
-                        <input type="email" id="mail_signal_to" name="mail_signal_to" class="regular-text"
-                               value="<?php echo esc_attr( $signal_to_email ); ?>"
+                        <input type="email" id="mail_to" name="<?php echo esc_attr( $to_info['field'] ); ?>" class="regular-text"
+                               value="<?php echo esc_attr( $to_email ); ?>"
                                placeholder="<?php echo esc_attr( get_option('admin_email') ); ?>">
-                        <p class="description"><?php printf( esc_html__( 'Adresse qui recevra les signalements. Par défaut : adresse de l\'administrateur (%s).', 'seliweb' ), esc_html( get_option('admin_email') ) ); ?></p>
+                        <p class="description">
+                            <?php echo esc_html( $to_info['desc'] ); ?>
+                            <?php printf( esc_html__( 'Par défaut : adresse de l\'administrateur (%s).', 'seliweb' ), esc_html( get_option('admin_email') ) ); ?>
+                        </p>
                     </td>
                 </tr>
             </table>
             <?php endif; ?>
 
-            <h3 style="margin-top:<?php echo $slug === 'signalement_annonce' ? '24' : '8'; ?>px;"><?php esc_html_e( 'Expéditeur', 'seliweb' ); ?></h3>
+            <?php if ( $only_to ) : ?>
+            <p class="description" style="max-width:560px;">
+                <?php esc_html_e( "L'expéditeur, le sujet et le contenu de ce mail proviennent du formulaire rempli par le visiteur. Seule l'adresse de destination se règle ici.", 'seliweb' ); ?>
+            </p>
+            <?php else : ?>
+
+            <h3 style="margin-top:<?php echo $to_info ? '24' : '8'; ?>px;"><?php esc_html_e( 'Expéditeur', 'seliweb' ); ?></h3>
             <table class="form-table">
                 <tr>
                     <th><label for="mail_from_name"><?php esc_html_e( 'Nom de l\'expéditeur', 'seliweb' ); ?></label></th>
@@ -1735,6 +1776,14 @@ class Seliweb_Parametres {
                             <?php esc_html_e( 'Raison invoquée :', 'seliweb' ); ?><br>
                             <?php esc_html_e( '[texte saisi par le déclarant]', 'seliweb' ); ?>
                         </div>
+                        <?php elseif ( $slug === 'contact' ) : ?>
+                        <div style="background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px;padding:12px 16px;font-family:monospace;font-size:12px;line-height:1.7;color:#555;max-width:560px;">
+                            <?php esc_html_e( 'Nom : [nom saisi]', 'seliweb' ); ?><br>
+                            <?php esc_html_e( 'E-mail : [e-mail saisi]', 'seliweb' ); ?><br>
+                            <?php esc_html_e( 'Sujet : [sujet saisi]', 'seliweb' ); ?><br><br>
+                            <?php esc_html_e( 'Message :', 'seliweb' ); ?><br>
+                            <?php esc_html_e( '[message saisi]', 'seliweb' ); ?>
+                        </div>
                         <?php endif; ?>
                         <p class="description" style="margin-top:6px;">
                             <?php esc_html_e( 'Ce contenu est généré automatiquement et ne peut pas être modifié.', 'seliweb' ); ?>
@@ -1749,6 +1798,7 @@ class Seliweb_Parametres {
                     </td>
                 </tr>
             </table>
+            <?php endif; // ! $only_to ?>
 
             <p>
                 <?php submit_button( __( 'Enregistrer', 'seliweb' ), 'primary', 'submit', false ); ?>
@@ -1827,11 +1877,20 @@ class Seliweb_Parametres {
                 $key_intro      = 'mail_signal_avertissement';
                 $key_sig        = 'mail_signal_signature';
                 break;
+            case 'contact':
+                $key_from_email = 'mail_contactsite_from_email';
+                $key_from_name  = 'mail_contactsite_from_name';
+                $key_subject    = 'mail_contactsite_subject';
+                $key_intro      = 'mail_contactsite_intro';
+                $key_sig        = 'mail_contactsite_signature';
+                break;
             default:
                 return;
         }
 
-        $params = array(
+        $only_to = ! empty( self::mail_list()[ $slug ]['to_only'] );
+
+        $params = $only_to ? array() : array(
             $key_from_email => $from_email,
             $key_from_name  => $from_name,
             $key_subject    => sanitize_text_field( wp_unslash( $_POST['mail_subject']      ?? '' ) ),
@@ -1839,14 +1898,17 @@ class Seliweb_Parametres {
             $key_sig        => sanitize_textarea_field( wp_unslash( $_POST['mail_signature'] ?? '' ) ),
         );
 
-        if ( $slug === 'signalement_annonce' ) {
-            $to_email = sanitize_email( wp_unslash( $_POST['mail_signal_to'] ?? '' ) );
+        $to_info = self::mail_to_config( $slug );
+        if ( $to_info ) {
+            $to_email = sanitize_email( wp_unslash( $_POST[ $to_info['field'] ] ?? '' ) );
             if ( $to_email !== '' && ! is_email( $to_email ) ) {
                 wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=mails&action=edit&mail=' . $slug . '&error=bad_to_email' ) );
                 exit;
             }
-            $params['mail_signal_to_email'] = $to_email;
-            $params['mail_signal_prompt']   = sanitize_textarea_field( wp_unslash( $_POST['mail_signal_prompt'] ?? '' ) );
+            $params[ $to_info['key'] ] = $to_email;
+        }
+        if ( $slug === 'signalement_annonce' ) {
+            $params['mail_signal_prompt'] = sanitize_textarea_field( wp_unslash( $_POST['mail_signal_prompt'] ?? '' ) );
         }
 
         foreach ( $params as $cle => $valeur ) {

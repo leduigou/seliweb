@@ -152,9 +152,13 @@ if ( $sel_info && $sel_info['actif'] ) {
         ?>
         &nbsp;
         <a href="<?php echo esc_url( SELIWEB_URL . 'docs/Manuel-Utilisateur-Seliweb-WP.odt' ); ?>" class="button" download>
-            <?php esc_html_e( 'Télécharger le manuel utilisateur', 'seliweb' ); ?>
+            <?php esc_html_e( 'Télécharger la doc', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
+        &nbsp;
+        <a href="<?php echo esc_url( Seliweb_Updater::updates_page_url() ); ?>" class="button">
+            <?php esc_html_e( 'Mises à jour', 'seliweb' ); ?>
+        </a>
     </p>
 
     <h2><?php esc_html_e( 'Informations système', 'seliweb' ); ?></h2>

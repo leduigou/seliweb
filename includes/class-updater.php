@@ -36,8 +36,9 @@ class Seliweb_Updater {
         add_action( 'delete_site_transient_update_plugins', array( __CLASS__, 'clear_plugin_release_cache' ) );
         add_action( 'delete_site_transient_update_themes',  array( __CLASS__, 'clear_theme_release_cache'  ) );
 
-        // Page "Mises à jour" sous le menu Seliweb + son bouton "vérifier maintenant".
-        add_action( 'admin_menu', array( __CLASS__, 'add_updates_page' ), 20 );
+        // Page "Mises à jour" Seliweb (hors menu, atteinte par le bouton du
+        // Tableau de bord) + le traitement de son bouton "vérifier maintenant".
+        add_action( 'admin_menu', array( __CLASS__, 'register_updates_page' ), 20 );
         add_action( 'admin_post_seliweb_force_update_check', array( __CLASS__, 'handle_force_check' ) );
     }
 
@@ -235,19 +236,22 @@ class Seliweb_Updater {
         return basename( untrailingslashit( (string) $destination ) ) !== $slug;
     }
 
-    // ----------------------------------------------------------------
-    // Page "Mises à jour" (sous-menu Seliweb)
+    // ================================================================
+    // PAGE "MISES À JOUR" SELIWEB
     //
-    // WordPress ne rafraîchit sa liste de mises à jour qu'environ toutes
-    // les 12 h (ou via Tableau de bord > Mises à jour > "Vérifier à
-    // nouveau", peu visible). Ce bouton force une vérification immédiate
-    // des dépôts GitHub de l'extension et du thème.
-    // ----------------------------------------------------------------
-    public static function add_updates_page() {
+    // Hors du menu Seliweb (on y accède par le bouton du Tableau de bord).
+    // Enregistrée avec un parent vide : la page reste atteignable par son
+    // URL admin.php?page=seliweb_updates sans apparaître dans aucun menu.
+    // ================================================================
+    public static function updates_page_url() {
+        return admin_url( 'admin.php?page=seliweb_updates' );
+    }
+
+    public static function register_updates_page() {
         add_submenu_page(
-            'seliweb',
-            __( 'Mises à jour', 'seliweb' ),
-            __( 'Mises à jour', 'seliweb' ),
+            '', // pas de parent -> page routable mais absente du menu
+            __( 'Mises à jour Seliweb', 'seliweb' ),
+            __( 'Mises à jour Seliweb', 'seliweb' ),
             'manage_options',
             'seliweb_updates',
             array( __CLASS__, 'render_updates_page' )
@@ -267,10 +271,7 @@ class Seliweb_Updater {
         wp_update_plugins();
         wp_update_themes();
 
-        wp_safe_redirect( add_query_arg(
-            array( 'page' => 'seliweb_updates', 'checked' => '1' ),
-            admin_url( 'admin.php' )
-        ) );
+        wp_safe_redirect( add_query_arg( 'checked', '1', self::updates_page_url() ) );
         exit;
     }
 
@@ -302,9 +303,16 @@ class Seliweb_Updater {
                 'page'      => $theme_release['page_url'] ?? '',
             ),
         );
+        $maj_dispo = false;
         ?>
         <div class="wrap">
             <h1><?php esc_html_e( 'Mises à jour Seliweb', 'seliweb' ); ?></h1>
+
+            <p>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb' ) ); ?>">
+                    &larr; <?php esc_html_e( 'Retour au tableau de bord Seliweb', 'seliweb' ); ?>
+                </a>
+            </p>
 
             <table class="widefat striped" style="max-width:760px;margin-top:16px;">
                 <thead>
@@ -316,7 +324,12 @@ class Seliweb_Updater {
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ( $lignes as $l ) : ?>
+                <?php foreach ( $lignes as $l ) :
+                    $a_jour = ( $l['dispo'] && '?' !== $l['installee'] && '—' !== $l['installee'] )
+                        ? ! version_compare( $l['dispo'], $l['installee'], '>' )
+                        : null;
+                    if ( false === $a_jour ) { $maj_dispo = true; }
+                    ?>
                     <tr>
                         <td><strong><?php echo esc_html( $l['nom'] ); ?></strong></td>
                         <td><?php echo esc_html( $l['installee'] ); ?></td>
@@ -331,9 +344,9 @@ class Seliweb_Updater {
                         </td>
                         <td>
                             <?php
-                            if ( ! $l['dispo'] || '?' === $l['installee'] || '—' === $l['installee'] ) {
-                                echo '—';
-                            } elseif ( version_compare( $l['dispo'], $l['installee'], '>' ) ) {
+                            if ( null === $a_jour ) {
+                                echo '&mdash;';
+                            } elseif ( false === $a_jour ) {
                                 echo '<span style="color:#b32d2e;font-weight:600;">'
                                     . esc_html__( 'Mise à jour disponible', 'seliweb' ) . '</span>';
                             } else {
@@ -347,11 +360,19 @@ class Seliweb_Updater {
                 </tbody>
             </table>
 
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:20px;">
-                <input type="hidden" name="action" value="seliweb_force_update_check">
-                <?php wp_nonce_field( 'seliweb_force_update_check' ); ?>
-                <?php submit_button( __( 'Rechercher les mises à jour maintenant', 'seliweb' ), 'primary', 'submit', false ); ?>
-            </form>
+            <p style="margin-top:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <a href="<?php echo esc_url( wp_nonce_url(
+                        admin_url( 'admin-post.php?action=seliweb_force_update_check' ),
+                        'seliweb_force_update_check'
+                    ) ); ?>" class="button button-primary">
+                    <?php esc_html_e( 'Rechercher les mises à jour maintenant', 'seliweb' ); ?>
+                </a>
+                <?php if ( $maj_dispo ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'update-core.php' ) ); ?>" class="button">
+                        <?php esc_html_e( 'Aller à l\'écran de mise à jour de WordPress', 'seliweb' ); ?>
+                    </a>
+                <?php endif; ?>
+            </p>
 
             <?php if ( ! $plugin_release || ! $theme_release ) : ?>
                 <p class="description" style="margin-top:12px;max-width:760px;color:#b32d2e;">
@@ -360,16 +381,7 @@ class Seliweb_Updater {
             <?php endif; ?>
 
             <p class="description" style="margin-top:12px;max-width:760px;">
-                <?php
-                printf(
-                    /* translators: %s : URL de l'écran Mises à jour de WordPress */
-                    wp_kses(
-                        __( "Quand une mise à jour est disponible, appliquez-la depuis <a href=\"%s\">Tableau de bord → Mises à jour</a>. La détection est mise en cache 6 h ; ce bouton force un contrôle immédiat.", 'seliweb' ),
-                        array( 'a' => array( 'href' => array() ) )
-                    ),
-                    esc_url( admin_url( 'update-core.php' ) )
-                );
-                ?>
+                <?php esc_html_e( "La détection des mises à jour est mise en cache 6 h ; ce bouton force un contrôle immédiat. Quand une mise à jour est disponible, elle s'applique depuis l'écran Mises à jour de WordPress.", 'seliweb' ); ?>
             </p>
         </div>
         <?php
