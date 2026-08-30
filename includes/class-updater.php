@@ -35,6 +35,10 @@ class Seliweb_Updater {
         // à renvoyer une ancienne réponse GitHub pendant jusqu'à 6h.
         add_action( 'delete_site_transient_update_plugins', array( __CLASS__, 'clear_plugin_release_cache' ) );
         add_action( 'delete_site_transient_update_themes',  array( __CLASS__, 'clear_theme_release_cache'  ) );
+
+        // Page "Mises à jour" sous le menu Seliweb + son bouton "vérifier maintenant".
+        add_action( 'admin_menu', array( __CLASS__, 'add_updates_page' ), 20 );
+        add_action( 'admin_post_seliweb_force_update_check', array( __CLASS__, 'handle_force_check' ) );
     }
 
     public static function clear_plugin_release_cache() {
@@ -229,5 +233,145 @@ class Seliweb_Updater {
     // Non si WordPress l'a déjà posé au bon nom (zip de release).
     private static function needs_rename( $destination, $slug ) {
         return basename( untrailingslashit( (string) $destination ) ) !== $slug;
+    }
+
+    // ----------------------------------------------------------------
+    // Page "Mises à jour" (sous-menu Seliweb)
+    //
+    // WordPress ne rafraîchit sa liste de mises à jour qu'environ toutes
+    // les 12 h (ou via Tableau de bord > Mises à jour > "Vérifier à
+    // nouveau", peu visible). Ce bouton force une vérification immédiate
+    // des dépôts GitHub de l'extension et du thème.
+    // ----------------------------------------------------------------
+    public static function add_updates_page() {
+        add_submenu_page(
+            'seliweb',
+            __( 'Mises à jour', 'seliweb' ),
+            __( 'Mises à jour', 'seliweb' ),
+            'manage_options',
+            'seliweb_updates',
+            array( __CLASS__, 'render_updates_page' )
+        );
+    }
+
+    public static function handle_force_check() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
+        }
+        check_admin_referer( 'seliweb_force_update_check' );
+
+        // Vide les transients WP (ce qui, via nos hooks delete_site_transient_*,
+        // vide aussi notre cache GitHub de 6 h), puis relance la détection.
+        delete_site_transient( 'update_plugins' );
+        delete_site_transient( 'update_themes' );
+        wp_update_plugins();
+        wp_update_themes();
+
+        wp_safe_redirect( add_query_arg(
+            array( 'page' => 'seliweb_updates', 'checked' => '1' ),
+            admin_url( 'admin.php' )
+        ) );
+        exit;
+    }
+
+    public static function render_updates_page() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+
+        if ( isset( $_GET['checked'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>'
+                . esc_html__( 'Vérification effectuée.', 'seliweb' ) . '</p></div>';
+        }
+
+        $plugin_release = self::get_release( self::GH_REPO_PLUGIN );
+        $theme_release  = self::get_release( self::GH_REPO_THEME );
+        $theme_obj      = wp_get_theme( self::THEME_SLUG );
+
+        $lignes = array(
+            array(
+                'nom'       => __( 'Extension Seliweb', 'seliweb' ),
+                'installee' => defined( 'SELIWEB_VERSION' ) ? SELIWEB_VERSION : '?',
+                'dispo'     => $plugin_release ? $plugin_release['version'] : null,
+                'page'      => $plugin_release['page_url'] ?? '',
+            ),
+            array(
+                'nom'       => __( 'Thème Seliweb View', 'seliweb' ),
+                'installee' => $theme_obj->exists() ? $theme_obj->get( 'Version' ) : '—',
+                'dispo'     => $theme_release ? $theme_release['version'] : null,
+                'page'      => $theme_release['page_url'] ?? '',
+            ),
+        );
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e( 'Mises à jour Seliweb', 'seliweb' ); ?></h1>
+
+            <table class="widefat striped" style="max-width:760px;margin-top:16px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Composant', 'seliweb' ); ?></th>
+                        <th><?php esc_html_e( 'Version installée', 'seliweb' ); ?></th>
+                        <th><?php esc_html_e( 'Dernière version', 'seliweb' ); ?></th>
+                        <th><?php esc_html_e( 'État', 'seliweb' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ( $lignes as $l ) : ?>
+                    <tr>
+                        <td><strong><?php echo esc_html( $l['nom'] ); ?></strong></td>
+                        <td><?php echo esc_html( $l['installee'] ); ?></td>
+                        <td>
+                            <?php if ( $l['dispo'] ) : ?>
+                                <?php echo $l['page']
+                                    ? '<a href="' . esc_url( $l['page'] ) . '" target="_blank" rel="noopener">' . esc_html( $l['dispo'] ) . '</a>'
+                                    : esc_html( $l['dispo'] ); ?>
+                            <?php else : ?>
+                                <em><?php esc_html_e( 'GitHub injoignable', 'seliweb' ); ?></em>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php
+                            if ( ! $l['dispo'] || '?' === $l['installee'] || '—' === $l['installee'] ) {
+                                echo '—';
+                            } elseif ( version_compare( $l['dispo'], $l['installee'], '>' ) ) {
+                                echo '<span style="color:#b32d2e;font-weight:600;">'
+                                    . esc_html__( 'Mise à jour disponible', 'seliweb' ) . '</span>';
+                            } else {
+                                echo '<span style="color:#1d6a4a;">'
+                                    . esc_html__( 'À jour', 'seliweb' ) . '</span>';
+                            }
+                            ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:20px;">
+                <input type="hidden" name="action" value="seliweb_force_update_check">
+                <?php wp_nonce_field( 'seliweb_force_update_check' ); ?>
+                <?php submit_button( __( 'Rechercher les mises à jour maintenant', 'seliweb' ), 'primary', 'submit', false ); ?>
+            </form>
+
+            <?php if ( ! $plugin_release || ! $theme_release ) : ?>
+                <p class="description" style="margin-top:12px;max-width:760px;color:#b32d2e;">
+                    <?php esc_html_e( "GitHub n'a pas répondu pour l'un des composants. L'API GitHub est limitée à 60 requêtes par heure et par adresse IP : patientez quelques minutes avant de réessayer.", 'seliweb' ); ?>
+                </p>
+            <?php endif; ?>
+
+            <p class="description" style="margin-top:12px;max-width:760px;">
+                <?php
+                printf(
+                    /* translators: %s : URL de l'écran Mises à jour de WordPress */
+                    wp_kses(
+                        __( "Quand une mise à jour est disponible, appliquez-la depuis <a href=\"%s\">Tableau de bord → Mises à jour</a>. La détection est mise en cache 6 h ; ce bouton force un contrôle immédiat.", 'seliweb' ),
+                        array( 'a' => array( 'href' => array() ) )
+                    ),
+                    esc_url( admin_url( 'update-core.php' ) )
+                );
+                ?>
+            </p>
+        </div>
+        <?php
     }
 }
