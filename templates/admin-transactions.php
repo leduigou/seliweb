@@ -9,6 +9,7 @@ $tm = $wpdb->prefix . 'seliweb_membres';
 
 $sel      = Seliweb_Transactions::get_sel_info();
 $page_url = admin_url( 'admin.php?page=seliweb_transactions' );
+$tab      = ( isset( $_GET['tab'] ) && $_GET['tab'] === 'soldes' ) ? 'soldes' : 'transactions';
 
 if ( ! $sel['actif'] || ! $sel['groupe_id'] ) { ?>
 <div class="wrap">
@@ -40,6 +41,91 @@ if ( $action === 'modifier' && $txn_id ) {
 }
 ?>
 <div class="wrap">
+
+<h2 class="nav-tab-wrapper" style="margin-bottom:20px;">
+    <a href="<?php echo esc_url( $page_url ); ?>" class="nav-tab <?php echo $tab === 'transactions' ? 'nav-tab-active' : ''; ?>">
+        <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
+    </a>
+    <a href="<?php echo esc_url( add_query_arg( 'tab', 'soldes', $page_url ) ); ?>" class="nav-tab <?php echo $tab === 'soldes' ? 'nav-tab-active' : ''; ?>">
+        <?php esc_html_e( 'Solde des comptes', 'seliweb' ); ?>
+    </a>
+</h2>
+
+<?php if ( $tab === 'soldes' ) :
+    // ================================================================
+    // Solde des comptes : un compte par membre du groupe SEL (+ le
+    // compte du SEL lui-même), même périmètre que les transactions
+    // (uniquement les sélistes et la monnaie du SEL).
+    // ================================================================
+    $soldes = array();
+    foreach ( $membres_sel as $mb ) {
+        $nom = intval( $mb->numero_sel ) === 1
+            ? __( 'Compte du SEL', 'seliweb' )
+            : trim( ( $mb->prenom ?? '' ) . ' ' . ( $mb->nom ?? '' ) );
+        $soldes[] = array(
+            'numero' => (int) $mb->numero_sel,
+            'nom'    => $nom,
+            'solde'  => Seliweb_Transactions::get_balance( (int) $mb->id ),
+        );
+    }
+    ?>
+    <h1><?php esc_html_e( 'Solde des comptes', 'seliweb' ); ?></h1>
+
+    <p>
+        <input type="search" id="swv_solde_recherche" class="regular-text"
+               placeholder="<?php esc_attr_e( 'Rechercher par nom ou numéro…', 'seliweb' ); ?>"
+               style="max-width:320px;">
+    </p>
+
+    <table class="wp-list-table widefat fixed striped" id="swv_solde_table">
+        <thead>
+            <tr>
+                <th style="width:70px;"><?php esc_html_e( 'N°', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
+                <th style="width:130px;text-align:right;"><?php esc_html_e( 'Solde', 'seliweb' ); ?></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if ( ! $soldes ) : ?>
+                <tr><td colspan="3" style="text-align:center;padding:20px;"><?php esc_html_e( 'Aucun membre.', 'seliweb' ); ?></td></tr>
+            <?php else : foreach ( $soldes as $s ) :
+                $solde_fmt = $s['solde'] . ( $symbole_mon ? ' ' . $symbole_mon : '' );
+                $couleur   = $s['solde'] < 0 ? '#c0392b' : ( $s['solde'] > 0 ? '#27ae60' : '#555' );
+                $recherche = mb_strtolower( $s['numero'] . ' ' . $s['nom'], 'UTF-8' );
+                ?>
+                <tr data-recherche="<?php echo esc_attr( $recherche ); ?>">
+                    <td><?php echo esc_html( $s['numero'] ); ?></td>
+                    <td><?php echo esc_html( $s['nom'] ); ?></td>
+                    <td style="text-align:right;color:<?php echo esc_attr( $couleur ); ?>;font-weight:600;">
+                        <?php echo esc_html( $solde_fmt ); ?>
+                    </td>
+                </tr>
+            <?php endforeach; endif; ?>
+        </tbody>
+    </table>
+
+    <p class="description" id="swv_solde_vide" style="display:none;"><?php esc_html_e( 'Aucun compte ne correspond à cette recherche.', 'seliweb' ); ?></p>
+
+    <script>
+    (function(){
+        var input = document.getElementById('swv_solde_recherche');
+        var rows  = document.querySelectorAll('#swv_solde_table tbody tr[data-recherche]');
+        var vide  = document.getElementById('swv_solde_vide');
+        if (!input || !rows.length) return;
+        input.addEventListener('input', function(){
+            var q = this.value.toLowerCase().trim();
+            var visibles = 0;
+            rows.forEach(function(tr){
+                var ok = !q || tr.dataset.recherche.indexOf(q) !== -1;
+                tr.style.display = ok ? '' : 'none';
+                if (ok) visibles++;
+            });
+            if (vide) vide.style.display = visibles === 0 ? '' : 'none';
+        });
+    })();
+    </script>
+
+<?php else : ?>
 
 <?php if ( isset( $_GET['added'] ) ) : ?>
     <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Transaction ajoutée.', 'seliweb' ); ?></p></div>
@@ -432,6 +518,8 @@ if ( $f_date ) { $filtres_actifs[] = sprintf( __( 'Date : %s', 'seliweb' ), $f_d
         <?php endif; ?>
     </div>
     <?php endif; ?>
+
+<?php endif; ?>
 
 <?php endif; ?>
 </div>

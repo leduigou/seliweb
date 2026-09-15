@@ -145,6 +145,59 @@ class Seliweb_Annonces {
             }
         }
 
+        // Validation : cohérence du choix de photo (même logique que côté
+        // Mon compte, voir Seliweb::handle_mon_compte_post()) —
+        //  - pas de photo du tout  => "image de la rubrique" doit être coché ;
+        //  - 2 photos ou plus      => une doit être désignée comme principale.
+        $id_post_v      = intval( $_POST['id'] ?? 0 );
+        $ta_photos_v    = $wpdb->prefix . 'seliweb_annonces_photos';
+        $choix_photo_v  = sanitize_text_field( $_POST['photo_principale'] ?? '' );
+        $a_supprimer_v  = array_map( 'intval', (array) ( $_POST['supprimer_photo'] ?? array() ) );
+        $existantes_kept_v = 0;
+        if ( 'update_annonce' === $action && $id_post_v ) {
+            $existantes_kept_v = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM $ta_photos_v WHERE annonce_id=%d" .
+                ( $a_supprimer_v ? ' AND id NOT IN (' . implode( ',', $a_supprimer_v ) . ')' : '' ),
+                $id_post_v
+            ) );
+        }
+        $nouvelles_count_v = 0;
+        for ( $i = 1; $i <= 10; $i++ ) {
+            if ( ! empty( $_FILES[ 'photo_new_' . $i ]['name'] ) ) $nouvelles_count_v++;
+        }
+        $total_photos_v = $existantes_kept_v + $nouvelles_count_v;
+
+        if ( $total_photos_v === 0 && $choix_photo_v !== 'rubrique' ) {
+            wp_safe_redirect( add_query_arg( array(
+                'page'   => 'seliweb_annonces',
+                'action' => $action === 'add_annonce' ? 'new' : 'edit',
+                'id'     => $id_post_v ?: '',
+                'error'  => 'no_photo_choice',
+            ), admin_url('admin.php') ) );
+            exit;
+        }
+        if ( $total_photos_v >= 2 && $choix_photo_v !== 'rubrique' ) {
+            $principale_valide_v = false;
+            if ( strpos( $choix_photo_v, 'existing_' ) === 0 ) {
+                $cid_v = intval( substr( $choix_photo_v, 9 ) );
+                $principale_valide_v = ! in_array( $cid_v, $a_supprimer_v, true ) && (bool) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT id FROM $ta_photos_v WHERE id=%d AND annonce_id=%d", $cid_v, $id_post_v
+                ) );
+            } elseif ( strpos( $choix_photo_v, 'new_' ) === 0 ) {
+                $slot_v = intval( substr( $choix_photo_v, 4 ) );
+                $principale_valide_v = ! empty( $_FILES[ 'photo_new_' . $slot_v ]['name'] );
+            }
+            if ( ! $principale_valide_v ) {
+                wp_safe_redirect( add_query_arg( array(
+                    'page'   => 'seliweb_annonces',
+                    'action' => $action === 'add_annonce' ? 'new' : 'edit',
+                    'id'     => $id_post_v ?: '',
+                    'error'  => 'no_principale',
+                ), admin_url('admin.php') ) );
+                exit;
+            }
+        }
+
         $data = array(
             'categorie_id'    => $categorie_id,
             'rubrique_id'     => $rubrique_id,
@@ -444,6 +497,8 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_bad_format' )  echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_upload_error' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo_choice' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Choisissez l'image de la rubrique ou ajoutez une image.", 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_principale' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Plusieurs photos sont ajoutées : choisissez laquelle est la photo principale.', 'seliweb' ) . '</p></div>';
 
         // Tri par colonne
         $allowed_orderby = [
@@ -817,56 +872,50 @@ class Seliweb_Annonces {
                     </td>
                 </tr>
 
-                <!-- Photos -->
+                <!-- Photos : ligne pleine largeur (colspan) pour laisser plus de
+                     place à la colonne d'ajout de photos qu'un <td> normal. -->
                 <tr>
-                    <th><?php esc_html_e( 'Photos', 'seliweb' ); ?></th>
-                    <td>
-                        <p class="description" id="adm_photos_info">
-                            <?php printf( esc_html__( 'Photos actuelles : %1$d / %2$d (selon le groupe du membre).', 'seliweb' ), count( $photos_existantes ), $photos_max_init ); ?>
-                        </p>
-
-                        <p style="margin-top:8px;">
-                            <label>
-                                <input type="radio" name="photo_principale" value="rubrique"
-                                       <?php checked( ! $item || $item->photo_principale_id === null ); ?>>
-                                <?php esc_html_e( 'Utiliser l\'image de la rubrique', 'seliweb' ); ?>
-                            </label>
-                            <img id="adm_rubrique_apercu" src="<?php echo esc_url( $item && $item->rubrique_id ? ( $rubrique_images[ $item->rubrique_id ] ?? '' ) : '' ); ?>"
-                                 style="max-height:40px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $item && $item->rubrique_id && ! empty( $rubrique_images[ $item->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
-                        </p>
-                        <p class="description"><?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum.', 'seliweb' ); ?></p>
-
-                        <?php if ( $photos_existantes ) : ?>
-                            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
-                                <?php foreach ( $photos_existantes as $p ) : ?>
-                                    <div style="text-align:center;">
-                                        <img src="<?php echo esc_url( $p->url ); ?>" style="max-height:80px;display:block;border-radius:3px;border:1px solid #ddd;">
-                                        <label style="display:block;font-size:11px;margin-top:2px;">
-                                            <input type="radio" name="photo_principale" value="existing_<?php echo intval( $p->id ); ?>"
-                                                   <?php checked( $item && (int) $item->photo_principale_id === (int) $p->id ); ?>>
-                                            <?php esc_html_e( 'Principale', 'seliweb' ); ?>
-                                        </label>
-                                        <label style="display:block;font-size:11px;color:#b32d2e;">
-                                            <input type="checkbox" name="supprimer_photo[]" value="<?php echo intval( $p->id ); ?>">
-                                            <?php esc_html_e( 'Supprimer', 'seliweb' ); ?>
-                                        </label>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <div id="adm_photos_slots">
-                            <?php for ( $i = 1; $i <= 10; $i++ ) : ?>
-                                <div class="seliweb-photo-slot" data-slot="<?php echo $i; ?>"
-                                     style="<?php echo $i <= max( 0, $photos_max_init - count( $photos_existantes ) ) ? '' : 'display:none;'; ?>margin-bottom:8px;">
-                                    <input type="file" name="photo_new_<?php echo $i; ?>" accept="image/jpeg,image/png,image/gif,image/webp">
-                                    <label style="font-size:11px;">
-                                        <input type="radio" name="photo_principale" value="new_<?php echo $i; ?>">
-                                        <?php esc_html_e( 'Principale', 'seliweb' ); ?>
-                                    </label>
+                    <td colspan="2">
+                        <label style="display:block;font-weight:600;margin:1em 0 8px;"><?php esc_html_e( 'Photos', 'seliweb' ); ?></label>
+                        <div class="seliweb-photo-row">
+                            <div class="seliweb-photo-col-add">
+                                <div id="adm_photos_gallery" class="seliweb-photo-gallery">
+                                    <?php foreach ( $photos_existantes as $p ) : ?>
+                                        <div class="seliweb-photo-card" data-kind="existing">
+                                            <img src="<?php echo esc_url( $p->url ); ?>" class="seliweb-photo-preview" alt="">
+                                            <label class="seliweb-photo-card-principale">
+                                                <input type="radio" name="photo_principale" value="existing_<?php echo intval( $p->id ); ?>"
+                                                       <?php checked( $item && (int) $item->photo_principale_id === (int) $p->id ); ?>>
+                                                <?php esc_html_e( 'Principale', 'seliweb' ); ?>
+                                            </label>
+                                            <label class="seliweb-photo-card-remove">
+                                                <input type="checkbox" name="supprimer_photo[]" value="<?php echo intval( $p->id ); ?>">
+                                                <?php esc_html_e( 'Supprimer', 'seliweb' ); ?>
+                                            </label>
+                                        </div>
+                                    <?php endforeach; ?>
                                 </div>
-                            <?php endfor; ?>
+                                <p class="description"><?php esc_html_e( 'Ajoutez vos propres photos — formats JPG, PNG, GIF, WEBP, 5 Mo maximum.', 'seliweb' ); ?></p>
+
+                                <p class="description" id="adm_photo_quota_hint" style="display:none;"></p>
+                                <div id="adm_photo_add_zone" class="seliweb-photo-gallery"></div>
+                                <button type="button" class="button button-small" id="adm_photo_add_btn" style="display:none;">
+                                    <?php esc_html_e( '+ Afficher d\'autres images', 'seliweb' ); ?>
+                                </button>
+                            </div>
+
+                            <div class="seliweb-photo-col-rubrique">
+                                <label>
+                                    <input type="radio" name="photo_principale" value="rubrique" id="adm_photo_rubrique"
+                                           <?php checked( $item && $item->photo_principale_id === null ); ?>>
+                                    <?php esc_html_e( 'Utiliser l\'image de la rubrique', 'seliweb' ); ?>
+                                </label>
+                                <img id="adm_rubrique_apercu" src="<?php echo esc_url( $item && $item->rubrique_id ? ( $rubrique_images[ $item->rubrique_id ] ?? '' ) : '' ); ?>"
+                                     style="max-height:40px;vertical-align:middle;margin-left:8px;border-radius:3px;border:1px solid #ddd;<?php echo ( $item && $item->rubrique_id && ! empty( $rubrique_images[ $item->rubrique_id ] ) ) ? '' : 'display:none;'; ?>">
+                            </div>
                         </div>
+
+                        <p id="adm_photo_error" style="display:none;color:#b32d2e;margin-top:10px;"></p>
                     </td>
                 </tr>
             </table>
@@ -889,7 +938,6 @@ class Seliweb_Annonces {
 
         // Image de chaque rubrique (aperçu de l'option "Utiliser l'image de la rubrique")
         var selAdmRubriqueImages = <?php echo wp_json_encode( $rubrique_images ); ?>;
-        var selAdmPhotosExistantes = <?php echo count( $photos_existantes ); ?>;
 
         function selAdmUpdateRubriqueImage(rubriqueId) {
             var img = document.getElementById('adm_rubrique_apercu');
@@ -898,14 +946,130 @@ class Seliweb_Annonces {
             else { img.style.display = 'none'; }
         }
 
-        function selAdmUpdatePhotoSlots(photosMax) {
-            var restant = Math.max(0, photosMax - selAdmPhotosExistantes);
-            document.getElementById('adm_photos_info').textContent =
-                <?php echo wp_json_encode( __( 'Photos actuelles : ', 'seliweb' ) ); ?> + selAdmPhotosExistantes + ' / ' + photosMax
-                + <?php echo wp_json_encode( ' (' . __( 'selon le groupe du membre', 'seliweb' ) . ').' ); ?>;
-            document.querySelectorAll('#adm_photos_slots .seliweb-photo-slot').forEach(function(slot){
-                slot.style.display = (parseInt(slot.dataset.slot, 10) <= restant) ? '' : 'none';
+        // --- Photos : choix rubrique / ajout progressif d'images -----------
+        var admPhotosMax     = <?php echo (int) $photos_max_init; ?>;
+        var admSlotCounter   = 0;
+        var admTexteAjouter    = <?php echo wp_json_encode( __( 'Ajouter une image', 'seliweb' ) ); ?>;
+        var admTextePrincipale = <?php echo wp_json_encode( __( 'Principale', 'seliweb' ) ); ?>;
+        var admTexteRetirer    = <?php echo wp_json_encode( __( 'Retirer', 'seliweb' ) ); ?>;
+        var admTexteBouton     = <?php echo wp_json_encode( __( "+ Afficher d'autres images", 'seliweb' ) ); ?>;
+        var admTexteQuota      = <?php echo wp_json_encode( __( 'Vous pouvez ajouter %d image(s) supplémentaire(s) (%d maximum pour ce membre).', 'seliweb' ) ); ?>;
+        var admTexteParcourir    = <?php echo wp_json_encode( __( 'Parcourir…', 'seliweb' ) ); ?>;
+        var admTexteAucunFichier = <?php echo wp_json_encode( __( 'Aucun fichier choisi.', 'seliweb' ) ); ?>;
+
+        var admPhotoGallery = document.getElementById('adm_photos_gallery');
+        var admPhotoZone    = document.getElementById('adm_photo_add_zone');
+        var admPhotoAddBtn  = document.getElementById('adm_photo_add_btn');
+        var admPhotoHint    = document.getElementById('adm_photo_quota_hint');
+        var admPhotoRubrique = document.getElementById('adm_photo_rubrique');
+
+        function admPhotoKeptExisting(){
+            return Array.prototype.slice.call(admPhotoGallery.querySelectorAll('.seliweb-photo-card')).filter(function(card){
+                var del = card.querySelector('input[type=checkbox]');
+                return !(del && del.checked);
             });
+        }
+        function admPhotoNewSlots(){
+            return Array.prototype.slice.call(admPhotoZone.querySelectorAll('.seliweb-photo-card'));
+        }
+        function admPhotoNewSlotsFilled(){
+            return admPhotoNewSlots().filter(function(card){
+                var f = card.querySelector('input[type=file]');
+                return f && f.files && f.files.length > 0;
+            });
+        }
+
+        function admPhotoRefresh(){
+            var kept   = admPhotoKeptExisting();
+            var slots  = admPhotoNewSlots();
+            var filled = admPhotoNewSlotsFilled();
+            var total  = kept.length + filled.length;
+            var used   = kept.length + slots.length;
+            var restant = admPhotosMax - used;
+
+            // Tant qu'il n'y a qu'une seule photo, elle est cochée comme
+            // principale par défaut (même si le choix reste masqué) — sinon,
+            // dès l'ajout d'une 2e photo, les deux radios apparaissent non
+            // cochées et bloquent l'envoi si personne ne clique sur rien.
+            if (total === 1) {
+                var seule = kept.length === 1 ? kept[0] : filled[0];
+                var rSeule = seule && seule.querySelector('input[name="photo_principale"]');
+                if (rSeule) rSeule.checked = true;
+            }
+
+            kept.forEach(function(card){
+                var lbl = card.querySelector('.seliweb-photo-card-principale');
+                if (lbl) lbl.style.display = (total >= 2) ? '' : 'none';
+            });
+            slots.forEach(function(card){
+                var f   = card.querySelector('input[type=file]');
+                var lbl = card.querySelector('.seliweb-photo-card-principale');
+                var isFilled = f && f.files && f.files.length > 0;
+                if (lbl) lbl.style.display = (isFilled && total >= 2) ? '' : 'none';
+            });
+
+            if (total >= 1 && restant > 0) {
+                admPhotoAddBtn.style.display = '';
+                admPhotoAddBtn.textContent = admTexteBouton;
+                admPhotoHint.style.display = '';
+                admPhotoHint.textContent = admTexteQuota.replace('%d', restant).replace('%d', admPhotosMax);
+            } else {
+                admPhotoAddBtn.style.display = 'none';
+                admPhotoHint.style.display = 'none';
+            }
+        }
+
+        function admPhotoAddSlot(premiere){
+            admSlotCounter++;
+            var n = admSlotCounter;
+            var card = document.createElement('div');
+            card.className = 'seliweb-photo-card seliweb-photo-card-new';
+            var inputId = 'adm_photo_file_' + n;
+            card.innerHTML =
+                '<div class="seliweb-photo-card-file">' +
+                    (premiere ? '<span class="seliweb-photo-card-file-label">' + admTexteAjouter + '</span>' : '') +
+                    '<input type="file" name="photo_new_' + n + '" id="' + inputId + '" accept="image/jpeg,image/png,image/gif,image/webp" class="seliweb-file-real" hidden>' +
+                    '<label for="' + inputId + '" class="button button-small seliweb-photo-browse-btn">' + admTexteParcourir + '</label>' +
+                    '<span class="seliweb-photo-card-status">' + admTexteAucunFichier + '</span>' +
+                    '<span class="seliweb-photo-card-filename"></span>' +
+                '</div>' +
+                '<label class="seliweb-photo-card-principale" style="display:none;">' +
+                    '<input type="radio" name="photo_principale" value="new_' + n + '"> ' + admTextePrincipale +
+                '</label>' +
+                '<button type="button" class="seliweb-photo-card-remove-btn">' + admTexteRetirer + '</button>';
+            admPhotoZone.appendChild(card);
+
+            card.querySelector('input[type=file]').addEventListener('change', function(){
+                var choisi     = !!(this.files && this.files[0]);
+                var statut     = card.querySelector('.seliweb-photo-card-status');
+                var nomFichier = card.querySelector('.seliweb-photo-card-filename');
+                if (statut)     statut.textContent = choisi ? '' : admTexteAucunFichier;
+                if (nomFichier) nomFichier.textContent = choisi ? this.files[0].name : '';
+
+                var autresPhotos = admPhotoKeptExisting().length + admPhotoNewSlotsFilled().filter(function(c){ return c !== card; }).length;
+                if (autresPhotos === 0 && choisi && admPhotoRubrique) {
+                    admPhotoRubrique.checked = false;
+                }
+                admPhotoRefresh();
+            });
+            card.querySelector('.seliweb-photo-card-remove-btn').addEventListener('click', function(){
+                card.remove();
+                admPhotoRefresh();
+            });
+
+            admPhotoRefresh();
+        }
+
+        if (admPhotoAddBtn) {
+            admPhotoAddBtn.addEventListener('click', function(){ admPhotoAddSlot(false); });
+            admPhotoGallery.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+                cb.addEventListener('change', admPhotoRefresh);
+            });
+        }
+
+        function admPhotoSetMax(photosMax){
+            admPhotosMax = photosMax;
+            admPhotoRefresh();
         }
 
         // Toutes les monnaies indexées par id
@@ -921,11 +1085,11 @@ class Seliweb_Annonces {
                 info.textContent = '';
                 selAdmMonnaiesFiltrees = selAdmMonnaies;
             selAdmResetPrix(selAdmMonnaies); // toutes monnaies si pas de membre
-                selAdmUpdatePhotoSlots(1);
+                admPhotoSetMax(1);
                 return;
             }
             var d = selAdmMembresData[membreId];
-            selAdmUpdatePhotoSlots(d.photosMax);
+            admPhotoSetMax(d.photosMax);
 
             // Afficher info limite
             var msg = '';
@@ -963,6 +1127,58 @@ class Seliweb_Annonces {
             var memSel = document.getElementById('membre_id');
             if (memSel && memSel.value) selAdmChangeMembre(memSel.value);
         });
+
+        // Photos : premier emplacement affiché sans clic si aucune photo existante
+        document.addEventListener('DOMContentLoaded', function(){
+            if (admPhotoKeptExisting().length === 0) {
+                admPhotoAddSlot(true);
+            } else {
+                admPhotoRefresh();
+            }
+        });
+
+        // Contrôles avant envoi : cf. les règles côté serveur dans handle_post().
+        // Enregistré tout de suite (pas dans DOMContentLoaded) pour passer
+        // avant le script admin.js chargé en pied de page, qui affiche
+        // l'overlay "Enregistrement en cours" sans condition dès la
+        // soumission — sinon l'overlay reste affiché indéfiniment quand on
+        // bloque l'envoi (le formulaire n'est jamais réellement soumis, donc
+        // rien ne vient jamais le masquer). On le masque aussi explicitement
+        // par sécurité, quel que soit l'ordre d'exécution des scripts.
+        (function(){
+            var form = document.getElementById('seliweb-admin-form-annonce');
+            if (!form) return;
+            form.addEventListener('submit', function(e){
+                var err = document.getElementById('adm_photo_error');
+                var total = admPhotoKeptExisting().length + admPhotoNewSlotsFilled().length;
+                var rubriqueChecked = admPhotoRubrique && admPhotoRubrique.checked;
+                var bloque = false;
+
+                if (total === 0 && !rubriqueChecked) {
+                    err.textContent = <?php echo wp_json_encode( __( "Choisissez l'image de la rubrique ou ajoutez une image.", 'seliweb' ) ); ?>;
+                    bloque = true;
+                } else if (total >= 2 && !rubriqueChecked) {
+                    var choisie = false;
+                    document.querySelectorAll('input[name="photo_principale"]').forEach(function(r){
+                        if (r.checked && r.value !== 'rubrique') choisie = true;
+                    });
+                    if (!choisie) {
+                        err.textContent = <?php echo wp_json_encode( __( 'Plusieurs photos sont ajoutées : choisissez laquelle est la photo principale.', 'seliweb' ) ); ?>;
+                        bloque = true;
+                    }
+                }
+
+                if (bloque) {
+                    err.style.display = '';
+                    err.scrollIntoView({ behavior:'smooth', block:'center' });
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    document.querySelectorAll('.seliweb-saving-overlay').forEach(function(o){ o.style.display = 'none'; });
+                    return false;
+                }
+                err.style.display = 'none';
+            });
+        })();
 
         function selAdmRub(catId) {
             var opts = document.querySelectorAll('#rubrique_id option[data-categorie]');

@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.9
+ * Version: 0.9.91
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.9' );
+define( 'SELIWEB_VERSION', '0.9.91' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -1162,6 +1162,57 @@ class Seliweb {
                         'sel_action' => $id_post ? 'modifier' : 'creer',
                         'sel_id'     => $id_post ?: '',
                         'sel_error'  => 'bad_date',
+                    ), $page_url ) );
+                    exit;
+                }
+            }
+
+            // Validation : cohérence du choix de photo (voir aussi
+            // Seliweb_Annonces::save_annonce_photos() qui applique la même
+            // logique de secours côté serveur) —
+            //  - pas de photo du tout  => "image de la rubrique" doit être coché ;
+            //  - 2 photos ou plus      => une doit être désignée comme principale.
+            $ta_photos_f      = $wpdb->prefix . 'seliweb_annonces_photos';
+            $choix_photo_f    = sanitize_text_field( $_POST['photo_principale'] ?? '' );
+            $a_supprimer_f    = array_map( 'intval', (array) ( $_POST['supprimer_photo'] ?? array() ) );
+            $existantes_kept_f = 0;
+            if ( ! $is_new ) {
+                $existantes_kept_f = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM $ta_photos_f WHERE annonce_id=%d" .
+                    ( $a_supprimer_f ? ' AND id NOT IN (' . implode( ',', $a_supprimer_f ) . ')' : '' ),
+                    $id_post
+                ) );
+            }
+            $nouvelles_count_f = 0;
+            for ( $i = 1; $i <= 10; $i++ ) {
+                if ( ! empty( $_FILES[ 'photo_new_' . $i ]['name'] ) ) $nouvelles_count_f++;
+            }
+            $total_photos_f = $existantes_kept_f + $nouvelles_count_f;
+
+            if ( $total_photos_f === 0 && $choix_photo_f !== 'rubrique' ) {
+                wp_safe_redirect( add_query_arg( array(
+                    'sel_action' => $id_post ? 'modifier' : 'creer',
+                    'sel_id'     => $id_post ?: '',
+                    'sel_error'  => 'no_photo_choice',
+                ), $page_url ) );
+                exit;
+            }
+            if ( $total_photos_f >= 2 && $choix_photo_f !== 'rubrique' ) {
+                $principale_valide_f = false;
+                if ( strpos( $choix_photo_f, 'existing_' ) === 0 ) {
+                    $cid_f = intval( substr( $choix_photo_f, 9 ) );
+                    $principale_valide_f = ! in_array( $cid_f, $a_supprimer_f, true ) && (bool) $wpdb->get_var( $wpdb->prepare(
+                        "SELECT id FROM $ta_photos_f WHERE id=%d AND annonce_id=%d", $cid_f, $id_post
+                    ) );
+                } elseif ( strpos( $choix_photo_f, 'new_' ) === 0 ) {
+                    $slot_f = intval( substr( $choix_photo_f, 4 ) );
+                    $principale_valide_f = ! empty( $_FILES[ 'photo_new_' . $slot_f ]['name'] );
+                }
+                if ( ! $principale_valide_f ) {
+                    wp_safe_redirect( add_query_arg( array(
+                        'sel_action' => $id_post ? 'modifier' : 'creer',
+                        'sel_id'     => $id_post ?: '',
+                        'sel_error'  => 'no_principale',
                     ), $page_url ) );
                     exit;
                 }
