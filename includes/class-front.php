@@ -624,3 +624,102 @@ if ( ! function_exists( 'swv_load_page_template' ) ) {
     }
     add_filter( 'template_include', 'swv_load_page_template' );
 }
+
+// Barre latérale de la page Annonces (widgets affichés à côté de la liste,
+// ex. le widget de recherche — voir class-recherche.php). Enregistrée par
+// le plugin, comme le modèle de page ci-dessus, afin de fonctionner avec
+// n'importe quel thème actif et non seulement seliweb-view.
+if ( ! function_exists( 'swv_register_sidebar' ) ) {
+    function swv_register_sidebar() {
+        register_sidebar( array(
+            'name'          => __( 'Sidebar annonces', 'seliweb' ),
+            'id'            => 'swv-sidebar',
+            'description'   => __( 'Widgets affichés à côté de la liste des annonces.', 'seliweb' ),
+            'before_widget' => '<div class="swv-widget">',
+            'after_widget'  => '</div>',
+            'before_title'  => '<h3 class="swv-widget-title">',
+            'after_title'   => '</h3>',
+        ) );
+    }
+    add_action( 'widgets_init', 'swv_register_sidebar' );
+}
+
+// ================================================================
+// HABILLAGE LÉGER DE wp-login.php (mot de passe oublié, création du
+// mot de passe à l'inscription, réinitialisation).
+//
+// Ces écrans restent ceux, natifs, de WordPress — on ne réécrit ni le
+// formulaire ni la vérification de la clé de réinitialisation, donc la
+// case « Valider un mot de passe faible » (gérée entièrement par le
+// cœur de WordPress) continue de fonctionner sans rien y toucher. On se
+// contente d'un habillage visuel (couleurs, logo) au-dessus, avec des
+// couleurs neutres qui ne dépendent d'aucun thème précis : le rendu est
+// donc cohérent quel que soit le thème actif, y compris un autre que
+// seliweb-view.
+// ================================================================
+if ( ! function_exists( 'swv_login_style' ) ) {
+    function swv_login_style() {
+        $logo_id  = get_theme_mod( 'custom_logo' );
+        $logo_src = $logo_id ? wp_get_attachment_image_src( $logo_id, 'medium' ) : false;
+        ?>
+        <style>
+            body.login {
+                background: #f4f6f4;
+            }
+            <?php if ( $logo_src ) : ?>
+            body.login h1 a {
+                background-image: url('<?php echo esc_url( $logo_src[0] ); ?>');
+                background-size: contain;
+                width: 260px;
+                height: 80px;
+            }
+            <?php endif; ?>
+            body.login form#loginform,
+            body.login form#registerform,
+            body.login form#lostpasswordform,
+            body.login form#resetpassform {
+                border-radius: 6px;
+                box-shadow: 0 2px 10px rgba(0,0,0,.08);
+            }
+            body.login .button-primary {
+                background: #1d6a4a;
+                border-color: #134d35;
+                box-shadow: none;
+                text-shadow: none;
+            }
+            body.login .button-primary:hover,
+            body.login .button-primary:focus {
+                background: #134d35;
+                border-color: #134d35;
+            }
+            body.login form .input:focus,
+            body.login input[type="text"]:focus,
+            body.login input[type="password"]:focus,
+            body.login input[type="email"]:focus {
+                border-color: #1d6a4a;
+                box-shadow: 0 0 0 1px #1d6a4a;
+            }
+            body.login #nav a,
+            body.login #backtoblog a {
+                color: #1d6a4a;
+            }
+            body.login #login_error,
+            body.login .message,
+            body.login .success {
+                border-left-color: #1d6a4a;
+            }
+        </style>
+        <?php
+    }
+    add_action( 'login_enqueue_scripts', 'swv_login_style' );
+}
+
+if ( ! function_exists( 'swv_login_header_url' ) ) {
+    function swv_login_header_url() { return home_url( '/' ); }
+    add_filter( 'login_headerurl', 'swv_login_header_url' );
+}
+
+if ( ! function_exists( 'swv_login_header_text' ) ) {
+    function swv_login_header_text() { return get_bloginfo( 'name' ); }
+    add_filter( 'login_headertext', 'swv_login_header_text' );
+}

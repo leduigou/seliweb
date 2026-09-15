@@ -120,14 +120,18 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
             <?php if ( $photos_detail ) : ?>
                 <?php if ( count( $photos_detail ) === 1 ) : ?>
                 <div class="swv-detail-photos">
-                    <img src="<?php echo esc_url( $photos_detail[0]->url ); ?>" alt="">
+                    <img src="<?php echo esc_url( $photos_detail[0]->url ); ?>" alt=""
+                         class="swv-photo-zoomable" tabindex="0" role="button"
+                         aria-label="<?php esc_attr_e( 'Agrandir la photo', 'seliweb-view' ); ?>">
                 </div>
                 <?php else : ?>
                 <div class="swv-carousel" id="swv-carousel">
                     <div class="swv-carousel-track">
                         <?php foreach ( $photos_detail as $i => $p ) : ?>
                             <div class="swv-carousel-slide"<?php echo $i === 0 ? '' : ' style="display:none;"'; ?>>
-                                <img src="<?php echo esc_url( $p->url ); ?>" alt="">
+                                <img src="<?php echo esc_url( $p->url ); ?>" alt=""
+                                     class="swv-photo-zoomable" tabindex="0" role="button"
+                                     aria-label="<?php esc_attr_e( 'Agrandir la photo', 'seliweb-view' ); ?>">
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -137,26 +141,92 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
                 <p class="swv-carousel-count" id="swv-carousel-count">
                     <?php printf( esc_html__( '1 / %d photos', 'seliweb-view' ), count( $photos_detail ) ); ?>
                 </p>
+                <?php endif; ?>
+
+                <!-- Lightbox : agrandissement d'une photo (image unique ou carrousel) -->
+                <div class="swv-lightbox" id="swv-lightbox" hidden>
+                    <button type="button" class="swv-lightbox-close" aria-label="<?php esc_attr_e( 'Fermer', 'seliweb-view' ); ?>">&times;</button>
+                    <?php if ( count( $photos_detail ) > 1 ) : ?>
+                        <button type="button" class="swv-lightbox-prev" aria-label="<?php esc_attr_e( 'Photo précédente', 'seliweb-view' ); ?>">&lsaquo;</button>
+                    <?php endif; ?>
+                    <img src="" alt="" class="swv-lightbox-img">
+                    <?php if ( count( $photos_detail ) > 1 ) : ?>
+                        <button type="button" class="swv-lightbox-next" aria-label="<?php esc_attr_e( 'Photo suivante', 'seliweb-view' ); ?>">&rsaquo;</button>
+                        <p class="swv-lightbox-count"></p>
+                    <?php endif; ?>
+                </div>
                 <script>
                 (function(){
-                    var car = document.getElementById('swv-carousel');
-                    if (!car) return;
-                    var slides = car.querySelectorAll('.swv-carousel-slide');
+                    var urls = <?php echo wp_json_encode( wp_list_pluck( $photos_detail, 'url' ) ); ?>;
+
+                    // --- Carrousel (fond) — présent seulement s'il y a plusieurs photos ---
+                    var car      = document.getElementById('swv-carousel');
+                    var slides   = car ? car.querySelectorAll('.swv-carousel-slide') : [];
                     var compteur = document.getElementById('swv-carousel-count');
-                    var idx = 0;
+                    var idx      = 0;
+
                     function montrer(i) {
-                        slides.forEach(function(s, j){ s.style.display = (j === i) ? '' : 'none'; });
-                        if (compteur) compteur.textContent = (i + 1) + ' / ' + slides.length + ' photos';
+                        idx = i;
+                        if (slides.length) {
+                            slides.forEach(function(s, j){ s.style.display = (j === i) ? '' : 'none'; });
+                            if (compteur) compteur.textContent = (i + 1) + ' / ' + slides.length + ' photos';
+                        }
                     }
-                    car.querySelector('.swv-carousel-prev').addEventListener('click', function(){
-                        idx = (idx - 1 + slides.length) % slides.length; montrer(idx);
+                    if (car) {
+                        car.querySelector('.swv-carousel-prev').addEventListener('click', function(){
+                            montrer((idx - 1 + slides.length) % slides.length);
+                        });
+                        car.querySelector('.swv-carousel-next').addEventListener('click', function(){
+                            montrer((idx + 1) % slides.length);
+                        });
+                    }
+
+                    // --- Lightbox : agrandissement, synchronisé avec le carrousel ---
+                    var lb = document.getElementById('swv-lightbox');
+                    if (!lb) return;
+                    var lbImg   = lb.querySelector('.swv-lightbox-img');
+                    var lbPrev  = lb.querySelector('.swv-lightbox-prev');
+                    var lbNext  = lb.querySelector('.swv-lightbox-next');
+                    var lbCount = lb.querySelector('.swv-lightbox-count');
+                    var lbClose = lb.querySelector('.swv-lightbox-close');
+
+                    function afficherLightbox() {
+                        lbImg.src = urls[idx];
+                        if (lbCount) lbCount.textContent = (idx + 1) + ' / ' + urls.length;
+                        montrer(idx); // garde le carrousel en arrière-plan synchronisé
+                    }
+                    function ouvrirLightbox(i) {
+                        idx = i;
+                        afficherLightbox();
+                        lb.style.display = 'flex';
+                        document.body.style.overflow = 'hidden';
+                        lbClose.focus();
+                    }
+                    function fermerLightbox() {
+                        lb.style.display = 'none';
+                        document.body.style.overflow = '';
+                    }
+                    function suivante()   { idx = (idx + 1) % urls.length;               afficherLightbox(); }
+                    function precedente() { idx = (idx - 1 + urls.length) % urls.length; afficherLightbox(); }
+
+                    document.querySelectorAll('.swv-photo-zoomable').forEach(function(img, i){
+                        img.addEventListener('click', function(){ ouvrirLightbox(i); });
+                        img.addEventListener('keydown', function(e){
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirLightbox(i); }
+                        });
                     });
-                    car.querySelector('.swv-carousel-next').addEventListener('click', function(){
-                        idx = (idx + 1) % slides.length; montrer(idx);
+                    lbClose.addEventListener('click', fermerLightbox);
+                    lb.addEventListener('click', function(e){ if (e.target === lb) fermerLightbox(); });
+                    if (lbPrev) lbPrev.addEventListener('click', precedente);
+                    if (lbNext) lbNext.addEventListener('click', suivante);
+                    document.addEventListener('keydown', function(e){
+                        if (lb.style.display !== 'flex') return;
+                        if (e.key === 'Escape') fermerLightbox();
+                        else if (e.key === 'ArrowRight' && urls.length > 1) suivante();
+                        else if (e.key === 'ArrowLeft'  && urls.length > 1) precedente();
                     });
                 })();
                 </script>
-                <?php endif; ?>
             <?php elseif ( $rubrique_image ) : ?>
                 <div class="swv-detail-photos">
                     <img src="<?php echo esc_url( $rubrique_image ); ?>" alt="">

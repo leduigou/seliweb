@@ -1171,3 +1171,559 @@
 }
 .seliweb-evt-mc-reponses li { margin-bottom: 2px; }
 .seliweb-evt-mc-rq { font-weight: 600; }
+
+/* =================================================================
+   PAGE ANNONCES (liste + fiche détail) — mise en page fournie par le
+   plugin, indépendante du thème actif.
+   Tout le HTML de cette page (templates/page-annonces.php,
+   templates/parts/annonce-detail.php, includes/class-front.php) vit
+   dans le plugin ; ce CSS doit donc vivre ici aussi, pas dans
+   seliweb-view — sans quoi un autre thème afficherait cette page sans
+   aucun style.
+   Chaque couleur/police/rayon utilise une variable CSS avec une valeur
+   de repli (ex. var(--color-primary, #1d6a4a)) : un thème qui définit
+   ces variables dans son propre :root (comme seliweb-view) reskinne la
+   page automatiquement ; un thème qui ne les définit pas obtient quand
+   même un rendu correct grâce au repli.
+   ================================================================= */
+
+/* ---- Barre de recherche / filtres ------------------------------ */
+#swv-search {
+    background: var(--color-white, #fff);
+    border-bottom: 1px solid var(--color-border, #dde3dd);
+    padding: 16px 0;
+}
+.swv-search-inner {
+    max-width: var(--container, 1200px);
+    margin: 0 auto;
+    padding: 0 20px;
+}
+.swv-search-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+}
+.swv-search-form select {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    font-size: .9rem;
+    font-family: var(--font-body, 'Source Sans 3', 'Segoe UI', sans-serif);
+    background: var(--color-bg, #f4f6f4);
+    color: var(--color-text, #222);
+    cursor: pointer;
+    min-width: 150px;
+}
+.swv-search-form select:focus {
+    outline: none;
+    border-color: var(--color-primary, #1d6a4a);
+}
+.swv-search-btn {
+    padding: 8px 20px;
+    background: var(--color-primary, #1d6a4a);
+    color: var(--color-white, #fff);
+    border: none;
+    border-radius: var(--radius, 6px);
+    font-size: .9rem;
+    font-family: var(--font-body, 'Source Sans 3', 'Segoe UI', sans-serif);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+.swv-search-btn:hover { background: var(--color-primary-dk, #134d35); }
+.swv-reset-btn {
+    padding: 8px 16px;
+    background: transparent;
+    color: var(--color-text-soft, #555);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    font-size: .9rem;
+    font-family: var(--font-body, 'Source Sans 3', 'Segoe UI', sans-serif);
+    cursor: pointer;
+    transition: border-color .15s;
+}
+.swv-reset-btn:hover { border-color: var(--color-primary, #1d6a4a); color: var(--color-primary, #1d6a4a); }
+
+/* Recherche titre + texte (swv_render_search_box()) et variante intégrée
+   à la barre de filtres (.swv-search-q) */
+.swv-searchbox,
+.swv-search-q {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.swv-searchbox-input,
+.swv-search-q-input {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    font-size: .9rem;
+    font-family: var(--font-body, 'Source Sans 3', 'Segoe UI', sans-serif);
+    background: var(--color-bg, #f4f6f4);
+    color: var(--color-text, #222);
+    min-width: 180px;
+}
+.swv-searchbox-input:focus,
+.swv-search-q-input:focus {
+    outline: none;
+    border-color: var(--color-primary, #1d6a4a);
+}
+.swv-searchbox-btn {
+    padding: 8px 18px;
+    background: var(--color-primary, #1d6a4a);
+    color: var(--color-white, #fff);
+    border: none;
+    border-radius: var(--radius, 6px);
+    font-size: .9rem;
+    font-family: var(--font-body, 'Source Sans 3', 'Segoe UI', sans-serif);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
+}
+.swv-searchbox-btn:hover { background: var(--color-primary-dk, #134d35); }
+.swv-search-q { margin-left: auto; }
+.swv-searchbox-bar .swv-searchbox-input { min-width: 150px; }
+.swv-searchbox-widget { flex-wrap: wrap; }
+.swv-searchbox-widget .swv-searchbox-input { flex: 1 1 100%; min-width: 0; }
+.swv-searchbox-widget .swv-searchbox-btn { width: 100%; }
+.swv-annonces-empty-search {
+    display: flex;
+    justify-content: center;
+    margin-top: 16px;
+}
+@media (max-width: 782px) {
+    .swv-search-q { margin-left: 0; width: 100%; }
+    .swv-searchbox-bar { width: 100%; }
+    .swv-search-q-input,
+    .swv-searchbox-bar .swv-searchbox-input { flex: 1; min-width: 0; }
+}
+
+/* ---- Barre de pagination + bascule liste/colonnes --------------- */
+.swv-pagination-bar {
+    background: var(--color-white, #fff);
+    border-bottom: 1px solid var(--color-border, #dde3dd);
+    padding: 10px 0;
+}
+.swv-pagination-bar-bottom {
+    border-bottom: none;
+    border-top: 1px solid var(--color-border, #dde3dd);
+    padding: 10px 0 0;
+    margin-top: 16px;
+}
+.swv-pagination-bar-inner {
+    max-width: var(--container, 1200px);
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.swv-page-info {
+    font-size: .85rem;
+    color: var(--color-text-soft, #555);
+}
+.swv-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.swv-vue-toggle { display: flex; gap: 4px; }
+.swv-vue-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    background: var(--color-white, #fff);
+    color: var(--color-text-soft, #555);
+    font-size: .82rem;
+    font-family: var(--font-body, 'Source Sans 3', 'Segoe UI', sans-serif);
+    cursor: pointer;
+    line-height: 1;
+    transition: background .15s, color .15s, border-color .15s;
+}
+.swv-vue-btn:hover {
+    background: var(--color-accent-lt, #fdf3e0);
+    border-color: var(--color-primary, #1d6a4a);
+    color: var(--color-primary, #1d6a4a);
+}
+.swv-vue-btn-actif {
+    background: var(--color-primary, #1d6a4a);
+    border-color: var(--color-primary, #1d6a4a);
+    color: var(--color-white, #fff);
+}
+.swv-vue-btn-actif:hover {
+    background: var(--color-primary-dk, #134d35);
+    color: var(--color-white, #fff);
+}
+.swv-pages-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.swv-page-prev,
+.swv-page-next {
+    padding: 5px 12px;
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    font-size: .85rem;
+    color: var(--color-primary, #1d6a4a);
+    background: var(--color-white, #fff);
+    text-decoration: none;
+    transition: background .15s;
+}
+.swv-page-prev:hover,
+.swv-page-next:hover {
+    background: var(--color-accent-lt, #fdf3e0);
+    text-decoration: none;
+}
+.swv-page-prev.disabled,
+.swv-page-next.disabled {
+    color: #bbb;
+    border-color: #eee;
+    pointer-events: none;
+}
+.swv-page-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 30px;
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    font-size: .85rem;
+    color: var(--color-primary, #1d6a4a);
+    text-decoration: none;
+    padding: 0 4px;
+    transition: background .15s;
+}
+.swv-page-num:hover { background: var(--color-accent-lt, #fdf3e0); text-decoration: none; }
+.swv-page-num.current {
+    background: var(--color-primary, #1d6a4a);
+    color: var(--color-white, #fff);
+    border-color: var(--color-primary, #1d6a4a);
+    font-weight: 700;
+    pointer-events: none;
+}
+.swv-page-ellipsis {
+    color: var(--color-text-soft, #555);
+    padding: 0 4px;
+    font-size: .85rem;
+}
+
+/* ---- Contenu principal : annonces + sidebar --------------------- */
+#swv-main { flex: 1; padding: 24px 0; }
+.swv-main-inner {
+    max-width: var(--container, 1200px);
+    margin: 0 auto;
+    padding: 0 20px;
+    display: grid;
+    grid-template-columns: 1fr var(--sidebar-w, 280px);
+    gap: 24px;
+    align-items: start;
+}
+
+/* Annonces en liste */
+.swv-annonces-liste .swv-card {
+    display: flex;
+    gap: 16px;
+    background: var(--color-white, #fff);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    padding: 14px;
+    margin-bottom: 14px;
+    transition: box-shadow .15s;
+}
+.swv-annonces-liste .swv-card:hover { box-shadow: var(--shadow, 0 2px 10px rgba(0,0,0,.08)); }
+.swv-annonces-liste .swv-card-photo { flex-shrink: 0; width: 110px; height: 85px; }
+.swv-annonces-liste .swv-card-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+.swv-annonces-liste .swv-card-no-photo { width: 100%; height: 100%; background: #eee; border-radius: 4px; }
+.swv-annonces-liste .swv-card-body { flex: 1; min-width: 0; }
+
+/* Annonces en colonnes (grille) */
+.swv-annonces-grille {
+    display: grid;
+    grid-template-columns: repeat(var(--swv-cols, 3), 1fr);
+    gap: 16px;
+}
+.swv-annonces-grille .swv-card {
+    background: var(--color-white, #fff);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    overflow: hidden;
+    transition: box-shadow .15s, transform .15s;
+    display: flex;
+    flex-direction: column;
+}
+.swv-annonces-grille .swv-card:hover {
+    box-shadow: var(--shadow, 0 2px 10px rgba(0,0,0,.08));
+    transform: translateY(-2px);
+}
+.swv-annonces-grille .swv-card-photo { width: 100%; aspect-ratio: 4/3; overflow: hidden; }
+.swv-annonces-grille .swv-card-photo img { width: 100%; height: 100%; object-fit: cover; transition: transform .3s; }
+.swv-annonces-grille .swv-card:hover .swv-card-photo img { transform: scale(1.04); }
+.swv-annonces-grille .swv-card-no-photo {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #e8ede8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    font-size: 2rem;
+}
+.swv-annonces-grille .swv-card-body { padding: 12px; flex: 1; display: flex; flex-direction: column; }
+
+/* Éléments communs aux deux modes */
+.swv-card-id { font-size: .75rem; color: #aaa; margin-bottom: 4px; }
+.swv-card-title {
+    font-family: var(--font-title, 'Merriweather', Georgia, serif);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 6px;
+}
+.swv-card-title a { color: var(--color-text, #222); }
+.swv-card-title a:hover { color: var(--color-primary, #1d6a4a); text-decoration: none; }
+.swv-card-date { font-size: .78rem; color: var(--color-text-soft, #555); margin-bottom: 6px; }
+.swv-card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.swv-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+.swv-tag-cat      { background: var(--color-tag-cat-bg, #e0ede7);           color: var(--color-tag-cat-text, #1d6a4a); }
+.swv-tag-type     { background: var(--color-tag-type-bg, #e8f0fe);          color: var(--color-tag-type-text, #1a56a0); }
+.swv-tag-rubrique { background: var(--color-tag-rubrique-bg, #fef3e2);      color: var(--color-tag-rubrique-text, #8a5100); }
+.swv-card-statut {
+    display: inline-block;
+    font-weight: 700;
+    color: var(--color-statut, #5a5a9a);
+    font-size: .85rem;
+    margin-bottom: 4px;
+}
+.swv-card-prix {
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--color-primary-dk, #134d35);
+    margin-top: auto;
+    padding-top: 6px;
+}
+.swv-card-don { color: var(--color-don, #1d6a4a); }
+.swv-card-prix-item { white-space: nowrap; }
+.swv-card-prix-coord {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: #fff;
+    background: var(--color-primary, #1d6a4a);
+    border-radius: 3px;
+    padding: 1px 4px;
+    margin: 0 2px;
+    vertical-align: middle;
+}
+.swv-annonces-empty {
+    background: var(--color-white, #fff);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    padding: 40px;
+    text-align: center;
+    color: var(--color-text-soft, #555);
+    font-style: italic;
+}
+
+/* ---- Sidebar (widget de recherche) ------------------------------ */
+#swv-sidebar { position: sticky; top: 20px; }
+.swv-widget {
+    background: var(--color-white, #fff);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    padding: 18px;
+    margin-bottom: 20px;
+}
+.swv-widget-title {
+    font-family: var(--font-title, 'Merriweather', Georgia, serif);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-primary, #1d6a4a);
+    border-bottom: 2px solid var(--color-accent, #e8a020);
+    padding-bottom: 8px;
+    margin-bottom: 14px;
+}
+.swv-widget ul { list-style: none; }
+.swv-widget ul li { padding: 5px 0; border-bottom: 1px solid var(--color-border, #dde3dd); font-size: .9rem; }
+.swv-widget ul li:last-child { border-bottom: none; }
+
+/* ---- Fiche détail d'une annonce ---------------------------------- */
+.swv-single-wrap {
+    max-width: var(--container, 1200px);
+    margin: 0 auto;
+    padding: 24px 20px;
+}
+.swv-detail-wrap {
+    background: var(--color-white, #fff);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: var(--radius, 6px);
+    padding: 24px;
+}
+.swv-detail-back {
+    display: inline-block;
+    margin-bottom: 16px;
+    font-size: .9rem;
+    color: var(--color-primary, #1d6a4a);
+}
+.swv-detail-photos { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.swv-detail-photos img {
+    max-width: 300px;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, #dde3dd);
+}
+.swv-photo-zoomable { cursor: zoom-in; }
+.swv-photo-zoomable:focus-visible {
+    outline: 2px solid var(--color-primary, #1d6a4a);
+    outline-offset: 2px;
+}
+.swv-carousel { position: relative; max-width: 400px; margin-bottom: 20px; }
+.swv-carousel-track {
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--color-border, #dde3dd);
+}
+.swv-carousel-slide img { display: block; width: 100%; max-height: 320px; object-fit: cover; }
+.swv-carousel-prev,
+.swv-carousel-next {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,.85);
+    border: 1px solid var(--color-border, #dde3dd);
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary, #1d6a4a);
+}
+.swv-carousel-prev { left: 8px; }
+.swv-carousel-next { right: 8px; }
+.swv-carousel-prev:hover,
+.swv-carousel-next:hover { background: #fff; }
+.swv-carousel-count { font-size: .82rem; color: #888; margin: 6px 0 20px; }
+
+/* Lightbox : agrandissement d'une photo d'annonce (image unique ou carrousel) */
+.swv-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0,0,0,.88);
+    align-items: center;
+    justify-content: center;
+    padding: 40px 16px;
+}
+.swv-lightbox-img {
+    max-width: 100%;
+    max-height: calc(100vh - 100px);
+    object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.swv-lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 2.2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 10px;
+}
+.swv-lightbox-close:hover { color: #ddd; }
+.swv-lightbox-prev,
+.swv-lightbox-next {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,.15);
+    border: none;
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.swv-lightbox-prev:hover,
+.swv-lightbox-next:hover { background: rgba(255,255,255,.3); }
+.swv-lightbox-prev { left: 12px; }
+.swv-lightbox-next { right: 12px; }
+.swv-lightbox-count {
+    position: absolute;
+    bottom: 16px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #ddd;
+    font-size: .85rem;
+    margin: 0;
+}
+@media (max-width: 600px) {
+    .swv-lightbox { padding: 70px 12px; }
+    .swv-lightbox-prev,
+    .swv-lightbox-next { width: 38px; height: 38px; font-size: 1.3rem; }
+}
+
+.swv-detail-texte {
+    font-size: .95rem;
+    line-height: 1.75;
+    color: #333;
+    margin-bottom: 20px;
+}
+.swv-detail-contact {
+    border-top: 1px solid var(--color-border, #dde3dd);
+    padding-top: 16px;
+}
+.swv-detail-contact h4 {
+    font-family: var(--font-title, 'Merriweather', Georgia, serif);
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: var(--color-primary, #1d6a4a);
+}
+
+/* ---- Responsive --------------------------------------------------- */
+@media (max-width: 900px) {
+    .swv-main-inner { grid-template-columns: 1fr; }
+    #swv-sidebar { position: static; }
+    .swv-annonces-grille { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .swv-search-form { flex-direction: column; }
+    .swv-search-form select,
+    .swv-search-btn,
+    .swv-reset-btn { width: 100%; }
+    .swv-annonces-grille { grid-template-columns: 1fr; }
+    .swv-annonces-liste .swv-card { flex-direction: column; }
+    .swv-annonces-liste .swv-card-photo { width: 100%; height: 160px; }
+}

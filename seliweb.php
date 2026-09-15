@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.91
+ * Version: 0.9.95
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.91' );
+define( 'SELIWEB_VERSION', '0.9.95' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -102,7 +102,13 @@ class Seliweb {
             || has_shortcode( $post->post_content, 'seliweb_login' )
             || has_shortcode( $post->post_content, 'seliweb_inscription' )
             || has_shortcode( $post->post_content, 'seliweb_contact' )
-            || has_shortcode( $post->post_content, 'seliweb_evenements' );
+            || has_shortcode( $post->post_content, 'seliweb_evenements' )
+            // Page Annonces (liste + fiche détail) : pas de shortcode, elle est
+            // rendue via le modèle de page fourni par le plugin (voir
+            // swv_load_page_template() dans class-front.php). Sans ce test,
+            // public.css — qui porte désormais tout le CSS de cette page,
+            // indépendamment du thème actif — n'était jamais chargé ici.
+            || in_array( get_page_template_slug( $post ), array( 'template-annonces.php', 'template-annonces-sel.php' ), true );
         if ( $has ) {
             wp_enqueue_style( 'seliweb-public', SELIWEB_URL . 'assets/css/public.css', array(), SELIWEB_VERSION );
         }

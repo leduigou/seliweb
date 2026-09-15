@@ -63,6 +63,7 @@ if ( $action === 'modifier' && $txn_id ) {
             ? __( 'Compte du SEL', 'seliweb' )
             : trim( ( $mb->prenom ?? '' ) . ' ' . ( $mb->nom ?? '' ) );
         $soldes[] = array(
+            'id'     => (int) $mb->id,
             'numero' => (int) $mb->numero_sel,
             'nom'    => $nom,
             'solde'  => Seliweb_Transactions::get_balance( (int) $mb->id ),
@@ -83,15 +84,17 @@ if ( $action === 'modifier' && $txn_id ) {
                 <th style="width:70px;"><?php esc_html_e( 'N°', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
                 <th style="width:130px;text-align:right;"><?php esc_html_e( 'Solde', 'seliweb' ); ?></th>
+                <th style="width:90px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr>
         </thead>
         <tbody>
             <?php if ( ! $soldes ) : ?>
-                <tr><td colspan="3" style="text-align:center;padding:20px;"><?php esc_html_e( 'Aucun membre.', 'seliweb' ); ?></td></tr>
+                <tr><td colspan="4" style="text-align:center;padding:20px;"><?php esc_html_e( 'Aucun membre.', 'seliweb' ); ?></td></tr>
             <?php else : foreach ( $soldes as $s ) :
-                $solde_fmt = $s['solde'] . ( $symbole_mon ? ' ' . $symbole_mon : '' );
-                $couleur   = $s['solde'] < 0 ? '#c0392b' : ( $s['solde'] > 0 ? '#27ae60' : '#555' );
-                $recherche = mb_strtolower( $s['numero'] . ' ' . $s['nom'], 'UTF-8' );
+                $solde_fmt   = $s['solde'] . ( $symbole_mon ? ' ' . $symbole_mon : '' );
+                $couleur     = $s['solde'] < 0 ? '#c0392b' : ( $s['solde'] > 0 ? '#27ae60' : '#555' );
+                $recherche   = mb_strtolower( $s['numero'] . ' ' . $s['nom'], 'UTF-8' );
+                $detail_url  = add_query_arg( array( 'tab' => 'transactions', 'f_membre' => $s['id'] ), $page_url );
                 ?>
                 <tr data-recherche="<?php echo esc_attr( $recherche ); ?>">
                     <td><?php echo esc_html( $s['numero'] ); ?></td>
@@ -99,6 +102,7 @@ if ( $action === 'modifier' && $txn_id ) {
                     <td style="text-align:right;color:<?php echo esc_attr( $couleur ); ?>;font-weight:600;">
                         <?php echo esc_html( $solde_fmt ); ?>
                     </td>
+                    <td><a href="<?php echo esc_url( $detail_url ); ?>" class="button button-small"><?php esc_html_e( 'Détail', 'seliweb' ); ?></a></td>
                 </tr>
             <?php endforeach; endif; ?>
         </tbody>
@@ -377,6 +381,11 @@ if ( $f_membre ) {
     }
 }
 if ( $f_date ) { $filtres_actifs[] = sprintf( __( 'Date : %s', 'seliweb' ), $f_date ); }
+
+// Solde du compte, affiché quand la liste est filtrée sur un seul membre
+// (venant du bouton « Détail » de l'onglet Solde des comptes, ou du filtre
+// manuel ci-dessous).
+$f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : null;
 ?>
     <h1>
         <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
@@ -392,6 +401,16 @@ if ( $f_date ) { $filtres_actifs[] = sprintf( __( 'Date : %s', 'seliweb' ), $f_d
             <?php echo $filtres_actifs ? esc_html( implode( ' — ', $filtres_actifs ) ) : esc_html__( 'Aucun filtre appliqué', 'seliweb' ); ?>
         </p>
     </div>
+
+    <?php if ( $f_membre_solde !== null ) :
+        $solde_fmt = $f_membre_solde . ( $symbole_mon ? ' ' . $symbole_mon : '' );
+        $couleur   = $f_membre_solde < 0 ? '#c0392b' : ( $f_membre_solde > 0 ? '#27ae60' : '#555' );
+        ?>
+        <p style="font-size:14px;margin:0 0 16px;">
+            <?php printf( esc_html__( 'Solde au %s :', 'seliweb' ), esc_html( date_i18n( 'j F Y' ) ) ); ?>
+            <strong style="color:<?php echo esc_attr( $couleur ); ?>;"><?php echo esc_html( $solde_fmt ); ?></strong>
+        </p>
+    <?php endif; ?>
 
     <!-- Filtres -->
     <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="seliweb-no-print"
