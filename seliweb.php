@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.8
+ * Version: 0.9.9
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.8' );
+define( 'SELIWEB_VERSION', '0.9.9' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -965,6 +965,17 @@ class Seliweb {
         $tm  = $wpdb->prefix . 'seliweb_membres';
         $wp_user_id = get_current_user_id();
 
+        // URL propre de la page Mon compte, résolue par ID stocké : ce hook
+        // tourne sur `init`, avant que WordPress n'ait déterminé la page
+        // courante, donc get_permalink() sans argument y renvoie toujours
+        // false — et add_query_arg() retombe alors sur l'URL de la requête
+        // en cours (avec sel_action/sel_id/_wpnonce), d'où des redirections
+        // qui gardaient l'action de suppression dans l'URL.
+        $ids      = get_option( 'seliweb_page_ids', array() );
+        $page_url = ! empty( $ids['seliweb_mon_compte'] )
+            ? get_permalink( (int) $ids['seliweb_mon_compte'] )
+            : home_url( '/' );
+
         // --- Profil ---
         if ( isset( $_POST['seliweb_nonce_profil'] )
              && wp_verify_nonce( $_POST['seliweb_nonce_profil'], 'seliweb_profil_' . $wp_user_id ) ) {
@@ -1074,7 +1085,7 @@ class Seliweb {
                 delete_user_meta( $wp_user_id, 'seliweb_photo_id' );
             }
 
-            wp_safe_redirect( add_query_arg( array('sel_action'=>'profil','sel_saved_profil'=>'1'), get_permalink() ) );
+            wp_safe_redirect( add_query_arg( array('sel_action'=>'profil','sel_saved_profil'=>'1'), $page_url ) );
             exit;
         }
 
@@ -1093,7 +1104,7 @@ class Seliweb {
                 'show_adresse'     => isset( $_POST['show_adresse'] )     ? 1 : 0,
             ), array( 'wp_user_id' => $wp_user_id ) );
 
-            wp_safe_redirect( add_query_arg( array( 'sel_action' => 'prefs', 'sel_saved_prefs' => '1' ), get_permalink() ) );
+            wp_safe_redirect( add_query_arg( array( 'sel_action' => 'prefs', 'sel_saved_prefs' => '1' ), $page_url ) );
             exit;
         }
 
@@ -1122,7 +1133,7 @@ class Seliweb {
             $nb     = (int) $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM $ta WHERE membre_id=%d", $membre->id) );
             $limite = (int) ( $membre->limite_annonces ?? 0 );
             if ( $is_new && $limite > 0 && $nb >= $limite ) {
-                wp_safe_redirect( add_query_arg('sel_limite','1', wp_get_referer() ?: get_permalink()) );
+                wp_safe_redirect( add_query_arg('sel_limite','1', wp_get_referer() ?: $page_url) );
                 exit;
             }
 
@@ -1137,7 +1148,7 @@ class Seliweb {
                     'sel_action' => $id_post ? 'modifier' : 'creer',
                     'sel_id'     => $id_post ?: '',
                     'sel_error'  => 'no_rubrique',
-                ), get_permalink() ) );
+                ), $page_url ) );
                 exit;
             }
 
@@ -1151,7 +1162,7 @@ class Seliweb {
                         'sel_action' => $id_post ? 'modifier' : 'creer',
                         'sel_id'     => $id_post ?: '',
                         'sel_error'  => 'bad_date',
-                    ), get_permalink() ) );
+                    ), $page_url ) );
                     exit;
                 }
             }
@@ -1182,7 +1193,7 @@ class Seliweb {
 
                 $photo_err_f = Seliweb_Annonces::save_annonce_photos( $id_post, $photos_max_f );
                 if ( $photo_err_f ) {
-                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'modifier', 'sel_id' => $id_post, 'sel_error' => $photo_err_f ), get_permalink() ) );
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'modifier', 'sel_id' => $id_post, 'sel_error' => $photo_err_f ), $page_url ) );
                     exit;
                 }
                 Seliweb_Annonces::notify_membres($id_post);
@@ -1193,7 +1204,7 @@ class Seliweb {
 
                 $photo_err_f = Seliweb_Annonces::save_annonce_photos( $id_post, $photos_max_f );
                 if ( $photo_err_f ) {
-                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'modifier', 'sel_id' => $id_post, 'sel_error' => $photo_err_f ), get_permalink() ) );
+                    wp_safe_redirect( add_query_arg( array( 'sel_action' => 'modifier', 'sel_id' => $id_post, 'sel_error' => $photo_err_f ), $page_url ) );
                     exit;
                 }
                 if (isset($_POST['notifier_membres'])) Seliweb_Annonces::notify_membres($id_post);
@@ -1220,7 +1231,7 @@ class Seliweb {
             ) ) : '';
             $redir_args_f = array('sel_saved' => '1');
             if ( $slug_saved_f === 'expire' ) $redir_args_f['sel_warn_expire'] = '1';
-            wp_safe_redirect(add_query_arg($redir_args_f, get_permalink()));
+            wp_safe_redirect(add_query_arg($redir_args_f, $page_url));
             exit;
         }
 
@@ -1235,7 +1246,7 @@ class Seliweb {
                 $wpdb->delete($tap, array('annonce_id'=>$annonce_id));
                 $wpdb->delete($ta,  array('id'=>$annonce_id));
             }
-            wp_safe_redirect(add_query_arg('sel_deleted','1',get_permalink()));
+            wp_safe_redirect(add_query_arg('sel_deleted','1',$page_url));
             exit;
         }
     }
