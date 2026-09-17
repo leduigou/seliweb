@@ -70,9 +70,14 @@ if ( $action === 'modifier' && $txn_id ) {
         );
     }
     ?>
-    <h1><?php esc_html_e( 'Solde des comptes', 'seliweb' ); ?></h1>
+    <h1>
+        <?php esc_html_e( 'Solde des comptes', 'seliweb' ); ?>
+        <a class="page-title-action seliweb-no-print" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=seliweb_soldes_csv' ), 'seliweb_soldes_export' ) ); ?>">
+            <?php esc_html_e( 'Exporter CSV', 'seliweb' ); ?>
+        </a>
+    </h1>
 
-    <p>
+    <p class="seliweb-no-print">
         <input type="search" id="swv_solde_recherche" class="regular-text"
                placeholder="<?php esc_attr_e( 'Rechercher par nom ou numéro…', 'seliweb' ); ?>"
                style="max-width:320px;">
@@ -386,6 +391,18 @@ if ( $f_date ) { $filtres_actifs[] = sprintf( __( 'Date : %s', 'seliweb' ), $f_d
 // (venant du bouton « Détail » de l'onglet Solde des comptes, ou du filtre
 // manuel ci-dessous).
 $f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : null;
+
+// Un seul membre filtré : impression façon relevé de compte (date, libellé,
+// débit, crédit — les colonnes ID/N° Mbr/Prénom Nom sont redondantes sur le
+// relevé d'un seul membre et masquées à l'impression uniquement), avec le
+// solde du jour ajouté en dernière ligne, dans la colonne débit ou crédit
+// selon son signe.
+$is_releve   = (bool) $f_membre;
+$csv_url     = wp_nonce_url( add_query_arg( array(
+    'action'   => 'seliweb_transactions_csv',
+    'f_membre' => $f_membre ?: null,
+    'f_date'   => $f_date   ?: null,
+), admin_url( 'admin-post.php' ) ), 'seliweb_transactions_export' );
 ?>
     <h1>
         <?php esc_html_e( 'Transactions', 'seliweb' ); ?>
@@ -393,6 +410,7 @@ $f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : n
             + <?php esc_html_e( 'Ajouter une transaction', 'seliweb' ); ?>
         </a>
         <button type="button" class="page-title-action seliweb-no-print" onclick="window.print()"><?php esc_html_e( 'Imprimer', 'seliweb' ); ?></button>
+        <a class="page-title-action seliweb-no-print" href="<?php echo esc_url( $csv_url ); ?>"><?php esc_html_e( 'Exporter CSV', 'seliweb' ); ?></a>
     </h1>
 
     <div class="seliweb-print-header">
@@ -468,7 +486,7 @@ $f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : n
     <table class="wp-list-table widefat fixed striped">
         <thead>
             <tr>
-                <th style="width:50px;"><?php esc_html_e( 'ID', 'seliweb' ); ?></th>
+                <th class="<?php echo $is_releve ? 'seliweb-releve-hide' : ''; ?>" style="width:50px;"><?php esc_html_e( 'ID', 'seliweb' ); ?></th>
                 <th style="width:88px;">
                     <a href="<?php echo $sort_url('date'); ?>" style="text-decoration:none;color:inherit;white-space:nowrap;">
                         <?php esc_html_e( 'Date', 'seliweb' ); echo $sort_icon('date'); ?>
@@ -477,12 +495,12 @@ $f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : n
                 <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
                 <th style="width:76px;text-align:right;"><?php esc_html_e( 'Débit', 'seliweb' ); ?></th>
                 <th style="width:76px;text-align:right;"><?php esc_html_e( 'Crédit', 'seliweb' ); ?></th>
-                <th style="width:60px;text-align:center;">
+                <th class="<?php echo $is_releve ? 'seliweb-releve-hide' : ''; ?>" style="width:60px;text-align:center;">
                     <a href="<?php echo $sort_url('numero'); ?>" style="text-decoration:none;color:inherit;white-space:nowrap;">
                         <?php esc_html_e( 'N° Mbr', 'seliweb' ); echo $sort_icon('numero'); ?>
                     </a>
                 </th>
-                <th>
+                <th class="<?php echo $is_releve ? 'seliweb-releve-hide' : ''; ?>">
                     <a href="<?php echo $sort_url('nom'); ?>" style="text-decoration:none;color:inherit;white-space:nowrap;">
                         <?php esc_html_e( 'Prénom Nom', 'seliweb' ); echo $sort_icon('nom'); ?>
                     </a>
@@ -505,7 +523,7 @@ $f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : n
                 $montant_fmt = intval( $e->montant ) . ( $symbole_mon ? ' ' . $symbole_mon : '' );
             ?>
             <tr>
-                <td><?php echo intval( $e->txn_id ); ?></td>
+                <td class="<?php echo $is_releve ? 'seliweb-releve-hide' : ''; ?>"><?php echo intval( $e->txn_id ); ?></td>
                 <td><?php echo esc_html( $e->date ); ?></td>
                 <td><?php echo esc_html( $e->libelle ); ?></td>
                 <td style="text-align:right;color:#c0392b;font-weight:500;">
@@ -514,11 +532,29 @@ $f_membre_solde = $f_membre ? Seliweb_Transactions::get_balance( $f_membre ) : n
                 <td style="text-align:right;color:#27ae60;font-weight:500;">
                     <?php echo ! $is_debit ? esc_html( $montant_fmt ) : ''; ?>
                 </td>
-                <td style="text-align:center;"><?php echo esc_html( $e->numero_sel ); ?></td>
-                <td><?php echo esc_html( $nom_prenom ); ?></td>
+                <td class="<?php echo $is_releve ? 'seliweb-releve-hide' : ''; ?>" style="text-align:center;"><?php echo esc_html( $e->numero_sel ); ?></td>
+                <td class="<?php echo $is_releve ? 'seliweb-releve-hide' : ''; ?>"><?php echo esc_html( $nom_prenom ); ?></td>
                 <td class="seliweb-no-print"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a></td>
             </tr>
             <?php endforeach; ?>
+        <?php endif; ?>
+        <?php if ( $is_releve && $f_membre_solde !== null ) :
+            $solde_couleur = $f_membre_solde < 0 ? '#c0392b' : '#27ae60';
+            ?>
+            <tr style="border-top:2px solid #333;">
+                <td class="seliweb-releve-hide"></td>
+                <td><strong><?php echo esc_html( date_i18n( 'Y-m-d' ) ); ?></strong></td>
+                <td><strong><?php esc_html_e( 'Solde du jour', 'seliweb' ); ?></strong></td>
+                <td style="text-align:right;color:<?php echo esc_attr( $solde_couleur ); ?>;font-weight:700;">
+                    <?php echo $f_membre_solde < 0 ? esc_html( abs( $f_membre_solde ) . ( $symbole_mon ? ' ' . $symbole_mon : '' ) ) : ''; ?>
+                </td>
+                <td style="text-align:right;color:<?php echo esc_attr( $solde_couleur ); ?>;font-weight:700;">
+                    <?php echo $f_membre_solde >= 0 ? esc_html( $f_membre_solde . ( $symbole_mon ? ' ' . $symbole_mon : '' ) ) : ''; ?>
+                </td>
+                <td class="seliweb-releve-hide"></td>
+                <td class="seliweb-releve-hide"></td>
+                <td class="seliweb-no-print"></td>
+            </tr>
         <?php endif; ?>
         </tbody>
     </table>

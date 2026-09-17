@@ -243,6 +243,10 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
                         <p style="font-weight:700;color:var(--color-primary);margin:0;">
                             <?php esc_html_e( 'Don', 'seliweb-view' ); ?>
                         </p>
+                    <?php elseif ( $detail->est_prix_libre ) : ?>
+                        <p style="font-weight:700;color:var(--color-primary);margin:0;">
+                            <?php esc_html_e( 'Prix libre', 'seliweb-view' ); ?>
+                        </p>
                     <?php elseif ( ! empty( $prix ) ) : ?>
                         <div style="font-weight:700;color:var(--color-primary-dk);">
                             <?php foreach ( $prix as $idx_p => $p ) : ?>

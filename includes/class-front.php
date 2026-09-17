@@ -532,6 +532,8 @@ if ( ! function_exists( 'swv_render_card' ) ) {
                     <div class="swv-card-prix">
                         <?php if ($annonce->est_don): ?>
                             <span class="swv-card-don"><?php esc_html_e('Don','seliweb'); ?></span>
+                        <?php elseif ($annonce->est_prix_libre): ?>
+                            <span class="swv-card-prix-libre"><?php esc_html_e('Prix libre','seliweb'); ?></span>
                         <?php elseif (!empty($prix)): ?>
                             <?php foreach($prix as $idx_p => $p): ?>
                                 <?php if ($idx_p > 0): ?>
@@ -572,6 +574,8 @@ if ( ! function_exists( 'swv_render_card' ) ) {
                     <div class="swv-card-prix">
                         <?php if ($annonce->est_don): ?>
                             <span class="swv-card-don"><?php esc_html_e('Don','seliweb'); ?></span>
+                        <?php elseif ($annonce->est_prix_libre): ?>
+                            <span class="swv-card-prix-libre"><?php esc_html_e('Prix libre','seliweb'); ?></span>
                         <?php elseif (!empty($prix)): ?>
                             <?php foreach($prix as $idx_p => $p): ?>
                                 <?php if ($idx_p > 0): ?>

@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '3.4';
+    const DB_VERSION     = '3.6';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -469,6 +469,18 @@ class Seliweb_Database {
 
         // Migration v3.3 : e-mail de l'organisateur pour les notifications d'inscription.
         self::maybe_add_column( $wpdb->prefix . 'seliweb_evenements', 'organisateur_email', "VARCHAR(200) DEFAULT NULL AFTER groupes" );
+
+        // Migration v3.5 : « Prix libre » sur une annonce — alternative à un
+        // prix fixe et à un don, l'acheteur/receveur propose lui-même le
+        // montant. Mutuellement exclusif avec est_don (géré côté formulaire).
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_annonces', 'est_prix_libre', "TINYINT(1) NOT NULL DEFAULT 0 AFTER est_don" );
+
+        // Migration v3.6 : archivage d'un membre (départ complet du site —
+        // distinct d'un changement de groupe, qui gère déjà le cas d'un membre
+        // quittant seulement le SEL). Implique bloque=1 et dépublie ses
+        // annonces (voir templates/admin-membres.php) ; n'efface aucune donnée
+        // (l'anonymisation RGPD sera une fonctionnalité distincte, v2).
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_membres', 'archive', "TINYINT(1) NOT NULL DEFAULT 0 AFTER bloque" );
 
         self::insert_defaults();
     }

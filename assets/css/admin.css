@@ -226,7 +226,7 @@
 @media print {
     #adminmenumain, #adminmenuback, #wpadminbar, #wpfooter,
     #screen-meta-links, #screen-meta, .notice, .update-nag,
-    .seliweb-no-print {
+    .seliweb-no-print, .seliweb-releve-hide {
         display: none !important;
     }
     #wpcontent, #wpbody-content {

@@ -12,6 +12,8 @@ class Seliweb_Transactions {
     public static function init() {
         add_action( 'admin_init', array( __CLASS__, 'handle_post' ) );
         add_action( 'init',       array( __CLASS__, 'handle_frontend_post' ) );
+        add_action( 'admin_post_seliweb_transactions_csv', array( __CLASS__, 'handle_csv_transactions' ) );
+        add_action( 'admin_post_seliweb_soldes_csv',       array( __CLASS__, 'handle_csv_soldes' ) );
     }
 
     public static function display() {
@@ -373,5 +375,116 @@ class Seliweb_Transactions {
         }
         $nom = trim( ( $m->prenom ?? '' ) . ' ' . ( $m->nom ?? '' ) );
         return 'N°' . intval( $m->numero_sel ) . ( $nom ? ' — ' . $nom : '' );
+    }
+
+    // ================================================================
+    // Export CSV — Transactions (mêmes filtres membre/date que la liste,
+    // sans pagination). Si filtré sur un seul membre, ajoute la ligne de
+    // solde du jour en fin de fichier (même logique que le relevé imprimé
+    // — voir templates/admin-transactions.php).
+    // ================================================================
+    public static function handle_csv_transactions() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
+        }
+        check_admin_referer( 'seliweb_transactions_export' );
+
+        global $wpdb;
+        $te = $wpdb->prefix . 'seliweb_ecritures';
+        $tt = $wpdb->prefix . 'seliweb_transactions';
+        $tm = $wpdb->prefix . 'seliweb_membres';
+
+        $f_membre = isset( $_GET['f_membre'] ) ? intval( $_GET['f_membre'] ) : 0;
+        $f_date   = isset( $_GET['f_date'] ) ? sanitize_text_field( wp_unslash( $_GET['f_date'] ) ) : '';
+
+        $where     = array( '1=1' );
+        $where_val = array();
+        if ( $f_membre ) { $where[] = 'e.membre_id = %d'; $where_val[] = $f_membre; }
+        if ( $f_date && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $f_date ) ) { $where[] = 't.date = %s'; $where_val[] = $f_date; }
+        $where_sql = implode( ' AND ', $where );
+
+        $sql = "SELECT e.id AS ecriture_id, t.id AS txn_id, t.date, t.libelle, t.montant, e.type,
+                       m.numero_sel, um_fn.meta_value AS prenom, um_ln.meta_value AS nom
+                FROM $te e
+                JOIN $tt t ON t.id = e.transaction_id
+                JOIN $tm m ON m.id = e.membre_id
+                JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+                LEFT JOIN {$wpdb->usermeta} um_fn ON um_fn.user_id = u.ID AND um_fn.meta_key = 'first_name'
+                LEFT JOIN {$wpdb->usermeta} um_ln ON um_ln.user_id = u.ID AND um_ln.meta_key = 'last_name'
+                WHERE $where_sql
+                ORDER BY t.date ASC, t.id ASC, e.type ASC";
+        $ecritures = $where_val ? $wpdb->get_results( $wpdb->prepare( $sql, ...$where_val ) ) : $wpdb->get_results( $sql );
+
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=UTF-8' );
+        header( 'Content-Disposition: attachment; filename="transactions-' . gmdate( 'Ymd' ) . '.csv"' );
+
+        $out = fopen( 'php://output', 'w' );
+        fwrite( $out, "\xEF\xBB\xBF" ); // BOM UTF-8 (Excel)
+
+        fputcsv( $out, array(
+            __( 'N° écriture', 'seliweb' ), __( 'Date', 'seliweb' ), __( 'Libellé', 'seliweb' ),
+            __( 'Débit', 'seliweb' ), __( 'Crédit', 'seliweb' ), __( 'N° Mbr', 'seliweb' ), __( 'Prénom Nom', 'seliweb' ),
+        ), ';' );
+
+        foreach ( $ecritures as $e ) {
+            $is_debit   = ( 'debit' === $e->type );
+            $nom_prenom = intval( $e->numero_sel ) === 1
+                ? __( 'Compte du SEL', 'seliweb' )
+                : trim( ( $e->prenom ?? '' ) . ' ' . ( $e->nom ?? '' ) );
+            fputcsv( $out, array(
+                $e->txn_id, $e->date, $e->libelle,
+                $is_debit ? intval( $e->montant ) : '',
+                ! $is_debit ? intval( $e->montant ) : '',
+                $e->numero_sel, $nom_prenom,
+            ), ';' );
+        }
+
+        if ( $f_membre ) {
+            $solde = self::get_balance( $f_membre );
+            fputcsv( $out, array(
+                '', gmdate( 'Y-m-d' ), __( 'Solde du jour', 'seliweb' ),
+                $solde < 0 ? abs( $solde ) : '',
+                $solde >= 0 ? $solde : '',
+                '', '',
+            ), ';' );
+        }
+
+        fclose( $out );
+        exit;
+    }
+
+    // ================================================================
+    // Export CSV — Solde des comptes (même périmètre que l'onglet).
+    // ================================================================
+    public static function handle_csv_soldes() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
+        }
+        check_admin_referer( 'seliweb_soldes_export' );
+
+        $sel = self::get_sel_info();
+        if ( ! $sel['actif'] || ! $sel['groupe_id'] ) {
+            wp_die( esc_html__( 'Le module SEL doit être activé.', 'seliweb' ) );
+        }
+        $membres_sel = self::get_sel_membres( $sel['groupe_id'] );
+
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=UTF-8' );
+        header( 'Content-Disposition: attachment; filename="soldes-' . gmdate( 'Ymd' ) . '.csv"' );
+
+        $out = fopen( 'php://output', 'w' );
+        fwrite( $out, "\xEF\xBB\xBF" ); // BOM UTF-8 (Excel)
+        fputcsv( $out, array( __( 'N°', 'seliweb' ), __( 'Nom', 'seliweb' ), __( 'Solde', 'seliweb' ) ), ';' );
+
+        foreach ( $membres_sel as $mb ) {
+            $nom = intval( $mb->numero_sel ) === 1
+                ? __( 'Compte du SEL', 'seliweb' )
+                : trim( ( $mb->prenom ?? '' ) . ' ' . ( $mb->nom ?? '' ) );
+            fputcsv( $out, array( intval( $mb->numero_sel ), $nom, self::get_balance( (int) $mb->id ) ), ';' );
+        }
+
+        fclose( $out );
+        exit;
     }
 }

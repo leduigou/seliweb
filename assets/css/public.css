@@ -586,6 +586,60 @@
     font-weight: 500;
 }
 
+/* Bouton hamburger des onglets — masqué en version bureau. Les règles
+   mobiles ci-dessous ciblent #seliweb-compte-tabs (ID) pour être sûres de
+   l'emporter sur .seliweb-compte-tabs (classe) plus haut, quel que soit
+   l'ordre des règles dans la feuille de style. */
+.seliweb-tabs-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin-bottom: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+.seliweb-tabs-toggle span {
+    display: block;
+    width: 24px;
+    height: 2px;
+    background: #555;
+    border-radius: 2px;
+    transition: transform .2s ease, opacity .2s ease;
+}
+.seliweb-tabs-toggle:hover span { background: #2271b1; }
+
+@media (max-width: 600px) {
+    .seliweb-tabs-toggle { display: flex; }
+
+    #seliweb-compte-tabs {
+        display: none;
+        flex-direction: column;
+        gap: 0;
+        border-bottom: none;
+    }
+    #seliweb-compte-tabs.is-open { display: flex; }
+    #seliweb-compte-tabs .seliweb-tab {
+        border-bottom: 1px solid #eee;
+        margin-bottom: 0;
+        padding: 12px 6px;
+        width: 100%;
+    }
+    #seliweb-compte-tabs .seliweb-tab-active {
+        background: #f0f6ff;
+    }
+
+    /* Bouton transformé en croix quand le menu est ouvert */
+    .seliweb-tabs-toggle.is-open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+    .seliweb-tabs-toggle.is-open span:nth-child(2) { opacity: 0; }
+    .seliweb-tabs-toggle.is-open span:nth-child(3) { opacity: 0; }
+    .seliweb-tabs-toggle.is-open span:nth-child(4) { transform: translateY(-6px) rotate(-45deg); }
+}
+
 .seliweb-compte-toolbar {
     display: flex;
     align-items: center;
@@ -1106,6 +1160,15 @@
     font-style: italic;
 }
 
+.seliweb-evt-inscription-info {
+    margin: 12px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+    font-size: .88rem;
+    font-weight: 600;
+    color: #1d6a4a;
+}
+
 @media (max-width: 600px) {
     .seliweb-evt-carte { flex-direction: column; }
     .seliweb-evt-image { flex-basis: auto; }
@@ -1519,7 +1582,8 @@
     margin-top: auto;
     padding-top: 6px;
 }
-.swv-card-don { color: var(--color-don, #1d6a4a); }
+.swv-card-don,
+.swv-card-prix-libre { color: var(--color-don, #1d6a4a); }
 .swv-card-prix-item { white-space: nowrap; }
 .swv-card-prix-coord {
     display: inline-block;

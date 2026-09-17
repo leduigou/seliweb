@@ -24,32 +24,6 @@ class Seliweb_Annonces {
                . esc_html__( 'Ajouter une annonce', 'seliweb' ) . '</a>';
         }
         echo '</h1>';
-
-        if ( $action === 'list' ) {
-            global $wpdb;
-            $tm = $wpdb->prefix . 'seliweb_membres';
-            $membres_filtre = $wpdb->get_results(
-                "SELECT m.id, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id ORDER BY u.display_name"
-            );
-            $membre_id_filtre = isset( $_GET['membre_id'] ) ? intval( $_GET['membre_id'] ) : 0;
-
-            echo '<div style="display:flex; align-items:center; gap:8px;">';
-            echo '<span style="font-size:23px; font-weight:400; line-height:1.4;">' . esc_html__( 'Membre', 'seliweb' ) . '</span>';
-            echo '<form method="get" style="margin:0;">';
-            echo '<input type="hidden" name="page" value="seliweb_annonces">';
-            if ( ! empty( $_GET['orderby'] ) ) echo '<input type="hidden" name="orderby" value="' . esc_attr( sanitize_key( $_GET['orderby'] ) ) . '">';
-            if ( ! empty( $_GET['order'] ) )   echo '<input type="hidden" name="order"   value="' . esc_attr( sanitize_key( $_GET['order'] ) ) . '">';
-            echo '<select name="membre_id" onchange="this.form.submit()">';
-            echo '<option value="0">' . esc_html__( 'Tous les membres', 'seliweb' ) . '</option>';
-            foreach ( $membres_filtre as $m ) {
-                printf( '<option value="%d"%s>%s</option>',
-                    intval( $m->id ),
-                    $m->id == $membre_id_filtre ? ' selected' : '',
-                    esc_html( $m->display_name )
-                );
-            }
-            echo '</select></form></div>';
-        }
         echo '</div>';
 
         // Notices d'erreur affichées dans le formulaire
@@ -207,6 +181,7 @@ class Seliweb_Annonces {
             'statut_id'       => $statut_id,
             'date_expiration' => $date_expiration,
             'est_don'         => isset( $_POST['est_don'] ) ? 1 : 0,
+            'est_prix_libre'  => isset( $_POST['est_prix_libre'] ) ? 1 : 0,
         );
 
         // Plafond de photos = celui du groupe du membre sélectionné (1 par défaut)
@@ -518,9 +493,36 @@ class Seliweb_Annonces {
             $order_dir = 'DESC';
         }
 
-        // Filtre par membre
-        $membre_id_filtre = isset( $_GET['membre_id'] ) ? intval( $_GET['membre_id'] ) : 0;
-        $where = $membre_id_filtre > 0 ? $wpdb->prepare( 'WHERE a.membre_id = %d', $membre_id_filtre ) : '';
+        // Filtres
+        $membre_id_filtre    = isset( $_GET['membre_id'] )           ? intval( $_GET['membre_id'] )           : 0;
+        $categorie_id_filtre = isset( $_GET['categorie_id_filtre'] ) ? intval( $_GET['categorie_id_filtre'] ) : 0;
+        $rubrique_id_filtre  = isset( $_GET['rubrique_id_filtre'] )  ? intval( $_GET['rubrique_id_filtre'] )  : 0;
+        $statut_id_filtre    = isset( $_GET['statut_id_filtre'] )    ? intval( $_GET['statut_id_filtre'] )    : 0;
+
+        $where_parts = array();
+        $where_vals  = array();
+        if ( $membre_id_filtre )    { $where_parts[] = 'a.membre_id = %d';    $where_vals[] = $membre_id_filtre; }
+        if ( $categorie_id_filtre ) { $where_parts[] = 'a.categorie_id = %d'; $where_vals[] = $categorie_id_filtre; }
+        if ( $rubrique_id_filtre )  { $where_parts[] = 'a.rubrique_id = %d';  $where_vals[] = $rubrique_id_filtre; }
+        if ( $statut_id_filtre )    { $where_parts[] = 'a.statut_id = %d';    $where_vals[] = $statut_id_filtre; }
+        $where = $where_parts ? $wpdb->prepare( 'WHERE ' . implode( ' AND ', $where_parts ), ...$where_vals ) : '';
+
+        // Listes pour les filtres (catégorie/rubrique/statut + recherche membre)
+        $categories_filtre = $wpdb->get_results( "SELECT id, nom FROM $tc ORDER BY nom ASC" );
+        $rubriques_filtre  = $wpdb->get_results( "SELECT id, nom FROM $tr ORDER BY nom ASC" );
+        $statuts_filtre    = $wpdb->get_results( "SELECT id, nom FROM $ts ORDER BY id ASC" );
+        $membres_filtre    = $wpdb->get_results(
+            "SELECT m.id, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id ORDER BY u.display_name"
+        );
+        $membre_label_filtre = '';
+        if ( $membre_id_filtre ) {
+            foreach ( $membres_filtre as $m ) {
+                if ( (int) $m->id === $membre_id_filtre ) {
+                    $membre_label_filtre = intval( $m->id ) . ' — ' . $m->display_name;
+                    break;
+                }
+            }
+        }
 
         // Pagination
         $per_page    = 40;
@@ -542,11 +544,14 @@ class Seliweb_Annonces {
              LIMIT $per_page OFFSET $offset"
         );
 
-        // Construit l'URL de base en préservant filtre membre + tri
+        // Construit l'URL de base en préservant les filtres + le tri
         $base_params = [ 'page' => 'seliweb_annonces' ];
-        if ( $membre_id_filtre ) $base_params['membre_id'] = $membre_id_filtre;
-        if ( $orderby_key )      $base_params['orderby']   = $orderby_key;
-        if ( $orderby_key )      $base_params['order']     = strtolower( $order_dir );
+        if ( $membre_id_filtre )    $base_params['membre_id']           = $membre_id_filtre;
+        if ( $categorie_id_filtre ) $base_params['categorie_id_filtre'] = $categorie_id_filtre;
+        if ( $rubrique_id_filtre )  $base_params['rubrique_id_filtre']  = $rubrique_id_filtre;
+        if ( $statut_id_filtre )    $base_params['statut_id_filtre']    = $statut_id_filtre;
+        if ( $orderby_key )         $base_params['orderby']             = $orderby_key;
+        if ( $orderby_key )         $base_params['order']               = strtolower( $order_dir );
         $base_url = admin_url( 'admin.php?' . http_build_query( $base_params ) );
 
         // URL d'une page (préserve filtre + tri, repart à la page demandée)
@@ -585,6 +590,96 @@ class Seliweb_Annonces {
             echo '</div>';
         };
 
+        ?>
+        <!-- ===== FILTRES ===== -->
+        <form method="get" style="margin:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <input type="hidden" name="page" value="seliweb_annonces">
+            <?php if ( $orderby_key ) : ?><input type="hidden" name="orderby" value="<?php echo esc_attr( $orderby_key ); ?>"><?php endif; ?>
+            <?php if ( $orderby_key ) : ?><input type="hidden" name="order" value="<?php echo esc_attr( strtolower( $order_dir ) ); ?>"><?php endif; ?>
+
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Membre', 'seliweb' ); ?></label>
+                <div id="swv_annonces_ac_membre" data-value="<?php echo esc_attr( $membre_id_filtre ); ?>" data-label="<?php echo esc_attr( $membre_label_filtre ); ?>" style="position:relative;display:inline-block;min-width:220px;"></div>
+            </div>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></label>
+                <select name="categorie_id_filtre">
+                    <option value="0"><?php esc_html_e( 'Toutes', 'seliweb' ); ?></option>
+                    <?php foreach ( $categories_filtre as $cat ) : ?>
+                        <option value="<?php echo intval( $cat->id ); ?>" <?php selected( $categorie_id_filtre, $cat->id ); ?>><?php echo esc_html( $cat->nom ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Rubrique', 'seliweb' ); ?></label>
+                <select name="rubrique_id_filtre">
+                    <option value="0"><?php esc_html_e( 'Toutes', 'seliweb' ); ?></option>
+                    <?php foreach ( $rubriques_filtre as $rub ) : ?>
+                        <option value="<?php echo intval( $rub->id ); ?>" <?php selected( $rubrique_id_filtre, $rub->id ); ?>><?php echo esc_html( $rub->nom ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Statut', 'seliweb' ); ?></label>
+                <select name="statut_id_filtre">
+                    <option value="0"><?php esc_html_e( 'Tous', 'seliweb' ); ?></option>
+                    <?php foreach ( $statuts_filtre as $st ) : ?>
+                        <option value="<?php echo intval( $st->id ); ?>" <?php selected( $statut_id_filtre, $st->id ); ?>><?php echo esc_html( $st->nom ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="button"><?php esc_html_e( 'Filtrer', 'seliweb' ); ?></button>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_annonces' ) ); ?>" class="button"><?php esc_html_e( 'Réinitialiser', 'seliweb' ); ?></a>
+            </div>
+        </form>
+        <script>
+        (function(){
+            function swvAnnoncesAc(wrapId, hiddenName, items, placeholder) {
+                var wrap = document.getElementById(wrapId);
+                if (!wrap) return;
+                var txt = document.createElement('input');
+                txt.type = 'text'; txt.placeholder = placeholder || ''; txt.autocomplete = 'off';
+                txt.style.cssText = 'width:100%;padding:4px 6px;font-size:14px;border:1px solid #8c8f94;border-radius:3px;box-sizing:border-box;';
+                var hid = document.createElement('input');
+                hid.type = 'hidden'; hid.name = hiddenName; hid.value = wrap.dataset.value || '';
+                var list = document.createElement('ul');
+                list.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1px solid #8c8f94;border-top:0;list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.18);';
+                list.hidden = true;
+                if (wrap.dataset.value && wrap.dataset.label) txt.value = wrap.dataset.label;
+                wrap.appendChild(txt); wrap.appendChild(hid); wrap.appendChild(list);
+                function render(matches) {
+                    list.innerHTML = '';
+                    if (!matches.length) { list.hidden = true; return; }
+                    matches.slice(0, 15).forEach(function(item) {
+                        var li = document.createElement('li');
+                        li.textContent = item.label;
+                        li.style.cssText = 'padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f6f7f7;';
+                        li.addEventListener('mousedown', function(e) { e.preventDefault(); txt.value = item.label; hid.value = item.id; list.hidden = true; });
+                        list.appendChild(li);
+                    });
+                    list.hidden = false;
+                }
+                txt.addEventListener('input', function() {
+                    hid.value = '';
+                    var q = this.value.toLowerCase().trim();
+                    if (!q) { list.hidden = true; return; }
+                    render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('focus', function() {
+                    var q = this.value.toLowerCase().trim();
+                    if (q) render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('blur', function() { setTimeout(function() { list.hidden = true; }, 200); });
+            }
+            var swvAnnoncesMembres = <?php echo wp_json_encode( array_map( function( $m ) {
+                return array( 'id' => intval( $m->id ), 'label' => intval( $m->id ) . ' — ' . $m->display_name );
+            }, $membres_filtre ) ); ?>;
+            swvAnnoncesAc('swv_annonces_ac_membre', 'membre_id', swvAnnoncesMembres, <?php echo wp_json_encode( __( 'ID, nom ou prénom…', 'seliweb' ) ); ?>);
+        })();
+        </script>
+
+        <?php
         $pagination();
         ?>
         <table class="wp-list-table widefat fixed striped">
@@ -812,16 +907,27 @@ class Seliweb_Annonces {
                     <th><?php esc_html_e( 'Don', 'seliweb' ); ?></th>
                     <td>
                         <label>
-                            <input type="checkbox" name="est_don" value="1"
-                                   onchange="selAdmTogglePrix(this.checked)"
+                            <input type="checkbox" name="est_don" id="adm_est_don" value="1"
+                                   onchange="selAdmTogglePrix(this.checked, 'don')"
                                    <?php checked( $item ? $item->est_don : 0 ); ?>>
                             <?php esc_html_e( 'Je fais un don', 'seliweb' ); ?>
                         </label>
                     </td>
                 </tr>
+                <tr>
+                    <th><?php esc_html_e( 'Prix libre', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="est_prix_libre" id="adm_est_prix_libre" value="1"
+                                   onchange="selAdmTogglePrix(this.checked, 'prix_libre')"
+                                   <?php checked( $item ? $item->est_prix_libre : 0 ); ?>>
+                            <?php esc_html_e( 'Prix libre (proposé par l\'acheteur)', 'seliweb' ); ?>
+                        </label>
+                    </td>
+                </tr>
 
                 <!-- PRIX avec select monnaie -->
-                <tr id="row_prix" <?php echo ( $item && $item->est_don ) ? 'style="display:none"' : ''; ?>>
+                <tr id="row_prix" <?php echo ( $item && ( $item->est_don || $item->est_prix_libre ) ) ? 'style="display:none"' : ''; ?>>
                     <th><?php esc_html_e( 'Prix', 'seliweb' ); ?></th>
                     <td>
                         <div id="adm_prix_container">
@@ -1201,8 +1307,12 @@ class Seliweb_Annonces {
             var isAnn = opt && opt.dataset.slug === 'annonces';
             document.getElementById('row_type').style.display = (catId && isAnn) ? '' : 'none';
         }
-        function selAdmTogglePrix(isDon) {
-            document.getElementById('row_prix').style.display = isDon ? 'none' : '';
+        function selAdmTogglePrix(checked, source) {
+            var donEl  = document.getElementById('adm_est_don');
+            var libreEl = document.getElementById('adm_est_prix_libre');
+            if (checked && source === 'don') libreEl.checked = false;
+            if (checked && source === 'prix_libre') donEl.checked = false;
+            document.getElementById('row_prix').style.display = (donEl.checked || libreEl.checked) ? 'none' : '';
         }
         function selAdmUsedIds() {
             var ids = [];

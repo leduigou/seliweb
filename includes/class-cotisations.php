@@ -2019,12 +2019,16 @@ class Seliweb_Cotisations {
         $paheko_mot_de_passe = $cfg['paheko_mot_de_passe'] ?? '';
 
         if ( isset( $_GET['updated'] ) ) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
+            $which = sanitize_key( $_GET['updated'] );
+            $msg   = 'helloasso' === $which
+                ? __( 'Paramètres HelloAsso enregistrés.', 'seliweb' )
+                : ( 'paheko' === $which ? __( 'Paramètres Paheko enregistrés.', 'seliweb' ) : __( 'Paramètres enregistrés.', 'seliweb' ) );
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $msg ) . '</p></div>';
         }
         ?>
         <form method="post">
         <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
-        <input type="hidden" name="seliweb_action" value="save_api">
+        <input type="hidden" name="seliweb_action" value="save_api_helloasso">
 
         <h2 style="margin-top:0;display:flex;align-items:center;gap:10px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:inherit;font-weight:inherit;cursor:pointer;">
@@ -2066,7 +2070,14 @@ class Seliweb_Cotisations {
             </table>
         </div>
 
-        <h2 style="margin-top:32px;padding-top:24px;border-top:1px solid #ddd;display:flex;align-items:center;gap:10px;">
+        <?php submit_button( __( 'Enregistrer HelloAsso', 'seliweb' ), 'primary', 'submit_ha' ); ?>
+        </form>
+
+        <form method="post" style="margin-top:32px;padding-top:24px;border-top:1px solid #ddd;">
+        <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+        <input type="hidden" name="seliweb_action" value="save_api_paheko">
+
+        <h2 style="margin-top:0;display:flex;align-items:center;gap:10px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:inherit;font-weight:inherit;cursor:pointer;">
                 <input type="checkbox" name="cotisations_paheko_actif" id="toggle_paheko" value="1" <?php checked( $paheko_actif ); ?>>
                 <?php esc_html_e( 'Synchronisation comptable — Paheko', 'seliweb' ); ?>
@@ -2096,8 +2107,22 @@ class Seliweb_Cotisations {
             </table>
         </div>
 
-        <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
+        <?php submit_button( __( 'Enregistrer Paheko', 'seliweb' ), 'primary', 'submit_paheko' ); ?>
         </form>
+
+        <!-- Confirmation (déconnexion) — fenêtre rouge, remplace le confirm() natif
+             non stylable, pour bien marquer le risque de perdre l'accès au paiement
+             en ligne / à la synchronisation si les identifiants n'ont pas été notés. -->
+        <div id="seliweb_confirm_overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;align-items:center;justify-content:center;">
+            <div style="background:#fff;border:3px solid #b32d2e;border-radius:6px;max-width:440px;padding:24px;box-shadow:0 4px 24px rgba(0,0,0,.3);">
+                <p id="seliweb_confirm_line1" style="color:#b32d2e;font-weight:700;font-size:1.05rem;margin:0 0 10px;"></p>
+                <p id="seliweb_confirm_line2" style="color:#b32d2e;font-weight:600;margin:0 0 20px;"></p>
+                <div style="display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="button" id="seliweb_confirm_cancel" class="button"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></button>
+                    <button type="button" id="seliweb_confirm_ok" class="button" style="background:#b32d2e;border-color:#8f2422;color:#fff;"><?php esc_html_e( 'Déconnecter', 'seliweb' ); ?></button>
+                </div>
+            </div>
+        </div>
 
         <script>
         (function(){
@@ -2107,6 +2132,57 @@ class Seliweb_Cotisations {
             }
             toggle(document.getElementById('toggle_ha'),     document.getElementById('section_ha'));
             toggle(document.getElementById('toggle_paheko'), document.getElementById('section_paheko'));
+
+            var overlay = document.getElementById('seliweb_confirm_overlay');
+            var line1   = document.getElementById('seliweb_confirm_line1');
+            var line2   = document.getElementById('seliweb_confirm_line2');
+            var btnOk   = document.getElementById('seliweb_confirm_ok');
+            var btnCancel = document.getElementById('seliweb_confirm_cancel');
+            var onConfirm = null;
+
+            function showConfirm(l1, l2, cb) {
+                line1.textContent = l1;
+                line2.textContent = l2;
+                onConfirm = cb;
+                overlay.style.display = 'flex';
+            }
+            function hideConfirm() {
+                overlay.style.display = 'none';
+                onConfirm = null;
+            }
+            btnCancel.addEventListener('click', hideConfirm);
+            btnOk.addEventListener('click', function(){
+                var cb = onConfirm;
+                hideConfirm();
+                if (cb) cb();
+            });
+
+            function guardDeactivation(cb, l1, l2) {
+                if (!cb) return;
+                cb.addEventListener('click', function(e){
+                    if (!this.checked) {
+                        // La case vient d'être décochée (état déjà appliqué par le
+                        // navigateur) : on annule ce changement et on ne le rejoue
+                        // qu'après confirmation explicite.
+                        e.preventDefault();
+                        var self = this;
+                        showConfirm(l1, l2, function(){
+                            self.checked = false;
+                            self.dispatchEvent(new Event('change'));
+                        });
+                    }
+                });
+            }
+            guardDeactivation(
+                document.getElementById('toggle_ha'),
+                <?php echo wp_json_encode( __( 'Êtes-vous sûr de vouloir déconnecter le paiement en ligne HelloAsso ?', 'seliweb' ) ); ?>,
+                <?php echo wp_json_encode( __( 'Avez-vous sauvegardé vos identifiants ?', 'seliweb' ) ); ?>
+            );
+            guardDeactivation(
+                document.getElementById('toggle_paheko'),
+                <?php echo wp_json_encode( __( 'Êtes-vous sûr de vouloir déconnecter la synchronisation Paheko ?', 'seliweb' ) ); ?>,
+                <?php echo wp_json_encode( __( 'Avez-vous sauvegardé vos identifiants ?', 'seliweb' ) ); ?>
+            );
         })();
         </script>
         <?php
@@ -2324,35 +2400,43 @@ class Seliweb_Cotisations {
     // ADMIN — traitement POST onglet API (HelloAsso + Paheko)
     // ================================================================
     public static function handle_api( $action ) {
-        if ( $action !== 'save_api' ) return;
+        if ( 'save_api_helloasso' === $action ) {
+            $campaign_url = esc_url_raw( wp_unslash( $_POST['helloasso_campaign_url'] ?? '' ) );
 
-        $campaign_url = esc_url_raw( wp_unslash( $_POST['helloasso_campaign_url'] ?? '' ) );
+            // Simple lien vers l'association (ex. .../associations/mon-sel) depuis
+            // le passage à l'API Checkout Intent — plus besoin d'un formulaire
+            // précis. Reste tolérant à un ancien lien de formulaire complet
+            // (.../associations/mon-sel/adhesions/xxx) : le slug d'association
+            // est toujours le premier segment après "associations/".
+            $org_slug = '';
+            if ( $campaign_url && preg_match( '~/associations/([^/?#]+)~', $campaign_url, $m ) ) {
+                $org_slug = $m[1];
+            }
 
-        // Simple lien vers l'association (ex. .../associations/mon-sel) depuis
-        // le passage à l'API Checkout Intent — plus besoin d'un formulaire
-        // précis. Reste tolérant à un ancien lien de formulaire complet
-        // (.../associations/mon-sel/adhesions/xxx) : le slug d'association
-        // est toujours le premier segment après "associations/".
-        $org_slug = '';
-        if ( $campaign_url && preg_match( '~/associations/([^/?#]+)~', $campaign_url, $m ) ) {
-            $org_slug = $m[1];
+            self::cfg_save( array(
+                'cotisations_helloasso_actif' => isset( $_POST['cotisations_helloasso_actif'] ) ? '1' : '0',
+                'helloasso_campaign_url'      => $campaign_url,
+                'helloasso_client_id'         => sanitize_text_field( wp_unslash( $_POST['helloasso_client_id']     ?? '' ) ),
+                'helloasso_client_secret'     => sanitize_text_field( wp_unslash( $_POST['helloasso_client_secret'] ?? '' ) ),
+                'helloasso_org_slug'          => sanitize_key( $org_slug ),
+            ) );
+
+            delete_transient( 'seliweb_ha_token' );
+
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=api&updated=helloasso' ) );
+            exit;
         }
 
-        self::cfg_save( array(
-            'cotisations_helloasso_actif' => isset( $_POST['cotisations_helloasso_actif'] ) ? '1' : '0',
-            'helloasso_campaign_url'      => $campaign_url,
-            'helloasso_client_id'         => sanitize_text_field( wp_unslash( $_POST['helloasso_client_id']     ?? '' ) ),
-            'helloasso_client_secret'     => sanitize_text_field( wp_unslash( $_POST['helloasso_client_secret'] ?? '' ) ),
-            'helloasso_org_slug'          => sanitize_key( $org_slug ),
-            'cotisations_paheko_actif'    => isset( $_POST['cotisations_paheko_actif'] )    ? '1' : '0',
-            'paheko_url'                  => esc_url_raw( wp_unslash( $_POST['paheko_url']          ?? '' ) ),
-            'paheko_identifiant'          => sanitize_text_field( wp_unslash( $_POST['paheko_identifiant']   ?? '' ) ),
-            'paheko_mot_de_passe'         => sanitize_text_field( wp_unslash( $_POST['paheko_mot_de_passe']  ?? '' ) ),
-        ) );
+        if ( 'save_api_paheko' === $action ) {
+            self::cfg_save( array(
+                'cotisations_paheko_actif' => isset( $_POST['cotisations_paheko_actif'] ) ? '1' : '0',
+                'paheko_url'                => esc_url_raw( wp_unslash( $_POST['paheko_url']         ?? '' ) ),
+                'paheko_identifiant'        => sanitize_text_field( wp_unslash( $_POST['paheko_identifiant']  ?? '' ) ),
+                'paheko_mot_de_passe'       => sanitize_text_field( wp_unslash( $_POST['paheko_mot_de_passe'] ?? '' ) ),
+            ) );
 
-        delete_transient( 'seliweb_ha_token' );
-
-        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=api&updated=1' ) );
-        exit;
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=api&updated=paheko' ) );
+            exit;
+        }
     }
 }

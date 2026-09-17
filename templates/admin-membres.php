@@ -23,10 +23,31 @@ if ( isset( $_POST['seliweb_nonce'] )
      && isset( $_POST['membre_id'] ) ) {
     $membre_id = intval( $_POST['membre_id'] );
     $groupe_id = ! empty( $_POST['groupe_id'] ) ? intval( $_POST['groupe_id'] ) : null;
+
+    $archive_avant = (int) $wpdb->get_var( $wpdb->prepare( "SELECT archive FROM $tm WHERE id=%d", $membre_id ) );
+    $archive_apres = isset( $_POST['archive'] ) ? 1 : 0;
+
     $wpdb->update( $tm, array(
         'groupe_id' => $groupe_id,
-        'bloque'    => isset( $_POST['bloque'] ) ? 1 : 0,
+        // L'archivage implique le blocage de connexion (décision : un compte
+        // archivé = un membre qui a quitté le site, pas seulement le SEL —
+        // voir la case « archive » toujours cochée avec « bloque » côté JS).
+        'bloque'    => ( $archive_apres || isset( $_POST['bloque'] ) ) ? 1 : 0,
+        'archive'   => $archive_apres,
     ), array( 'id' => $membre_id ) );
+
+    // Archivage (0 -> 1) : dépublie toutes les annonces du membre. On ne
+    // republie jamais automatiquement au désarchivage : impossible de savoir
+    // lesquelles garder, chaque groupe ayant un quota d'annonces différent.
+    if ( $archive_apres && ! $archive_avant ) {
+        $ta = $wpdb->prefix . 'seliweb_annonces';
+        $ts = $wpdb->prefix . 'seliweb_statuts';
+        $statut_expire = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $ts WHERE slug=%s LIMIT 1", 'expire' ) );
+        if ( $statut_expire ) {
+            $wpdb->update( $ta, array( 'statut_id' => $statut_expire ), array( 'membre_id' => $membre_id ) );
+        }
+    }
+
     // Auto-numérotation SEL lors d'un changement rapide de groupe
     if ( $sel_groupe_id > 0 && (int) $groupe_id === $sel_groupe_id ) {
         $current_num = $wpdb->get_var( $wpdb->prepare( "SELECT numero_sel FROM $tm WHERE id=%d", $membre_id ) );
@@ -290,6 +311,8 @@ $filtre_groupe = isset( $_GET['filtre_groupe'] ) ? intval( $_GET['filtre_groupe'
 $filtre_ville  = isset( $_GET['filtre_ville'] )  ? sanitize_text_field( $_GET['filtre_ville'] ) : '';
 $filtre_bloque = isset( $_GET['filtre_bloque'] ) && in_array( $_GET['filtre_bloque'], array('bloques','actifs'), true )
     ? $_GET['filtre_bloque'] : '';
+$filtre_archive = isset( $_GET['filtre_archive'] ) && in_array( $_GET['filtre_archive'], array('archives','actifs'), true )
+    ? $_GET['filtre_archive'] : '';
 $villes_dispo  = $wpdb->get_col( "SELECT DISTINCT ville FROM $tm WHERE ville != '' AND ville IS NOT NULL ORDER BY ville ASC" );
 
 $allowed_orderby = array(
@@ -315,6 +338,8 @@ if ( $filtre_groupe ) { $where[] = 'm.groupe_id = %d'; $values[] = $filtre_group
 if ( $filtre_ville )  { $where[] = 'm.ville = %s';     $values[] = $filtre_ville; }
 if ( $filtre_bloque === 'bloques' ) { $where[] = 'm.bloque = 1'; }
 if ( $filtre_bloque === 'actifs' )  { $where[] = 'm.bloque = 0'; }
+if ( $filtre_archive === 'archives' ) { $where[] = 'm.archive = 1'; }
+if ( $filtre_archive === 'actifs' )   { $where[] = 'm.archive = 0'; }
 $where_sql = implode(' AND ', $where);
 
 // Résumé des filtres actifs (pour l'impression)
@@ -330,6 +355,8 @@ if ( $filtre_groupe ) {
 if ( $filtre_ville )  { $filtres_actifs[] = sprintf( __( 'Ville : %s', 'seliweb' ), $filtre_ville ); }
 if ( $filtre_bloque === 'bloques' ) { $filtres_actifs[] = __( 'Comptes bloqués uniquement', 'seliweb' ); }
 if ( $filtre_bloque === 'actifs' )  { $filtres_actifs[] = __( 'Comptes actifs uniquement', 'seliweb' ); }
+if ( $filtre_archive === 'archives' ) { $filtres_actifs[] = __( 'Comptes archivés uniquement', 'seliweb' ); }
+if ( $filtre_archive === 'actifs' )   { $filtres_actifs[] = __( 'Comptes non archivés uniquement', 'seliweb' ); }
 
 $joins = "FROM $tm m
         LEFT JOIN $tg g ON g.id=m.groupe_id
@@ -359,7 +386,6 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         <?php if ($action==='list') : ?>
             <a href="<?php echo esc_url(admin_url('admin.php?page=seliweb_membres&action=new')); ?>"
                class="page-title-action seliweb-no-print"><?php esc_html_e('+ Ajouter un membre','seliweb'); ?></a>
-            <button type="button" class="page-title-action seliweb-no-print" onclick="window.print()"><?php esc_html_e('Imprimer','seliweb'); ?></button>
         <?php endif; ?>
     </h1>
 
@@ -854,6 +880,40 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         <div class="notice notice-error"><p><?php esc_html_e('Membre introuvable.','seliweb'); ?></p></div>
     <?php endif; ?>
 
+    <?php else :
+    $print_request = isset( $_GET['seliweb_print'] ) && $_GET['seliweb_print'] === '1';
+    ?>
+    <?php if ( $print_request ) :
+        $print_cols    = Seliweb_Membres::requested_cols( $_GET['cols'] ?? array() );
+        $print_defs    = Seliweb_Membres::column_defs();
+        $print_membres = Seliweb_Membres::query_membres( $filtre_groupe, $filtre_ville, $filtre_bloque, $orderby_key, $order, $filtre_archive );
+    ?>
+        <p class="seliweb-no-print"><a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_membres' ) ); ?>">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
+        <div style="margin-bottom:16px;">
+            <h2 style="margin:0 0 6px;"><?php esc_html_e( 'Liste des membres', 'seliweb' ); ?></h2>
+            <p style="margin:0;color:#333;">
+                <?php echo $filtres_actifs ? esc_html( implode( ' — ', $filtres_actifs ) ) : esc_html__( 'Aucun filtre appliqué', 'seliweb' ); ?>
+            </p>
+        </div>
+        <table class="wp-list-table widefat fixed striped">
+            <thead><tr>
+                <?php foreach ( $print_cols as $c ) : ?>
+                    <th><?php echo esc_html( $print_defs[ $c ]['label'] ); ?></th>
+                <?php endforeach; ?>
+            </tr></thead>
+            <tbody>
+            <?php if ( ! $print_membres ) : ?>
+                <tr><td colspan="<?php echo count( $print_cols ); ?>"><em><?php esc_html_e( 'Aucun membre trouvé.', 'seliweb' ); ?></em></td></tr>
+            <?php else : foreach ( $print_membres as $m ) : ?>
+                <tr>
+                    <?php foreach ( $print_cols as $c ) : ?>
+                        <td><?php echo esc_html( $print_defs[ $c ]['get']( $m ) ); ?></td>
+                    <?php endforeach; ?>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+        <script>window.addEventListener('load', function(){ window.print(); });</script>
     <?php else : ?>
     <!-- ===== FILTRES ===== -->
     <form method="get" class="seliweb-no-print" style="margin:16px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
@@ -891,6 +951,14 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             </select>
         </div>
         <div>
+            <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Comptes archivés','seliweb'); ?></label>
+            <select name="filtre_archive">
+                <option value=""><?php esc_html_e('Tous','seliweb'); ?></option>
+                <option value="archives" <?php selected($filtre_archive,'archives'); ?>><?php esc_html_e('Archivés uniquement','seliweb'); ?></option>
+                <option value="actifs"   <?php selected($filtre_archive,'actifs'); ?>><?php esc_html_e('Non archivés uniquement','seliweb'); ?></option>
+            </select>
+        </div>
+        <div>
             <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Par page','seliweb'); ?></label>
             <select name="per_page">
                 <?php foreach ( $per_page_allowed as $pp ) : ?>
@@ -907,6 +975,38 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         </span>
     </form>
 
+    <!-- ===== IMPRESSION / EXPORT ===== -->
+    <details class="seliweb-no-print" style="margin:0 0 16px;border:1px solid #dcdcde;border-radius:4px;background:#fff;">
+        <summary style="padding:10px 14px;cursor:pointer;font-weight:600;"><?php esc_html_e( 'Imprimer / Exporter…', 'seliweb' ); ?></summary>
+        <div style="padding:0 14px 14px;">
+            <p class="description" style="margin:0 0 10px;">
+                <?php esc_html_e( 'Choisissez les colonnes à inclure. La liste complète correspondant aux filtres ci-dessus (sans pagination) sera utilisée.', 'seliweb' ); ?>
+            </p>
+            <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" target="seliweb_print_membres">
+                <input type="hidden" name="page" value="seliweb_membres">
+                <?php if ( $filtre_groupe ) : ?><input type="hidden" name="filtre_groupe" value="<?php echo esc_attr( $filtre_groupe ); ?>"><?php endif; ?>
+                <?php if ( $filtre_ville )  : ?><input type="hidden" name="filtre_ville" value="<?php echo esc_attr( $filtre_ville ); ?>"><?php endif; ?>
+                <?php if ( $filtre_bloque ) : ?><input type="hidden" name="filtre_bloque" value="<?php echo esc_attr( $filtre_bloque ); ?>"><?php endif; ?>
+                <?php if ( $filtre_archive ) : ?><input type="hidden" name="filtre_archive" value="<?php echo esc_attr( $filtre_archive ); ?>"><?php endif; ?>
+                <input type="hidden" name="orderby" value="<?php echo esc_attr( $orderby_key ); ?>">
+                <input type="hidden" name="order" value="<?php echo esc_attr( strtolower( $order ) ); ?>">
+                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'seliweb_membres_export' ) ); ?>">
+
+                <div style="display:grid;grid-template-columns:repeat(3, minmax(160px,1fr));gap:6px 16px;margin-bottom:14px;">
+                    <?php foreach ( Seliweb_Membres::column_defs() as $key => $def ) : ?>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                            <input type="checkbox" name="cols[]" value="<?php echo esc_attr( $key ); ?>" checked>
+                            <?php echo esc_html( $def['label'] ); ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+
+                <button type="submit" name="seliweb_print" value="1" class="button button-primary"><?php esc_html_e( 'Imprimer', 'seliweb' ); ?></button>
+                <button type="submit" formaction="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" formtarget="_self" name="action" value="seliweb_membres_csv" class="button"><?php esc_html_e( 'Exporter CSV', 'seliweb' ); ?></button>
+            </form>
+        </div>
+    </details>
+
     <!-- ===== RECHERCHE ===== -->
     <div class="seliweb-no-print" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <input type="text" id="mbr-search"
@@ -919,9 +1019,10 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
     <!-- ===== LISTE ===== -->
     <?php
     $base_args = array( 'page' => 'seliweb_membres', 'per_page' => $per_page );
-    if ( $filtre_groupe ) $base_args['filtre_groupe'] = $filtre_groupe;
-    if ( $filtre_ville )  $base_args['filtre_ville']  = $filtre_ville;
-    if ( $filtre_bloque ) $base_args['filtre_bloque'] = $filtre_bloque;
+    if ( $filtre_groupe )  $base_args['filtre_groupe']  = $filtre_groupe;
+    if ( $filtre_ville )   $base_args['filtre_ville']   = $filtre_ville;
+    if ( $filtre_bloque )  $base_args['filtre_bloque']  = $filtre_bloque;
+    if ( $filtre_archive ) $base_args['filtre_archive'] = $filtre_archive;
 
     $sort_url = function( $col ) use ( $orderby_key, $order, $base_args ) {
         $new_order = ( $orderby_key === $col && $order === 'ASC' ) ? 'desc' : 'asc';
@@ -951,13 +1052,14 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <th><?php esc_html_e('Groupe','seliweb'); ?></th>
             <th class="seliweb-no-print" style="width:140px;"><?php esc_html_e('Actions','seliweb'); ?></th>
             <th class="seliweb-no-print" style="width:70px;text-align:center;"><?php esc_html_e('Bloqué','seliweb'); ?></th>
+            <th class="seliweb-no-print" style="width:70px;text-align:center;"><?php esc_html_e('Archivé','seliweb'); ?></th>
         </tr></thead>
         <tbody id="mbr-tbody">
         <?php if (empty($membres)) : ?>
-            <tr><td colspan="10"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
+            <tr><td colspan="11"><em><?php esc_html_e('Aucun membre trouvé.','seliweb'); ?></em></td></tr>
         <?php else : ?>
             <tr id="mbr-no-results" style="display:none;">
-                <td colspan="10" style="text-align:center;color:#888;font-style:italic;">
+                <td colspan="11" style="text-align:center;color:#888;font-style:italic;">
                     <?php esc_html_e('Aucun résultat pour cette recherche.','seliweb'); ?>
                 </td>
             </tr>
@@ -968,7 +1070,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                 $m->prenom ?? '',
                 $m->nom ?? '',
                 $m->user_email,
-            ) ) ); ?>">
+            ) ) ); ?>" <?php echo ! empty( $m->archive ) ? 'style="opacity:.55;"' : ''; ?>>
                 <td style="text-align:center;color:#888;font-size:12px;"><?php echo intval( $m->id ); ?></td>
                 <td style="text-align:center;color:#888;font-size:12px;font-weight:600;">
                     <?php echo ! empty( $m->numero_sel ) ? intval( $m->numero_sel ) : '—'; ?>
@@ -978,6 +1080,9 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                     <strong><?php echo esc_html( $m->nom ?? '' ); ?></strong>
                     <?php if ( !empty($m->organisme) ) : ?>
                         <br><em style="font-size:12px;color:#888;"><?php echo esc_html($m->organisme); ?></em>
+                    <?php endif; ?>
+                    <?php if ( !empty($m->archive) ) : ?>
+                        <br><span style="font-size:11px;color:#b32d2e;font-weight:600;"><?php esc_html_e('Archivé','seliweb'); ?></span>
                     <?php endif; ?>
                 </td>
                 <td><?php echo esc_html($m->user_email); ?></td>
@@ -1011,10 +1116,20 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                     </a>
                 </td>
                 <td class="seliweb-no-print" style="text-align:center;">
-                    <input type="checkbox" name="bloque" value="1" form="mbr-form-<?php echo intval($m->id); ?>"
+                    <input type="checkbox" name="bloque" id="mbr-bloque-<?php echo intval($m->id); ?>" value="1"
+                           form="mbr-form-<?php echo intval($m->id); ?>"
                            <?php checked( ! empty( $m->bloque ) ); ?>
+                           <?php disabled( ! empty( $m->archive ) ); ?>
                            onchange="this.form.submit()"
                            title="<?php esc_attr_e('Bloquer ce compte (empêche la connexion)','seliweb'); ?>">
+                </td>
+                <td class="seliweb-no-print" style="text-align:center;">
+                    <input type="checkbox" name="archive" id="mbr-archive-<?php echo intval($m->id); ?>" value="1"
+                           form="mbr-form-<?php echo intval($m->id); ?>"
+                           data-membre-id="<?php echo intval($m->id); ?>"
+                           <?php checked( ! empty( $m->archive ) ); ?>
+                           onclick="mbrArchiveGuard(this, event)"
+                           title="<?php esc_attr_e("Archiver ce membre (départ complet du site)",'seliweb'); ?>">
                 </td>
             </tr>
             <?php endforeach; ?>
@@ -1041,6 +1156,52 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         <?php endif; ?>
     </div>
     <?php endif; ?>
+
+    <!-- Confirmation d'archivage — fenêtre rouge (même convention que
+         Paramètres → API), car l'archivage dépublie les annonces du membre
+         et bloque sa connexion. -->
+    <div id="mbr_confirm_overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border:3px solid #b32d2e;border-radius:6px;max-width:440px;padding:24px;box-shadow:0 4px 24px rgba(0,0,0,.3);">
+            <p style="color:#b32d2e;font-weight:700;font-size:1.05rem;margin:0 0 10px;"><?php esc_html_e( 'Êtes-vous sûr de vouloir archiver ce membre ?', 'seliweb' ); ?></p>
+            <p style="color:#b32d2e;font-weight:600;margin:0 0 20px;"><?php esc_html_e( "Ses annonces seront dépubliées et sa connexion sera bloquée. Rien n'est effacé (adresse, historique…).", 'seliweb' ); ?></p>
+            <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button type="button" id="mbr_confirm_cancel" class="button"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></button>
+                <button type="button" id="mbr_confirm_ok" class="button" style="background:#b32d2e;border-color:#8f2422;color:#fff;"><?php esc_html_e( 'Archiver', 'seliweb' ); ?></button>
+            </div>
+        </div>
+    </div>
+    <script>
+    var mbrConfirmOnOk = null;
+    (function(){
+        var overlay = document.getElementById('mbr_confirm_overlay');
+        document.getElementById('mbr_confirm_cancel').addEventListener('click', function(){ overlay.style.display = 'none'; mbrConfirmOnOk = null; });
+        document.getElementById('mbr_confirm_ok').addEventListener('click', function(){
+            overlay.style.display = 'none';
+            var cb = mbrConfirmOnOk; mbrConfirmOnOk = null;
+            if (cb) cb();
+        });
+    })();
+    function mbrArchiveGuard(cb, e) {
+        var id      = cb.dataset.membreId;
+        var bloqueCb = document.getElementById('mbr-bloque-' + id);
+        var form     = document.getElementById('mbr-form-' + id);
+        if (cb.checked) {
+            // Vient d'être coché : on annule ce changement tant que ce n'est pas confirmé.
+            e.preventDefault();
+            cb.checked = false;
+            mbrConfirmOnOk = function() {
+                cb.checked = true;
+                if (bloqueCb) { bloqueCb.checked = true; bloqueCb.disabled = true; }
+                form.submit();
+            };
+            document.getElementById('mbr_confirm_overlay').style.display = 'flex';
+        } else {
+            // Décoché : désarchivage, pas de confirmation nécessaire.
+            if (bloqueCb) { bloqueCb.disabled = false; bloqueCb.checked = false; }
+            form.submit();
+        }
+    }
+    </script>
 
     <script>
     (function() {
@@ -1072,5 +1233,6 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         if (btnClr) btnClr.addEventListener('click', function() { input.value = ''; doSearch(); input.focus(); });
     })();
     </script>
+    <?php endif; // print_request ?>
     <?php endif; ?>
 </div>

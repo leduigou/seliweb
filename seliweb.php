@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.95
+ * Version: 0.9.108
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.95' );
+define( 'SELIWEB_VERSION', '0.9.108' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -31,6 +31,7 @@ require_once SELIWEB_DIR . 'includes/class-front.php';
 require_once SELIWEB_DIR . 'includes/class-recherche.php';
 require_once SELIWEB_DIR . 'includes/class-contact.php';
 require_once SELIWEB_DIR . 'includes/class-evenements.php';
+require_once SELIWEB_DIR . 'includes/class-membres.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -42,6 +43,7 @@ Seliweb_Updater::init();
 Seliweb_Recherche::init();
 Seliweb_Contact::init();
 Seliweb_Evenements::init();
+Seliweb_Membres::init();
 
 class Seliweb {
 
@@ -59,6 +61,11 @@ class Seliweb {
 
         // Rattachement au groupe par défaut à l'inscription
         add_action( 'user_register',         array( $this, 'rattacher_groupe_defaut' ) );
+
+        // Suppression directe d'un compte WP membre Seliweb : bloquée (fiche
+        // fantôme sinon — annonces/historique SEL orphelins). Renvoie vers
+        // « Archiver » à la place (voir discussion RGPD/archivage).
+        add_action( 'delete_user',           array( $this, 'bloquer_suppression_membre' ) );
 
         // Redirection connexion / déconnexion vers le front-end
         add_filter( 'login_redirect',        array( $this, 'redirect_apres_connexion' ), 10, 3 );
@@ -156,6 +163,31 @@ class Seliweb {
                 'groupe_id'  => $groupe_id ?: null,
             ) );
         }
+    }
+
+    // ----------------------------------------------------------------
+    // Suppression WP bloquée pour un membre Seliweb (voir discussion
+    // RGPD/archivage) : évite une fiche seliweb_membres orpheline (annonces,
+    // écritures SEL, inscriptions… restant rattachées à un membre disparu).
+    // L'admin est invité à archiver le membre à la place, ce qui bloque sa
+    // connexion et dépublie ses annonces sans rien effacer.
+    // ----------------------------------------------------------------
+    public function bloquer_suppression_membre( $wp_user_id ) {
+        global $wpdb;
+        $tm        = $wpdb->prefix . 'seliweb_membres';
+        $membre_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tm WHERE wp_user_id=%d", $wp_user_id ) );
+        if ( ! $membre_id ) return; // pas un membre Seliweb : on laisse WordPress faire
+
+        $url = admin_url( 'admin.php?page=seliweb_membres&action=edit&id=' . $membre_id );
+        wp_die(
+            sprintf(
+                /* translators: %s: lien vers la fiche du membre */
+                esc_html__( "Ce compte est un membre Seliweb : la suppression directe est désactivée pour éviter les incohérences (annonces, historique SEL orphelins…). Utilisez plutôt la case « Archiver » sur %s.", 'seliweb' ),
+                '<a href="' . esc_url( $url ) . '">' . esc_html__( 'sa fiche membre', 'seliweb' ) . '</a>'
+            ),
+            esc_html__( 'Suppression bloquée', 'seliweb' ),
+            array( 'back_link' => true )
+        );
     }
 
     // ----------------------------------------------------------------
@@ -1233,6 +1265,7 @@ class Seliweb {
                 'statut_id'       => $statut_f,
                 'date_expiration' => $date_exp_f,
                 'est_don'         => isset($_POST['est_don']) ? 1 : 0,
+                'est_prix_libre'  => isset($_POST['est_prix_libre']) ? 1 : 0,
             );
 
             // Plafond de photos = celui du groupe du membre (1 par défaut)

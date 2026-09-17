@@ -140,9 +140,9 @@ class Seliweb_Paiements {
         <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
                 <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Groupe de départ', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( "Groupe d'arrivée", 'seliweb' ); ?></th>
-                <th style="width:90px;"><?php esc_html_e( 'Tarif', 'seliweb' ); ?></th>
+                <th style="width:130px;"><?php esc_html_e( 'Groupe de départ', 'seliweb' ); ?></th>
+                <th style="width:130px;"><?php esc_html_e( "Groupe d'arrivée", 'seliweb' ); ?></th>
+                <th style="width:220px;"><?php esc_html_e( 'Tarif', 'seliweb' ); ?></th>
                 <th style="width:90px;"><?php esc_html_e( 'Cotisation', 'seliweb' ); ?></th>
                 <th style="width:140px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>

@@ -166,7 +166,13 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php endif; ?>
 
     <!-- Onglets -->
-    <div class="seliweb-compte-tabs">
+    <div class="seliweb-compte-tabs-bar">
+        <button type="button" id="seliweb-tabs-toggle" class="seliweb-tabs-toggle"
+                aria-controls="seliweb-compte-tabs" aria-expanded="false"
+                aria-label="<?php esc_attr_e( 'Ouvrir le menu', 'seliweb' ); ?>">
+            <span></span><span></span><span></span><span></span>
+        </button>
+    <div class="seliweb-compte-tabs" id="seliweb-compte-tabs">
         <a href="<?php echo esc_url( $page_url ); ?>"
            class="seliweb-tab <?php echo in_array($action,array('liste','creer','modifier')) ? 'seliweb-tab-active' : ''; ?>">
             <?php esc_html_e( 'Mes annonces', 'seliweb' ); ?>
@@ -209,6 +215,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php esc_html_e( 'Événements', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
+    </div>
     </div>
 
     <?php if ( in_array( $action, array( 'liste', 'creer', 'modifier' ) ) ) : ?>
@@ -425,15 +432,25 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                 <div class="seliweb-field">
                     <label>
                         <input type="checkbox" name="est_don" value="1" id="mc_est_don"
-                               onchange="selMCTogglePrix(this.checked)"
+                               onchange="selMCTogglePrix(this.checked, 'don')"
                                <?php checked($is_modif ? $edit_annonce->est_don : 0); ?>>
                         <?php esc_html_e("Je fais un don (le prix ne sera pas affiché)",'seliweb'); ?>
                     </label>
                 </div>
 
+                <!-- Prix libre -->
+                <div class="seliweb-field">
+                    <label>
+                        <input type="checkbox" name="est_prix_libre" value="1" id="mc_est_prix_libre"
+                               onchange="selMCTogglePrix(this.checked, 'prix_libre')"
+                               <?php checked($is_modif ? $edit_annonce->est_prix_libre : 0); ?>>
+                        <?php esc_html_e("Prix libre (proposé par l'acheteur)",'seliweb'); ?>
+                    </label>
+                </div>
+
                 <!-- PRIX — même logique que backend : montant + select monnaie -->
                 <div class="seliweb-field" id="mc_field_prix"
-                     <?php echo ($is_modif && $edit_annonce->est_don) ? 'style="display:none"' : ''; ?>>
+                     <?php echo ($is_modif && ($edit_annonce->est_don || $edit_annonce->est_prix_libre)) ? 'style="display:none"' : ''; ?>>
                     <label><?php esc_html_e('Prix','seliweb'); ?></label>
                     <div id="mc_prix_container">
                         <?php
@@ -1457,6 +1474,35 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
 </div>
 
 <script>
+// --- Onglets « Mon compte » : menu hamburger en version mobile ---------
+(function(){
+    var toggle = document.getElementById('seliweb-tabs-toggle');
+    var tabs   = document.getElementById('seliweb-compte-tabs');
+    if (!toggle || !tabs) return;
+
+    function fermer(){
+        tabs.classList.remove('is-open');
+        toggle.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
+    }
+    toggle.addEventListener('click', function(){
+        var ouvert = tabs.classList.toggle('is-open');
+        toggle.classList.toggle('is-open', ouvert);
+        toggle.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+    });
+    document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape') fermer();
+    });
+    document.addEventListener('click', function(e){
+        if (!tabs.classList.contains('is-open')) return;
+        if (tabs.contains(e.target) || toggle.contains(e.target)) return;
+        fermer();
+    });
+    tabs.addEventListener('click', function(e){
+        if (e.target.closest('a')) fermer();
+    });
+})();
+
 var selMCMonnaies = <?php echo wp_json_encode(array_map(function($m){
     return array('id'=>$m->id,'label'=>$m->nom.($m->symbole?' ('.$m->symbole.')':''));
 }, $monnaies_dispo)); ?>;
@@ -1654,8 +1700,12 @@ function selMCType(catId){
     var isA=opt&&opt.dataset.slug==='annonces';
     document.getElementById('mc_field_type').style.display=(catId&&isA)?'':'none';
 }
-function selMCTogglePrix(isDon){
-    document.getElementById('mc_field_prix').style.display=isDon?'none':'';
+function selMCTogglePrix(checked, source){
+    var donEl=document.getElementById('mc_est_don');
+    var libreEl=document.getElementById('mc_est_prix_libre');
+    if(checked && source==='don') libreEl.checked=false;
+    if(checked && source==='prix_libre') donEl.checked=false;
+    document.getElementById('mc_field_prix').style.display=(donEl.checked||libreEl.checked)?'none':'';
 }
 function selMCUsedIds(){
     var ids=[];

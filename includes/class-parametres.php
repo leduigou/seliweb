@@ -1490,9 +1490,8 @@ class Seliweb_Parametres {
                 'to_only' => true, // seul l'e-mail destinataire est configurable
             ),
             'inscription_evenement' => array(
-                'label'   => __( 'Inscription à un événement', 'seliweb' ),
-                'desc'    => __( 'Envoyé à l\'organisateur quand un adhérent s\'inscrit ou se désinscrit d\'un événement.', 'seliweb' ),
-                'to_only' => true,
+                'label' => __( 'Inscription à un événement', 'seliweb' ),
+                'desc'  => __( 'Envoyé à l\'organisateur quand un adhérent s\'inscrit ou se désinscrit d\'un événement.', 'seliweb' ),
             ),
         );
     }
@@ -1617,7 +1616,7 @@ class Seliweb_Parametres {
                 $key_subject     = 'mail_inscrevt_subject';
                 $key_intro       = 'mail_inscrevt_intro';
                 $key_sig         = 'mail_inscrevt_signature';
-                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle inscription à un événement', 'seliweb' ) );
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( '{action} — {titre}', 'seliweb' ) );
                 break;
             default:
                 return;
@@ -1725,6 +1724,8 @@ class Seliweb_Parametres {
                             <?php printf( esc_html__( 'Par défaut : "%s"', 'seliweb' ), esc_html( $default_subject ) ); ?>
                             <?php if ( in_array( $slug, array( 'nouvelle_annonce', 'contact_annonce' ), true ) ) : ?>
                                 &nbsp;—&nbsp;<?php esc_html_e( "L'expression {titre} permet d'afficher le titre de l'annonce.", 'seliweb' ); ?>
+                            <?php elseif ( $slug === 'inscription_evenement' ) : ?>
+                                &nbsp;—&nbsp;<?php esc_html_e( "Les expressions {titre} (titre de l'événement) et {action} (« Nouvelle inscription » ou « Désinscription ») sont remplacées automatiquement.", 'seliweb' ); ?>
                             <?php endif; ?>
                         </p>
                     </td>

@@ -18,6 +18,7 @@ class Seliweb_Evenements {
         add_shortcode( 'seliweb_evenements', array( __CLASS__, 'shortcode_liste' ) );
         add_action( 'init', array( __CLASS__, 'handle_post' ) );
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
+        add_action( 'init', array( __CLASS__, 'handle_duplicate' ) );
         add_action( 'init', array( __CLASS__, 'handle_inscription' ) );
         add_action( 'admin_post_seliweb_evt_csv', array( __CLASS__, 'handle_csv' ) );
     }
@@ -313,12 +314,12 @@ class Seliweb_Evenements {
         <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
                 <th><?php esc_html_e( 'Titre', 'seliweb' ); ?></th>
-                <th style="width:150px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+                <th style="width:95px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
                 <th style="width:110px;"><?php esc_html_e( 'Visibilité', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Groupes concernés', 'seliweb' ); ?></th>
                 <th style="width:120px;"><?php esc_html_e( 'Inscription', 'seliweb' ); ?></th>
                 <th style="width:85px;"><?php esc_html_e( 'Statut', 'seliweb' ); ?></th>
-                <th style="width:120px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
+                <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
             <?php if ( ! $items ) : ?>
@@ -339,7 +340,7 @@ class Seliweb_Evenements {
                 ?>
                 <tr>
                     <td><strong><a href="<?php echo esc_url( add_query_arg( array( 'action' => 'edit', 'id' => $e->id ), $base ) ); ?>"><?php echo esc_html( $e->titre ); ?></a></strong></td>
-                    <td><?php echo esc_html( mysql2date( 'j M Y — G\hi', $e->date_debut ) ); ?></td>
+                    <td><?php echo esc_html( mysql2date( 'j M Y', $e->date_debut ) ); ?></td>
                     <td><?php echo $e->visible_par_tous ? esc_html__( 'Publique', 'seliweb' ) : esc_html__( 'Membres seulement', 'seliweb' ); ?></td>
                     <td><?php echo $gnoms
                         ? esc_html( implode( ', ', $gnoms ) )
@@ -364,6 +365,8 @@ class Seliweb_Evenements {
                             &nbsp;|&nbsp;
                             <a href="<?php echo esc_url( add_query_arg( array( 'action' => 'synthese', 'id' => $e->id ), $base ) ); ?>"><?php esc_html_e( 'Synthèse', 'seliweb' ); ?></a>
                         <?php endif; ?>
+                        <br>
+                        <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'duplicate', 'id' => $e->id ), $base ), 'seliweb_duplicate_evt_' . $e->id ) ); ?>"><?php esc_html_e( 'Dupliquer', 'seliweb' ); ?></a>
                         &nbsp;|&nbsp;
                         <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'delete', 'id' => $e->id ), $base ), 'seliweb_delete_evt_' . $e->id ) ); ?>"
                            onclick="return confirm('<?php esc_attr_e( 'Supprimer cet événement ?', 'seliweb' ); ?>')"
@@ -378,12 +381,33 @@ class Seliweb_Evenements {
 
     private static function form_admin( $id ) {
         global $wpdb;
-        $e       = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", $id ) ) : null;
-        $is_edit = (bool) $e;
+        $is_edit = (bool) $id;
+        $e       = $is_edit ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", $id ) ) : null;
+
+        // Pré-remplissage depuis « Dupliquer » : $e porte les valeurs de la
+        // source mais $is_edit reste false — le formulaire est en mode
+        // création, rien n'est encore enregistré (voir handle_duplicate()).
+        $dup_from = 0;
+        if ( ! $is_edit && ! empty( $_GET['duplicate_from'] ) ) {
+            $dup_from = (int) $_GET['duplicate_from'];
+            $src = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", $dup_from ) );
+            if ( $src ) {
+                $e = $src;
+                $e->titre  = sprintf( __( '%s (copie)', 'seliweb' ), $e->titre );
+                $e->statut = 'brouillon';
+            } else {
+                $dup_from = 0;
+            }
+        }
+
         $groupes = $wpdb->get_results( "SELECT id, nom FROM {$wpdb->prefix}seliweb_groupes ORDER BY nom ASC" );
         $g_actifs = self::groupes_ids( $e );
         $img_id  = $e ? (int) $e->image_id : 0;
         $img_url = $img_id ? wp_get_attachment_image_url( $img_id, 'medium' ) : '';
+
+        if ( $dup_from ) {
+            echo '<div class="notice notice-info"><p>' . esc_html__( "Formulaire pré-rempli à partir de l'événement dupliqué. Vérifiez les informations (dont la date), puis validez pour créer la copie — rien n'est enregistré tant que vous n'avez pas cliqué sur « Créer ».", 'seliweb' ) . '</p></div>';
+        }
 
         $err = isset( $_GET['error'] ) ? sanitize_key( $_GET['error'] ) : '';
         if ( 'champs' === $err ) {
@@ -501,7 +525,7 @@ class Seliweb_Evenements {
                 <tr>
                     <th><?php esc_html_e( 'Questions à l\'inscription', 'seliweb' ); ?></th>
                     <td>
-                        <?php $questions = $is_edit ? self::get_questions( (int) $e->id ) : array(); ?>
+                        <?php $questions = $is_edit ? self::get_questions( (int) $e->id ) : ( $dup_from ? self::get_questions( $dup_from ) : array() ); ?>
                         <div id="evt-questions">
                             <?php foreach ( $questions as $i => $q ) : ?>
                                 <?php self::render_question_builder_row( $i, $q ); ?>
@@ -718,6 +742,34 @@ class Seliweb_Evenements {
         $wpdb->delete( self::table_questions(), array( 'evenement_id' => $id ) );
         $wpdb->delete( self::table(), array( 'id' => $id ) );
         wp_safe_redirect( admin_url( 'admin.php?page=seliweb_evenements&deleted=1' ) );
+        exit;
+    }
+
+    // Duplique un événement : redirige vers un formulaire « Nouvel événement »
+    // pré-rempli (titre, dates, groupes, questions…) à partir de la source.
+    // Rien n'est écrit en base ici — la copie n'existe qu'au moment où le
+    // formulaire est validé, pour qu'un « Annuler » ou un changement de page
+    // sans valider n'enregistre rien (voir form_admin()).
+    public static function handle_duplicate() {
+        if ( ! is_admin() ) return;
+        if ( ( $_GET['page'] ?? '' ) !== 'seliweb_evenements' ) return;
+        if ( ( $_GET['action'] ?? '' ) !== 'duplicate' || empty( $_GET['id'] ) ) return;
+
+        $id = (int) $_GET['id'];
+        if ( ! check_admin_referer( 'seliweb_duplicate_evt_' . $id ) ) return;
+        if ( ! current_user_can( 'manage_options' ) ) return;
+
+        global $wpdb;
+        $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM " . self::table() . " WHERE id=%d", $id ) );
+        if ( ! $exists ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_evenements' ) );
+            exit;
+        }
+
+        wp_safe_redirect( add_query_arg(
+            array( 'page' => 'seliweb_evenements', 'action' => 'new', 'duplicate_from' => $id ),
+            admin_url( 'admin.php' )
+        ) );
         exit;
     }
 
@@ -976,6 +1028,14 @@ class Seliweb_Evenements {
                 <?php if ( $e->presentation ) : ?>
                     <div class="seliweb-evt-presentation"><?php echo wpautop( esc_html( $e->presentation ) ); ?></div>
                 <?php endif; ?>
+                <?php if ( $e->inscription_requise && $e->date_debut > current_time( 'mysql' ) ) : ?>
+                    <p class="seliweb-evt-inscription-info">
+                        <?php printf(
+                            esc_html__( 'Inscription dans « Mon compte » pour les groupes : %s', 'seliweb' ),
+                            esc_html( implode( ', ', $gnoms ) )
+                        ); ?>
+                    </p>
+                <?php endif; ?>
             </div>
         </article>
         <?php
@@ -1127,14 +1187,20 @@ class Seliweb_Evenements {
         $nom   = $u ? ( trim( $u->first_name . ' ' . $u->last_name ) ?: $u->display_name ) : ( 'Membre #' . (int) $membre_id );
         $email = $u ? $u->user_email : '';
 
-        $sujet = sprintf(
-            $desinscription
-                ? __( '[%1$s] Désinscription — %2$s', 'seliweb' )
-                : __( '[%1$s] Nouvelle inscription — %2$s', 'seliweb' ),
-            get_bloginfo( 'name' ), $evt->titre
-        );
+        // Config mail (clés mail_inscrevt_*) — personnalisable dans
+        // Réglages Seliweb → Mails → « Inscription à un événement ».
+        $tp   = $wpdb->prefix . 'seliweb_parametres';
+        $rows = $wpdb->get_results( "SELECT cle, valeur FROM $tp WHERE cle LIKE 'mail\_inscrevt\_%'" );
+        $cfg  = array();
+        foreach ( $rows as $r ) $cfg[ $r->cle ] = $r->valeur;
 
-        $corps = implode( "\n", array(
+        $action = $desinscription ? __( 'Désinscription', 'seliweb' ) : __( 'Nouvelle inscription', 'seliweb' );
+
+        $sujet_tpl = trim( $cfg['mail_inscrevt_subject'] ?? '' )
+            ?: sprintf( '[%s] %s', get_bloginfo( 'name' ), __( '{action} — {titre}', 'seliweb' ) );
+        $sujet = str_replace( array( '{action}', '{titre}' ), array( $action, $evt->titre ), $sujet_tpl );
+
+        $corps_systeme = implode( "\n", array(
             $desinscription
                 ? __( 'Une personne s\'est désinscrite d\'un événement.', 'seliweb' )
                 : __( 'Une personne s\'est inscrite à un événement.', 'seliweb' ),
@@ -1148,7 +1214,23 @@ class Seliweb_Evenements {
             sprintf( __( 'Inscrits à présent : %d', 'seliweb' ), self::nb_inscrits( (int) $evt->id ) ),
         ) );
 
-        $headers = ( $email && is_email( $email ) ) ? array( 'Reply-To: ' . $nom . ' <' . $email . '>' ) : array();
+        $intro = trim( $cfg['mail_inscrevt_intro']     ?? '' );
+        $sig   = trim( $cfg['mail_inscrevt_signature']  ?? '' );
+        $corps = $corps_systeme;
+        if ( $intro ) $corps = $intro . "\n\n" . $corps;
+        if ( $sig )   $corps = $corps . "\n\n" . $sig;
+
+        $from_email = trim( $cfg['mail_inscrevt_from_email'] ?? '' );
+        $from_name  = trim( $cfg['mail_inscrevt_from_name']  ?? '' );
+
+        $headers = array();
+        if ( $from_email && is_email( $from_email ) ) {
+            $headers[] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
+        }
+        if ( $email && is_email( $email ) ) {
+            $headers[] = 'Reply-To: ' . $nom . ' <' . $email . '>';
+        }
+
         wp_mail( $to, $sujet, $corps, $headers );
     }
 
