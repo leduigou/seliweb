@@ -24,7 +24,7 @@ $photos_detail    = array();
 $rubrique_image   = '';
 
 if ( $detail ) {
-    $cat_row = $wpdb->get_row( $wpdb->prepare( "SELECT nom, slug FROM $tc WHERE id=%d", intval( $detail->categorie_id ) ) );
+    $cat_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tc WHERE id=%d", intval( $detail->categorie_id ) ) );
     $detail->cat_nom    = $cat_row ? $cat_row->nom  : '';
     $detail->cat_slug   = $cat_row ? $cat_row->slug : '';
     $rub_row  = $wpdb->get_row( $wpdb->prepare( "SELECT nom, image FROM $tr WHERE id=%d", intval( $detail->rubrique_id ) ) );
@@ -77,7 +77,15 @@ $signal_avertissement = trim( $signal_cfg['mail_signal_avertissement'] ?? '' )
 $signal_prompt = trim( $signal_cfg['mail_signal_prompt'] ?? '' )
     ?: __( "Vous allez signaler une annonce au webmaster de ce site. Merci d'en préciser les raisons.", 'seliweb-view' );
 
-$detail_ok = $detail && ( $detail->statut_slug !== 'expire' );
+// Visibilité par catégorie (ex. « Compétences » réservée aux Selistes) :
+// sans ce contrôle, un lien direct suffirait à contourner la restriction
+// appliquée à la liste. Traité comme "introuvable", pas comme un message
+// distinct — un visiteur non autorisé ne doit même pas savoir qu'elle existe.
+$categorie_visible = Seliweb_Annonces::categorie_visible_pour(
+    $cat_row ?? null,
+    $groupe_visiteur ? (int) $groupe_visiteur->id : 0
+);
+$detail_ok = $detail && ( $detail->statut_slug !== 'expire' ) && $categorie_visible;
 
 if ( ! $detail_ok ) {
     echo '<main id="swv-main"><div class="swv-single-wrap"><p class="swv-annonces-empty">'
@@ -387,6 +395,12 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
                     <form method="post" action="<?php echo esc_url( $page_url ); ?>">
                         <?php wp_nonce_field( 'seliweb_signal_' . $annonce_id, 'seliweb_signal_nonce' ); ?>
                         <input type="hidden" name="annonce_id" value="<?php echo intval( $annonce_id ); ?>">
+                        <input type="hidden" name="seliweb_ts" value="<?php echo esc_attr( Seliweb_Contact::make_token( Seliweb::SIGNAL_TOKEN_ACTION ) ); ?>">
+                        <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">
+                            <label><?php esc_html_e( 'Ne pas remplir ce champ', 'seliweb-view' ); ?>
+                                <input type="text" name="seliweb_site_url" value="" tabindex="-1" autocomplete="off">
+                            </label>
+                        </div>
                         <textarea name="raison" rows="4" required
                                   style="width:100%;max-width:480px;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:.9rem;margin-bottom:8px;display:block;"
                                   placeholder="<?php esc_attr_e( 'Décrivez en quoi cette annonce vous semble inappropriée…', 'seliweb-view' ); ?>"></textarea>

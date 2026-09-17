@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '3.6';
+    const DB_VERSION     = '3.9';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -336,6 +336,25 @@ class Seliweb_Database {
             KEY question_id (question_id)
         ) $charset;";
 
+        // Migration v3.8 : traçabilité des consentements (inscription, puis
+        // abonnements — même table pour tout futur besoin similaire). Aucune
+        // rétroactivité : l'historique ne démarre qu'à partir de la mise en
+        // place, on ne peut pas reconstituer un consentement jamais demandé
+        // aux comptes déjà existants. `texte` conserve une copie exacte du
+        // texte accepté au moment du consentement (pas un renvoi vers le
+        // réglage actuel, qui peut changer ensuite).
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_consentements (
+            id                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wp_user_id        BIGINT UNSIGNED NOT NULL,
+            type              VARCHAR(30)  NOT NULL,
+            reference_id      INT UNSIGNED DEFAULT NULL,
+            texte             TEXT         NOT NULL,
+            date_consentement DATETIME     NOT NULL,
+            PRIMARY KEY (id),
+            KEY wp_user_id (wp_user_id),
+            KEY type (type)
+        ) $charset;";
+
         foreach ( $sql as $query ) {
             dbDelta( $query );
         }
@@ -481,6 +500,22 @@ class Seliweb_Database {
         // annonces (voir templates/admin-membres.php) ; n'efface aucune donnée
         // (l'anonymisation RGPD sera une fonctionnalité distincte, v2).
         self::maybe_add_column( $wpdb->prefix . 'seliweb_membres', 'archive', "TINYINT(1) NOT NULL DEFAULT 0 AFTER bloque" );
+
+        // Migration v3.7 : visibilité d'une catégorie d'annonces par groupe
+        // (ex. « Compétences » réservée aux Selistes). Même mécanique que la
+        // visibilité des événements : visible_par_tous=1 par défaut (aucun
+        // changement pour les catégories existantes) ; si 0, seuls les groupes
+        // listés dans `groupes` (liste d'IDs séparés par des virgules) voient
+        // ET peuvent publier dans cette catégorie — les visiteurs non connectés
+        // ne la voient jamais dans ce cas.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_categories', 'visible_par_tous', "TINYINT(1) NOT NULL DEFAULT 1" );
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_categories', 'groupes', "VARCHAR(255) DEFAULT NULL" );
+
+        // Migration v3.9 : titre du consentement d'un abonnement (même
+        // principe que le titre du consentement d'inscription) — repris tel
+        // quel dans « Acceptez-vous [titre] ? » et « J'ai lu et j'accepte
+        // [titre]. » sur l'écran Mon compte > Abonnements.
+        self::maybe_add_column( $wpdb->prefix . 'seliweb_paiements_offres', 'consentement_titre', "VARCHAR(255) DEFAULT NULL AFTER consentement_texte" );
 
         self::insert_defaults();
     }

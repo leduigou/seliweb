@@ -1357,6 +1357,58 @@ class Seliweb_Annonces {
     }
 
     // ----------------------------------------------------------------
+    // Visibilité des catégories par groupe (ex. « Compétences » réservée
+    // aux Selistes) — même mécanique que les groupes des événements :
+    // visible_par_tous=1 (défaut) = tout le monde ; sinon seuls les groupes
+    // listés dans `groupes` voient la catégorie ET peuvent y publier. Un
+    // visiteur non connecté (groupe_visiteur_id = 0) ne voit jamais une
+    // catégorie restreinte.
+    // ----------------------------------------------------------------
+    public static function categorie_groupes_ids( $cat ) {
+        return ( $cat && $cat->groupes !== null && $cat->groupes !== '' )
+            ? array_map( 'intval', explode( ',', $cat->groupes ) )
+            : array();
+    }
+
+    public static function categorie_visible_pour( $cat, $groupe_visiteur_id ) {
+        if ( ! $cat ) return true; // pas de catégorie = pas de restriction
+        if ( ! empty( $cat->visible_par_tous ) ) return true;
+        return in_array( (int) $groupe_visiteur_id, self::categorie_groupes_ids( $cat ), true );
+    }
+
+    public static function categories_visibles_pour( $groupe_visiteur_id ) {
+        global $wpdb;
+        $tc = $wpdb->prefix . 'seliweb_categories';
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM $tc WHERE visible_par_tous = 1 OR FIND_IN_SET(%d, groupes) ORDER BY nom ASC",
+            (int) $groupe_visiteur_id
+        ) );
+    }
+
+    public static function rubriques_visibles_pour( $groupe_visiteur_id ) {
+        global $wpdb;
+        $tr = $wpdb->prefix . 'seliweb_rubriques';
+        $tc = $wpdb->prefix . 'seliweb_categories';
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT r.* FROM $tr r
+             INNER JOIN $tc c ON c.id = r.categorie_id
+             WHERE c.visible_par_tous = 1 OR FIND_IN_SET(%d, c.groupes)
+             ORDER BY r.categorie_id, r.nom ASC",
+            (int) $groupe_visiteur_id
+        ) );
+    }
+
+    // Groupe du visiteur courant (0 si non connecté ou sans groupe).
+    public static function get_groupe_visiteur_id() {
+        if ( ! is_user_logged_in() ) return 0;
+        global $wpdb;
+        $tm = $wpdb->prefix . 'seliweb_membres';
+        return (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT groupe_id FROM $tm WHERE wp_user_id=%d", get_current_user_id()
+        ) );
+    }
+
+    // ----------------------------------------------------------------
     // Méthodes publiques utilitaires
     // ----------------------------------------------------------------
     public static function get_annonces_publiques( $filters = array() ) {
@@ -1367,9 +1419,17 @@ class Seliweb_Annonces {
         $ts = $wpdb->prefix . 'seliweb_statuts';
         $tm = $wpdb->prefix . 'seliweb_membres';
 
-        $statut_expire = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $ts WHERE slug=%s LIMIT 1", 'expire' ) );
-        $where  = array( "( a.statut_id != %d OR a.statut_id IS NULL )" );
-        $values = array( $statut_expire ?? 0 );
+        $statut_expire    = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $ts WHERE slug=%s LIMIT 1", 'expire' ) );
+        $viewer_groupe_id = (int) ( $filters['viewer_groupe_id'] ?? 0 );
+        // Visibilité par catégorie (ex. « Compétences » réservée aux Selistes) :
+        // toujours appliquée, ce n'est pas un filtre optionnel choisi par le
+        // visiteur. `c.id IS NULL` couvre les annonces sans catégorie (aucune
+        // restriction ne s'applique à elles).
+        $where  = array(
+            "( a.statut_id != %d OR a.statut_id IS NULL )",
+            "( c.id IS NULL OR c.visible_par_tous = 1 OR FIND_IN_SET(%d, c.groupes) )",
+        );
+        $values = array( $statut_expire ?? 0, $viewer_groupe_id );
 
         if ( ! empty( $filters['categorie_id'] ) ) { $where[] = "a.categorie_id = %d"; $values[] = intval( $filters['categorie_id'] ); }
         if ( ! empty( $filters['type_annonce'] ) ) { $where[] = "a.type_annonce = %s"; $values[] = sanitize_key( $filters['type_annonce'] ); }

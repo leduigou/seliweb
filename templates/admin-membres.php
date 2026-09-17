@@ -876,6 +876,34 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
         if (p1 && p1 !== p2) { e.preventDefault(); swbModCheckPwd(); }
     });
     </script>
+
+    <?php if ( class_exists( 'Seliweb_Consentements' ) ) :
+        $consentements_membre = Seliweb_Consentements::pour_membre( $m_edit->wp_user_id );
+        if ( $consentements_membre ) : ?>
+        <h2 style="margin-top:32px;"><?php esc_html_e( 'Historique des consentements', 'seliweb' ); ?></h2>
+        <table class="wp-list-table widefat fixed striped" style="max-width:800px;">
+            <thead><tr>
+                <th style="width:150px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
+                <th style="width:120px;"><?php esc_html_e( 'Type', 'seliweb' ); ?></th>
+                <th><?php esc_html_e( 'Texte accepté', 'seliweb' ); ?></th>
+            </tr></thead>
+            <tbody>
+                <?php foreach ( $consentements_membre as $c ) : ?>
+                <tr>
+                    <td><?php echo esc_html( mysql2date( 'd/m/Y H:i', $c->date_consentement ) ); ?></td>
+                    <td><?php echo esc_html( Seliweb_Consentements::type_label( $c->type ) ); ?></td>
+                    <td>
+                        <div style="max-height:70px;overflow-y:auto;border:1px solid #dcdcde;border-radius:4px;padding:6px 8px;background:#f6f7f7;font-size:12px;line-height:1.4;white-space:pre-wrap;">
+                            <?php echo esc_html( $c->texte ); ?>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif;
+    endif; ?>
+
     <?php else : ?>
         <div class="notice notice-error"><p><?php esc_html_e('Membre introuvable.','seliweb'); ?></p></div>
     <?php endif; ?>
@@ -1006,6 +1034,15 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             </form>
         </div>
     </details>
+
+    <?php if ( class_exists( 'Seliweb_Consentements' ) ) : ?>
+    <p class="seliweb-no-print" style="margin:0 0 16px;">
+        <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=seliweb_consentements_csv' ), 'seliweb_consentements_export' ) ); ?>">
+            <?php esc_html_e( 'Exporter les consentements (CSV)', 'seliweb' ); ?>
+        </a>
+        <span class="description" style="margin-left:8px;"><?php esc_html_e( 'Inscription et abonnements, tous membres.', 'seliweb' ); ?></span>
+    </p>
+    <?php endif; ?>
 
     <!-- ===== RECHERCHE ===== -->
     <div class="seliweb-no-print" style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">

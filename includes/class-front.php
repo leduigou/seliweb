@@ -395,11 +395,13 @@ if ( ! function_exists( 'swv_render_search' ) ) {
         if ( ! class_exists('Seliweb_Annonces') ) return;
 
         global $wpdb;
-        $tc = $wpdb->prefix . 'seliweb_categories';
-        $tr = $wpdb->prefix . 'seliweb_rubriques';
 
-        $categories = $wpdb->get_results("SELECT * FROM $tc ORDER BY nom ASC");
-        $rubriques  = $wpdb->get_results("SELECT * FROM $tr ORDER BY categorie_id, nom ASC");
+        // Catégories/rubriques restreintes par groupe (ex. « Compétences »
+        // réservée aux Selistes) : ne proposer dans les filtres que ce que le
+        // visiteur courant a le droit de voir.
+        $viewer_groupe_id = (int) ( $filters['viewer_groupe_id'] ?? 0 );
+        $categories = Seliweb_Annonces::categories_visibles_pour( $viewer_groupe_id );
+        $rubriques  = Seliweb_Annonces::rubriques_visibles_pour( $viewer_groupe_id );
         $villes     = Seliweb_Annonces::get_villes();
         $page_url   = swv_annonces_page_url();
         ?>

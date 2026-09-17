@@ -220,14 +220,15 @@ class Seliweb_Parametres {
         $is_annonces = array_key_exists( $tab, $annonces_subtabs );
 
         $tabs = array(
-            'annonces'    => __( 'Annonces',    'seliweb' ),
-            'monnaies'    => __( 'Monnaies',    'seliweb' ),
-            'groupes'     => __( 'Groupes',     'seliweb' ),
-            'sel'         => __( 'SEL',         'seliweb' ),
-            'mails'       => __( 'Mails',       'seliweb' ),
-            'api'         => __( 'API',         'seliweb' ),
-            'cotisations' => __( 'Cotisations', 'seliweb' ),
-            'paiements'   => __( 'Abonnements', 'seliweb' ),
+            'inscription' => __( 'Inscription',  'seliweb' ),
+            'groupes'     => __( 'Groupes',      'seliweb' ),
+            'annonces'    => __( 'Annonces',     'seliweb' ),
+            'monnaies'    => __( 'Monnaies',     'seliweb' ),
+            'mails'       => __( 'Mails',        'seliweb' ),
+            'sel'         => __( 'SEL',          'seliweb' ),
+            'cotisations' => __( 'Cotisations',  'seliweb' ),
+            'paiements'   => __( 'Abonnements',  'seliweb' ),
+            'api'         => __( 'API',          'seliweb' ),
         );
 
         echo '<div class="wrap">';
@@ -260,6 +261,7 @@ class Seliweb_Parametres {
             case 'groupes':      self::tab_groupes();     break;
             case 'monnaies':     self::tab_monnaies();    break;
             case 'sel':          self::tab_sel();                         break;
+            case 'inscription':  self::tab_inscription();                 break;
             case 'mails':        self::tab_mails();                       break;
             case 'api':          Seliweb_Cotisations::tab_api();          break;
             case 'cotisations':  Seliweb_Cotisations::tab_cotisations();  break;
@@ -294,6 +296,7 @@ class Seliweb_Parametres {
             case 'statuts':    self::handle_statuts( $action );    break;
             case 'monnaies':   self::handle_monnaies( $action );   break;
             case 'sel':          self::handle_sel( $action );                       break;
+            case 'inscription':  self::handle_inscription( $action );               break;
             case 'mails':        self::handle_mails( $action );                     break;
             case 'api':          Seliweb_Cotisations::handle_api( $action );        break;
             case 'cotisations':  Seliweb_Cotisations::handle_cotisations( $action ); break;
@@ -451,12 +454,34 @@ class Seliweb_Parametres {
         <table class="wp-list-table widefat fixed striped" style="margin-top:8px;">
             <thead><tr>
                 <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
+                <th style="width:220px;"><?php esc_html_e( 'Visibilité', 'seliweb' ); ?></th>
                 <th style="width:150px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
-            <?php foreach ( $items as $row ) : ?>
+            <?php
+            $tous_groupes_noms = null;
+            foreach ( $items as $row ) :
+                if ( ! $row->visible_par_tous ) {
+                    if ( $tous_groupes_noms === null ) {
+                        $tous_groupes_noms = $wpdb->get_results( "SELECT id, nom FROM {$wpdb->prefix}seliweb_groupes", OBJECT_K );
+                    }
+                    $noms = array();
+                    foreach ( Seliweb_Annonces::categorie_groupes_ids( $row ) as $gid ) {
+                        if ( isset( $tous_groupes_noms[ $gid ] ) ) $noms[] = $tous_groupes_noms[ $gid ]->nom;
+                    }
+                }
+            ?>
                 <tr>
                     <td><?php echo esc_html( $row->nom ); ?></td>
+                    <td>
+                        <?php if ( $row->visible_par_tous ) : ?>
+                            <?php esc_html_e( 'Tous', 'seliweb' ); ?>
+                        <?php elseif ( $noms ) : ?>
+                            <?php printf( esc_html__( 'Groupes : %s', 'seliweb' ), esc_html( implode( ', ', $noms ) ) ); ?>
+                        <?php else : ?>
+                            <span style="color:#b32d2e;"><?php esc_html_e( 'Restreinte — aucun groupe', 'seliweb' ); ?></span>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <?php if ( $row->modifiable ) : ?>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&action=edit&id=' . $row->id ) ); ?>"><?php esc_html_e( 'Modifier', 'seliweb' ); ?></a>
@@ -483,6 +508,8 @@ class Seliweb_Parametres {
         $table    = $wpdb->prefix . 'seliweb_categories';
         $item     = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id=%d", $id ) ) : null;
         $back_url = admin_url( 'admin.php?page=seliweb_parametres&tab=categories' );
+        $groupes  = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}seliweb_groupes ORDER BY nom ASC" );
+        $g_actifs = Seliweb_Annonces::categorie_groupes_ids( $item );
         ?>
         <p><a href="<?php echo esc_url( $back_url ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a></p>
         <h2><?php echo $item ? esc_html__( 'Modifier la catégorie', 'seliweb' ) : esc_html__( 'Ajouter une catégorie', 'seliweb' ); ?></h2>
@@ -495,6 +522,34 @@ class Seliweb_Parametres {
                     <th><?php esc_html_e( 'Nom', 'seliweb' ); ?></th>
                     <td><input type="text" name="nom" class="regular-text" value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
                 </tr>
+                <tr>
+                    <th><?php esc_html_e( 'Visibilité', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="visible_par_tous" id="cat_vpt" value="1"
+                                   onchange="document.getElementById('cat_groupes_row').style.display=this.checked?'none':''"
+                                   <?php checked( $item ? $item->visible_par_tous : 1 ); ?>>
+                            <?php esc_html_e( 'Visible par tous, y compris les visiteurs non connectés', 'seliweb' ); ?>
+                        </label>
+                    </td>
+                </tr>
+                <tr id="cat_groupes_row" <?php echo ( ! $item || $item->visible_par_tous ) ? 'style="display:none"' : ''; ?>>
+                    <th><?php esc_html_e( 'Groupes autorisés', 'seliweb' ); ?></th>
+                    <td>
+                        <?php if ( ! $groupes ) : ?>
+                            <em><?php esc_html_e( 'Aucun groupe défini.', 'seliweb' ); ?></em>
+                        <?php else : ?>
+                            <fieldset>
+                                <?php foreach ( $groupes as $g ) : ?>
+                                    <label><input type="checkbox" name="groupes[]" value="<?php echo (int) $g->id; ?>"
+                                           <?php checked( in_array( (int) $g->id, $g_actifs, true ) ); ?>>
+                                        <?php echo esc_html( $g->nom ); ?></label><br>
+                                <?php endforeach; ?>
+                            </fieldset>
+                            <p class="description"><?php esc_html_e( "Seuls les membres de ces groupes voient cette catégorie (et les annonces qui s'y trouvent), et peuvent y publier. Les visiteurs non connectés ne la voient jamais dans ce cas.", 'seliweb' ); ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
             </table>
             <p>
                 <?php submit_button( $item ? __( 'Mettre à jour', 'seliweb' ) : __( 'Ajouter', 'seliweb' ), 'primary', 'submit', false ); ?>
@@ -504,12 +559,26 @@ class Seliweb_Parametres {
         <?php
     }
 
+    // Champs de visibilité (communs à l'ajout et à la modification d'une catégorie).
+    private static function categorie_visibilite_from_post() {
+        $gids = isset( $_POST['groupes'] ) ? array_map( 'intval', (array) $_POST['groupes'] ) : array();
+        $gids = array_values( array_filter( array_unique( $gids ) ) );
+        return array(
+            'visible_par_tous' => isset( $_POST['visible_par_tous'] ) ? 1 : 0,
+            'groupes'          => $gids ? implode( ',', $gids ) : null,
+        );
+    }
+
     private static function handle_categories( $action ) {
         global $wpdb;
         $table = $wpdb->prefix . 'seliweb_categories';
         if ( $action === 'add_categorie' ) {
-            $nom = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
-            $wpdb->insert( $table, array( 'nom' => $nom, 'slug' => sanitize_title( $nom ) ) );
+            $nom  = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
+            $data = array_merge(
+                array( 'nom' => $nom, 'slug' => sanitize_title( $nom ) ),
+                self::categorie_visibilite_from_post()
+            );
+            $wpdb->insert( $table, $data );
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&updated=1' ) );
             exit;
         }
@@ -517,8 +586,12 @@ class Seliweb_Parametres {
             $id  = intval( $_POST['id'] );
             $row = $wpdb->get_row( $wpdb->prepare( "SELECT modifiable FROM $table WHERE id=%d", $id ) );
             if ( $row && $row->modifiable ) {
-                $nom = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
-                $wpdb->update( $table, array( 'nom' => $nom, 'slug' => sanitize_title( $nom ) ), array( 'id' => $id ) );
+                $nom  = sanitize_text_field( wp_unslash( $_POST['nom'] ) );
+                $data = array_merge(
+                    array( 'nom' => $nom, 'slug' => sanitize_title( $nom ) ),
+                    self::categorie_visibilite_from_post()
+                );
+                $wpdb->update( $table, $data, array( 'id' => $id ) );
             }
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=categories&updated=1' ) );
             exit;
@@ -1494,6 +1567,94 @@ class Seliweb_Parametres {
                 'desc'  => __( 'Envoyé à l\'organisateur quand un adhérent s\'inscrit ou se désinscrit d\'un événement.', 'seliweb' ),
             ),
         );
+    }
+
+    // ================================================================
+    // INSCRIPTION — ouverture des inscriptions (option WP native
+    // `users_can_register`, centralisée ici plutôt que dans l'écran
+    // Réglages → Général de WordPress) + texte de consentement affiché au
+    // formulaire d'inscription (vide = pas de case de consentement).
+    // ================================================================
+    private static function tab_inscription() {
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_parametres';
+
+        $users_can_register  = (bool) get_option( 'users_can_register' );
+        $consentement_titre  = (string) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='inscription_consentement_titre' LIMIT 1" );
+        $consentement_texte  = (string) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='inscription_consentement_texte' LIMIT 1" );
+
+        if ( isset( $_GET['updated'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
+        }
+        ?>
+        <h2><?php esc_html_e( 'Inscription', 'seliweb' ); ?></h2>
+
+        <form method="post">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="save_inscription">
+
+            <table class="form-table">
+                <tr>
+                    <th><?php esc_html_e( 'Ouverture des inscriptions', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="users_can_register" value="1" <?php checked( $users_can_register ); ?>>
+                            <?php esc_html_e( 'Autoriser les nouvelles inscriptions', 'seliweb' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( "C'est le même réglage que « Tout le monde peut s'inscrire » dans Réglages → Général de WordPress — centralisé ici pour rester à côté du reste de l'inscription Seliweb.", 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="inscription_consentement_titre"><?php esc_html_e( 'Titre du consentement', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="text" id="inscription_consentement_titre" name="inscription_consentement_titre" class="regular-text"
+                               value="<?php echo esc_attr( $consentement_titre ); ?>"
+                               placeholder="<?php esc_attr_e( "les conditions générales d'utilisation", 'seliweb' ); ?>">
+                        <p class="description">
+                            <?php esc_html_e( 'Pensez à mettre le ou les au début du titre — il est repris tel quel dans deux phrases : « Acceptez-vous [titre] ? » et « J\'ai lu et j\'accepte [titre]. ».', 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="inscription_consentement_texte"><?php esc_html_e( 'Texte de consentement', 'seliweb' ); ?></label></th>
+                    <td>
+                        <textarea id="inscription_consentement_texte" name="inscription_consentement_texte" class="large-text" rows="4"><?php echo esc_textarea( $consentement_texte ); ?></textarea>
+                        <p class="description">
+                            <?php esc_html_e( "Affiché dans une fenêtre à défilement sur le formulaire d'inscription, avec une case à cocher obligatoire en dessous (ex. texte des CGU / de la politique de confidentialité). Laisser vide pour n'afficher aucune case de consentement. La date et le texte exact accepté sont conservés pour chaque nouvel inscrit (visibles sur sa fiche membre).", 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <?php submit_button( __( 'Enregistrer', 'seliweb' ) ); ?>
+        </form>
+        <?php
+    }
+
+    private static function handle_inscription( $action ) {
+        if ( $action !== 'save_inscription' ) return;
+        global $wpdb;
+        $tp = $wpdb->prefix . 'seliweb_parametres';
+
+        update_option( 'users_can_register', isset( $_POST['users_can_register'] ) ? 1 : 0 );
+
+        $params = array(
+            'inscription_consentement_titre' => sanitize_text_field( wp_unslash( $_POST['inscription_consentement_titre'] ?? '' ) ),
+            'inscription_consentement_texte' => sanitize_textarea_field( wp_unslash( $_POST['inscription_consentement_texte'] ?? '' ) ),
+        );
+        foreach ( $params as $cle => $valeur ) {
+            $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
+            if ( $exists ) {
+                $wpdb->update( $tp, array( 'valeur' => $valeur ), array( 'cle' => $cle ) );
+            } else {
+                $wpdb->insert( $tp, array( 'cle' => $cle, 'valeur' => $valeur ) );
+            }
+        }
+
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=inscription&updated=1' ) );
+        exit;
     }
 
     private static function tab_mails() {

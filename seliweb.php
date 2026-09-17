@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.108
+ * Version: 0.9.116
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.108' );
+define( 'SELIWEB_VERSION', '0.9.116' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -32,6 +32,7 @@ require_once SELIWEB_DIR . 'includes/class-recherche.php';
 require_once SELIWEB_DIR . 'includes/class-contact.php';
 require_once SELIWEB_DIR . 'includes/class-evenements.php';
 require_once SELIWEB_DIR . 'includes/class-membres.php';
+require_once SELIWEB_DIR . 'includes/class-consentements.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -44,8 +45,13 @@ Seliweb_Recherche::init();
 Seliweb_Contact::init();
 Seliweb_Evenements::init();
 Seliweb_Membres::init();
+Seliweb_Consentements::init();
 
 class Seliweb {
+
+    // Identifiant du jeton anti-spam du formulaire de signalement
+    // (voir Seliweb_Contact::make_token()/token_age()).
+    const SIGNAL_TOKEN_ACTION = 'seliweb_signal_send';
 
     public function __construct() {
         add_action( 'plugins_loaded',        array( $this, 'load_textdomain' ) );
@@ -375,6 +381,19 @@ class Seliweb {
             return '<p>' . esc_html__( "Les inscriptions sont actuellement fermées.", 'seliweb' ) . '</p>';
         }
 
+        // Texte de consentement (Paramètres > Inscription) — vide = pas de
+        // case de consentement affichée. Le titre est repris dans « Acceptez-
+        // vous {titre} ? » et « J'ai lu et j'accepte {titre}. » ; à défaut de
+        // titre renseigné, on retombe sur une formulation générique.
+        global $wpdb;
+        $consentement_titre = (string) $wpdb->get_var(
+            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='inscription_consentement_titre' LIMIT 1"
+        );
+        $consentement_texte = (string) $wpdb->get_var(
+            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='inscription_consentement_texte' LIMIT 1"
+        );
+        if ( ! $consentement_titre ) $consentement_titre = __( 'ces conditions', 'seliweb' );
+
         $erreurs      = array();
         $succes       = false;
         $attente_code = false;
@@ -447,6 +466,10 @@ class Seliweb {
                 $erreurs[] = __( 'Cette adresse email est déjà utilisée.', 'seliweb' );
             }
 
+            if ( $consentement_texte && empty( $_POST['consentement'] ) ) {
+                $erreurs[] = __( 'Vous devez accepter les conditions pour vous inscrire.', 'seliweb' );
+            }
+
             if ( empty( $erreurs ) ) {
                 $token = wp_generate_password( 24, false, false );
                 $code  = str_pad( (string) random_int( 0, 9999 ), 4, '0', STR_PAD_LEFT );
@@ -471,6 +494,9 @@ class Seliweb {
                         'show_tel_portable' => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
                         'show_tel_fixe'     => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
                         'show_adresse'      => isset( $_POST['show_adresse'] )      ? 1 : 0,
+                        // Copie exacte du texte accepté, pour la traçabilité du
+                        // consentement (voir creer_membre_inscription()).
+                        'consentement_texte' => $consentement_texte,
                     ),
                 ), 15 * MINUTE_IN_SECONDS );
 
@@ -681,6 +707,30 @@ class Seliweb {
                                     </label>
                                 </td>
                             </tr>
+                            <?php if ( $consentement_texte ) : ?>
+                            <tr>
+                                <td colspan="2" style="padding:8px 0 0;text-align:left;white-space:normal;width:auto;">
+                                    <p style="font-weight:600;margin:0 0 8px;">
+                                        <?php
+                                        /* translators: %s: titre du consentement, ex. « les conditions générales d'utilisation » */
+                                        printf( esc_html__( 'Acceptez-vous %s ?', 'seliweb' ), esc_html( $consentement_titre ) );
+                                        ?>
+                                    </p>
+                                    <div style="max-height:160px;overflow-y:auto;border:1px solid #ccc;border-radius:4px;padding:10px 12px;background:#fafafa;font-size:13px;line-height:1.5;color:#333;margin-bottom:10px;">
+                                        <?php echo nl2br( esc_html( $consentement_texte ) ); ?>
+                                    </div>
+                                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                                        <input type="checkbox" name="consentement" value="1" required style="margin-top:2px;">
+                                        <span>
+                                            <?php
+                                            /* translators: %s: titre du consentement */
+                                            printf( esc_html__( "J'ai lu et j'accepte %s.", 'seliweb' ), esc_html( $consentement_titre ) );
+                                            ?>
+                                        </span>
+                                    </label>
+                                </td>
+                            </tr>
+                            <?php endif; ?>
                             <tr>
                                 <td></td>
                                 <td>
@@ -791,6 +841,13 @@ class Seliweb {
             ) ) );
         }
 
+        // Traçabilité du consentement (voir Paramètres > Inscription) — ignoré
+        // silencieusement si aucun texte n'était configuré au moment de
+        // l'inscription (voir Seliweb_Consentements::enregistrer()).
+        if ( class_exists( 'Seliweb_Consentements' ) ) {
+            Seliweb_Consentements::enregistrer( $user_id, 'inscription', null, $data['consentement_texte'] ?? '' );
+        }
+
         return $user_id;
     }
 
@@ -895,6 +952,43 @@ class Seliweb {
         );
         $corps = trim( ( $intro ? $intro . "\n\n" : '' ) . $corps_systeme . ( $signature ? "\n\n" . $signature : '' ) );
 
+        // Coordonnées de l'expéditeur ajoutées en bas du message, pour que le
+        // destinataire sache à qui il répond sans avoir à consulter la fiche
+        // du membre en admin. N° SEL si l'expéditeur appartient au groupe SEL
+        // (identifiant qui a du sens pour lui), sinon ID WP en repli.
+        $expediteur_membre = $wpdb->get_row( $wpdb->prepare(
+            "SELECT m.civilite, m.ville, m.groupe_id, m.numero_sel, g.nom AS groupe_nom
+             FROM $tm m LEFT JOIN {$wpdb->prefix}seliweb_groupes g ON g.id = m.groupe_id
+             WHERE m.wp_user_id = %d",
+            $expediteur->ID
+        ) );
+
+        $civilite_label = '';
+        if ( $expediteur_membre ) {
+            if ( 'Mr' === $expediteur_membre->civilite )       $civilite_label = __( 'M.', 'seliweb' );
+            elseif ( 'Mme' === $expediteur_membre->civilite )  $civilite_label = __( 'Mme', 'seliweb' );
+        }
+
+        $expediteur_sel = false;
+        if ( $expediteur_membre && class_exists( 'Seliweb_Transactions' ) ) {
+            $sel_info       = Seliweb_Transactions::get_sel_info();
+            $expediteur_sel = $sel_info['actif'] && $sel_info['groupe_id'] > 0
+                && (int) $expediteur_membre->groupe_id === $sel_info['groupe_id'];
+        }
+        $identifiant_label = $expediteur_sel
+            ? sprintf( __( 'N° SEL : %s', 'seliweb' ), $expediteur_membre->numero_sel ?: '—' )
+            : sprintf( __( 'ID WP : %d', 'seliweb' ), $expediteur->ID );
+
+        $fiche_expediteur = "——\n" . implode( "\n", array(
+            __( 'Civilité', 'seliweb' ) . ' : ' . ( $civilite_label ?: '—' ),
+            __( 'Nom', 'seliweb' )      . ' : ' . ( $expediteur->last_name  ?: '—' ),
+            __( 'Prénom', 'seliweb' )   . ' : ' . ( $expediteur->first_name ?: '—' ),
+            __( 'Ville', 'seliweb' )    . ' : ' . ( ( $expediteur_membre->ville ?? '' ) ?: '—' ),
+            __( 'Groupe', 'seliweb' )   . ' : ' . ( ( $expediteur_membre->groupe_nom ?? '' ) ?: '—' ),
+            $identifiant_label,
+        ) );
+        $corps .= "\n\n" . $fiche_expediteur;
+
         $headers = array(
             'Reply-To: ' . $expediteur->display_name . ' <' . $expediteur->user_email . '>',
         );
@@ -917,6 +1011,27 @@ class Seliweb {
 
         $annonce_id = intval( $_POST['annonce_id'] ?? 0 );
         if ( ! wp_verify_nonce( $_POST['seliweb_signal_nonce'] ?? '', 'seliweb_signal_' . $annonce_id ) ) return;
+
+        // Anti-spam : même mécanisme que le formulaire de contact — pot de
+        // miel + jeton horodaté (rejet si <3s ou >3h). En cas de détection,
+        // on simule un envoi réussi pour ne pas alerter le robot.
+        $age = Seliweb_Contact::token_age( wp_unslash( $_POST['seliweb_ts'] ?? '' ), self::SIGNAL_TOKEN_ACTION );
+        if ( ! empty( $_POST['seliweb_site_url'] ) || $age === false || $age < 3 || $age > 10800 ) {
+            wp_safe_redirect( add_query_arg( 'seliweb_signal_envoye', '1', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+
+        // Anti-spam : limite de fréquence par IP (3 signalements / heure max).
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        if ( $ip ) {
+            $rl_key   = 'seliweb_signal_rl_' . md5( $ip );
+            $rl_count = (int) get_transient( $rl_key );
+            if ( $rl_count >= 3 ) {
+                wp_safe_redirect( add_query_arg( 'seliweb_signal_envoye', '1', wp_get_referer() ?: home_url() ) );
+                exit;
+            }
+            set_transient( $rl_key, $rl_count + 1, HOUR_IN_SECONDS );
+        }
 
         global $wpdb;
         $ta      = $wpdb->prefix . 'seliweb_annonces';
@@ -1188,6 +1303,24 @@ class Seliweb {
                     'sel_error'  => 'no_rubrique',
                 ), $page_url ) );
                 exit;
+            }
+
+            // Validation : catégorie restreinte à des groupes n'incluant pas
+            // celui du membre — ne jamais faire confiance au <select> du
+            // formulaire, un groupe sans droit de voir ne doit pas pouvoir
+            // publier dedans non plus.
+            if ( $cat_id_f ) {
+                $cat_row_f = $wpdb->get_row( $wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}seliweb_categories WHERE id=%d", $cat_id_f
+                ) );
+                if ( ! Seliweb_Annonces::categorie_visible_pour( $cat_row_f, (int) $membre->groupe_id ) ) {
+                    wp_safe_redirect( add_query_arg( array(
+                        'sel_action' => $id_post ? 'modifier' : 'creer',
+                        'sel_id'     => $id_post ?: '',
+                        'sel_error'  => 'categorie_interdite',
+                    ), $page_url ) );
+                    exit;
+                }
             }
 
             // Validation : date expiration incohérente

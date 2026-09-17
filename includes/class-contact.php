@@ -32,18 +32,20 @@ class Seliweb_Contact {
     }
 
     // Jeton d'horodatage signé pour le champ caché du formulaire.
-    private static function make_token() {
+    // $action distingue les usages (contact, signalement…) ; réutilisable
+    // par d'autres formulaires publics ayant besoin du même anti-spam.
+    public static function make_token( $action = self::NONCE ) {
         $ts = time();
-        return $ts . '.' . wp_hash( $ts . '|' . self::NONCE, 'nonce' );
+        return $ts . '.' . wp_hash( $ts . '|' . $action, 'nonce' );
     }
 
-    private static function token_age( $token ) {
+    public static function token_age( $token, $action = self::NONCE ) {
         $parts = explode( '.', (string) $token, 2 );
         if ( count( $parts ) !== 2 ) {
             return false;
         }
         list( $ts, $sig ) = $parts;
-        if ( ! hash_equals( wp_hash( $ts . '|' . self::NONCE, 'nonce' ), $sig ) ) {
+        if ( ! hash_equals( wp_hash( $ts . '|' . $action, 'nonce' ), $sig ) ) {
             return false;
         }
         return time() - (int) $ts;

@@ -84,6 +84,7 @@ class Seliweb_Paiements {
             'groupe_arrivee_id'     => ! empty( $_POST['groupe_arrivee_id'] ) ? intval( $_POST['groupe_arrivee_id'] ) : null,
             'enregistre_cotisation' => $enregistre_cotisation,
             'exercice'              => $enregistre_cotisation ? $exercice : null,
+            'consentement_titre'    => sanitize_text_field( wp_unslash( $_POST['consentement_titre'] ?? '' ) ) ?: null,
             'consentement_texte'    => sanitize_textarea_field( wp_unslash( $_POST['consentement_texte'] ?? '' ) ) ?: null,
             'compte_paheko_banque'  => sanitize_text_field( wp_unslash( $_POST['compte_paheko_banque']  ?? '' ) ) ?: null,
             'compte_paheko_recette' => sanitize_text_field( wp_unslash( $_POST['compte_paheko_recette'] ?? '' ) ) ?: null,
@@ -277,6 +278,17 @@ class Seliweb_Paiements {
                     </td>
                 </tr>
 
+                <tr>
+                    <th><label for="consentement_titre"><?php esc_html_e( 'Titre du consentement', 'seliweb' ); ?></label></th>
+                    <td>
+                        <input type="text" id="consentement_titre" name="consentement_titre" class="regular-text"
+                               value="<?php echo $item ? esc_attr( $item->consentement_titre ) : ''; ?>"
+                               placeholder="<?php esc_attr_e( "les statuts de l'association", 'seliweb' ); ?>">
+                        <p class="description">
+                            <?php esc_html_e( 'Pensez à mettre le ou les au début du titre — il est repris tel quel dans deux phrases : « Acceptez-vous [titre] ? » et « J\'ai lu et j\'accepte [titre]. ».', 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
                 <tr>
                     <th><label for="consentement_texte"><?php esc_html_e( 'Texte de consentement', 'seliweb' ); ?></label></th>
                     <td>
@@ -573,6 +585,14 @@ class Seliweb_Paiements {
                 array( 'sel_action' => 'abonnements', 'erreur_paiement' => $erreur, 'sel_offre_id' => $offre_id ), $page_url
             ) );
             exit;
+        }
+
+        // Traçabilité du consentement (voir Paramètres Abonnements > texte de
+        // consentement de l'offre) — enregistré au moment où le membre valide,
+        // avant même la création du paiement HelloAsso (c'est le consentement
+        // qui compte, indépendamment de l'issue du paiement).
+        if ( $offre->consentement_texte && class_exists( 'Seliweb_Consentements' ) ) {
+            Seliweb_Consentements::enregistrer( $wp_user_id, 'abonnement', $offre_id, $offre->consentement_texte );
         }
 
         $retour_url = add_query_arg( array( 'sel_action' => 'abonnements', 'retour_paiement' => '1' ), $page_url );

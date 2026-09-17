@@ -83,8 +83,11 @@ if ( empty( $monnaies_dispo ) ) {
     $monnaies_dispo = $wpdb->get_results( "SELECT * FROM $tmon ORDER BY nom ASC" );
 }
 
-$categories = $wpdb->get_results( "SELECT * FROM $tc ORDER BY nom ASC" );
-$rubriques  = $wpdb->get_results( "SELECT * FROM $tr ORDER BY categorie_id, nom ASC" );
+// Catégories/rubriques restreintes par groupe (ex. « Compétences » réservée
+// aux Selistes) : un groupe qui n'a pas le droit de voir une catégorie ne
+// doit pas non plus pouvoir y publier.
+$categories = Seliweb_Annonces::categories_visibles_pour( (int) $membre->groupe_id );
+$rubriques  = Seliweb_Annonces::rubriques_visibles_pour( (int) $membre->groupe_id );
 $statuts    = $wpdb->get_results( "SELECT * FROM $ts ORDER BY id ASC" );
 
 $action     = isset( $_GET['sel_action'] ) ? sanitize_key( $_GET['sel_action'] ) : 'liste';
@@ -117,6 +120,11 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'no_rubrique' ) : ?>
         <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
             <?php esc_html_e( 'Vous devez choisir une rubrique.', 'seliweb' ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'categorie_interdite' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( "Cette catégorie n'est pas accessible à votre groupe.", 'seliweb' ); ?>
         </div>
     <?php endif; ?>
     <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'bad_date' ) : ?>
@@ -303,6 +311,21 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
                         $prix_existants[ $p->monnaie_id ] = $p->prix;
                     }
                     $is_modif = true;
+
+                    // Une annonce existante peut porter une catégorie/rubrique
+                    // devenue restreinte après coup (groupe non autorisé) : on
+                    // la remet dans les options pour ne pas la faire disparaître
+                    // silencieusement du formulaire d'édition (le membre garde
+                    // sa catégorie actuelle, mais ne peut pas en choisir une
+                    // autre qui lui est interdite).
+                    if ( $edit_annonce->categorie_id && ! wp_list_filter( $categories, array( 'id' => $edit_annonce->categorie_id ) ) ) {
+                        $cat_actuelle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tc WHERE id=%d", $edit_annonce->categorie_id ) );
+                        if ( $cat_actuelle ) $categories[] = $cat_actuelle;
+                    }
+                    if ( $edit_annonce->rubrique_id && ! wp_list_filter( $rubriques, array( 'id' => $edit_annonce->rubrique_id ) ) ) {
+                        $rub_actuelle = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $tr WHERE id=%d", $edit_annonce->rubrique_id ) );
+                        if ( $rub_actuelle ) $rubriques[] = $rub_actuelle;
+                    }
                 }
             }
 
@@ -1349,6 +1372,7 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php if ( $offre_detail ) :
         $tarifs_offre = $offre_detail->tarifs ? ( json_decode( $offre_detail->tarifs, true ) ?: array() ) : array();
         $retour_liste_url = add_query_arg( 'sel_action', 'abonnements', $page_url );
+        $consentement_titre_offre = $offre_detail->consentement_titre ?: __( 'ces conditions', 'seliweb' );
     ?>
 
     <div style="max-width:640px;">
@@ -1380,12 +1404,23 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
             <?php endif; ?>
 
             <?php if ( $offre_detail->consentement_texte ) : ?>
+                <p style="font-weight:600;margin:0 0 8px;">
+                    <?php
+                    /* translators: %s: titre du consentement, ex. « les statuts de l'association » */
+                    printf( esc_html__( 'Acceptez-vous %s ?', 'seliweb' ), esc_html( $consentement_titre_offre ) );
+                    ?>
+                </p>
                 <div style="max-height:220px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;padding:12px 14px;background:#fafafa;font-size:13px;margin:0 0 12px;">
                     <?php echo nl2br( esc_html( $offre_detail->consentement_texte ) ); ?>
                 </div>
                 <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:0 0 18px;">
                     <input type="checkbox" id="sel-consentement" name="consentement" value="1" required style="margin-top:2px;">
-                    <span><?php esc_html_e( "J'accepte les CGU", 'seliweb' ); ?></span>
+                    <span>
+                        <?php
+                        /* translators: %s: titre du consentement */
+                        printf( esc_html__( "J'ai lu et j'accepte %s.", 'seliweb' ), esc_html( $consentement_titre_offre ) );
+                        ?>
+                    </span>
                 </label>
             <?php endif; ?>
 

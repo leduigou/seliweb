@@ -7,12 +7,27 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 get_header();
 
+// Groupe du visiteur connecté (null si non connecté ou sans groupe) — utilisé
+// pour la visibilité par catégorie (voir Seliweb_Annonces::categorie_visible_pour())
+// et pour la fiche détail (contact de l'annonceur).
+$groupe_visiteur = null;
+if ( is_user_logged_in() ) {
+    global $wpdb;
+    $tm = $wpdb->prefix . 'seliweb_membres';
+    $tg = $wpdb->prefix . 'seliweb_groupes';
+    $groupe_visiteur = $wpdb->get_row( $wpdb->prepare(
+        "SELECT g.* FROM $tg g INNER JOIN $tm m ON m.groupe_id=g.id WHERE m.wp_user_id=%d LIMIT 1",
+        get_current_user_id()
+    ) );
+}
+
 $filters = array(
-    'categorie_id' => isset( $_GET['categorie_id'] ) ? intval( $_GET['categorie_id'] )      : 0,
-    'rubrique_id'  => isset( $_GET['rubrique_id'] )  ? intval( $_GET['rubrique_id'] )        : 0,
-    'type_annonce' => isset( $_GET['type_annonce'] ) ? sanitize_key( $_GET['type_annonce'] ) : '',
-    'ville'        => isset( $_GET['ville'] )         ? sanitize_text_field( $_GET['ville'] ) : '',
-    'q'            => isset( $_GET['q'] )             ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '',
+    'categorie_id'      => isset( $_GET['categorie_id'] ) ? intval( $_GET['categorie_id'] )      : 0,
+    'rubrique_id'       => isset( $_GET['rubrique_id'] )  ? intval( $_GET['rubrique_id'] )        : 0,
+    'type_annonce'      => isset( $_GET['type_annonce'] ) ? sanitize_key( $_GET['type_annonce'] ) : '',
+    'ville'             => isset( $_GET['ville'] )         ? sanitize_text_field( $_GET['ville'] ) : '',
+    'q'                 => isset( $_GET['q'] )             ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '',
+    'viewer_groupe_id'  => $groupe_visiteur ? (int) $groupe_visiteur->id : 0,
 );
 
 // Page "Annonces — groupe SEL uniquement" : restreint aux membres du
@@ -35,17 +50,6 @@ $total    = count( $toutes );
 $nb_pages = $par_page > 0 ? (int) ceil( $total / $par_page ) : 1;
 
 $annonces = array_slice( $toutes, $offset, $par_page );
-
-$groupe_visiteur = null;
-if ( is_user_logged_in() ) {
-    global $wpdb;
-    $tm = $wpdb->prefix . 'seliweb_membres';
-    $tg = $wpdb->prefix . 'seliweb_groupes';
-    $groupe_visiteur = $wpdb->get_row( $wpdb->prepare(
-        "SELECT g.* FROM $tg g INNER JOIN $tm m ON m.groupe_id=g.id WHERE m.wp_user_id=%d LIMIT 1",
-        get_current_user_id()
-    ) );
-}
 
 if ( isset( $_GET['seliweb_annonce'] ) ) :
     $args = array(
