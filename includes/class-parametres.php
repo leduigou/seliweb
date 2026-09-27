@@ -221,9 +221,9 @@ class Seliweb_Parametres {
 
         $tabs = array(
             'inscription' => __( 'Inscription',  'seliweb' ),
+            'monnaies'    => __( 'Monnaies',     'seliweb' ),
             'groupes'     => __( 'Groupes',      'seliweb' ),
             'annonces'    => __( 'Annonces',     'seliweb' ),
-            'monnaies'    => __( 'Monnaies',     'seliweb' ),
             'mails'       => __( 'Mails',        'seliweb' ),
             'sel'         => __( 'SEL',          'seliweb' ),
             'cotisations' => __( 'Cotisations',  'seliweb' ),

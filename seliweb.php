@@ -2,17 +2,19 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 0.9.116
+ * Version: 1.0.0
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
+ * Requires at least: 6.0
+ * Requires PHP: 7.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '0.9.116' );
+define( 'SELIWEB_VERSION', '1.0.0' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -61,6 +63,7 @@ class Seliweb {
         add_action( 'admin_menu',            array( $this, 'create_menu' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
         add_action( 'wp_enqueue_scripts',    array( $this, 'enqueue_public_assets' ) );
+        add_filter( 'plugin_action_links_' . SELIWEB_PLUGIN_FILE, array( $this, 'confirmer_desactivation' ) );
         add_action( 'init',                  array( $this, 'handle_contact_message' ) );
         add_action( 'init',                  array( $this, 'handle_signalement' ) );
         add_action( 'init',                  array( $this, 'handle_mon_compte_post' ) );
@@ -169,6 +172,29 @@ class Seliweb {
                 'groupe_id'  => $groupe_id ?: null,
             ) );
         }
+    }
+
+    // ----------------------------------------------------------------
+    // Confirmation avant désactivation du plugin (écran Extensions) :
+    // la désactivation supprime les pages Seliweb et le menu de
+    // navigation associé (voir seliweb_deactivate() /
+    // Seliweb_Database::delete_pages_and_menu()) — aucune donnée n'est
+    // perdue (tables intactes), tout est recréé à la réactivation, mais
+    // un installateur qui « désactive pour tester » peut croire le
+    // contraire en voyant ses pages disparaître.
+    // ----------------------------------------------------------------
+    public function confirmer_desactivation( $actions ) {
+        if ( empty( $actions['deactivate'] ) ) {
+            return $actions;
+        }
+        $message = __( "Désactiver Seliweb supprime les pages du site (Annonces, Connexion, Mon compte…) et le menu « Seliweb Navigation ».\n\nAucune donnée n'est perdue (tout reste en base) et les pages/le menu sont recréés à la réactivation, mais un menu recréé perd vos éventuelles modifications manuelles.\n\nContinuer ?", 'seliweb' );
+        $actions['deactivate'] = preg_replace(
+            '/<a /',
+            '<a onclick="return confirm(\'' . esc_js( $message ) . '\');" ',
+            $actions['deactivate'],
+            1
+        );
+        return $actions;
     }
 
     // ----------------------------------------------------------------

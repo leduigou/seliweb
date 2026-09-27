@@ -311,8 +311,12 @@ $filtre_groupe = isset( $_GET['filtre_groupe'] ) ? intval( $_GET['filtre_groupe'
 $filtre_ville  = isset( $_GET['filtre_ville'] )  ? sanitize_text_field( $_GET['filtre_ville'] ) : '';
 $filtre_bloque = isset( $_GET['filtre_bloque'] ) && in_array( $_GET['filtre_bloque'], array('bloques','actifs'), true )
     ? $_GET['filtre_bloque'] : '';
-$filtre_archive = isset( $_GET['filtre_archive'] ) && in_array( $_GET['filtre_archive'], array('archives','actifs'), true )
-    ? $_GET['filtre_archive'] : '';
+// Par défaut à l'ouverture de la page (aucun paramètre dans l'URL) : Actifs.
+// Un choix explicite de « Tous » (valeur vide soumise par le formulaire) est
+// distingué de l'absence de paramètre et respecté tel quel.
+$filtre_archive = isset( $_GET['filtre_archive'] )
+    ? ( in_array( $_GET['filtre_archive'], array('archives','actifs'), true ) ? $_GET['filtre_archive'] : '' )
+    : 'actifs';
 $villes_dispo  = $wpdb->get_col( "SELECT DISTINCT ville FROM $tm WHERE ville != '' AND ville IS NOT NULL ORDER BY ville ASC" );
 
 $allowed_orderby = array(
@@ -353,10 +357,10 @@ if ( $filtre_groupe ) {
     }
 }
 if ( $filtre_ville )  { $filtres_actifs[] = sprintf( __( 'Ville : %s', 'seliweb' ), $filtre_ville ); }
-if ( $filtre_bloque === 'bloques' ) { $filtres_actifs[] = __( 'Comptes bloqués uniquement', 'seliweb' ); }
-if ( $filtre_bloque === 'actifs' )  { $filtres_actifs[] = __( 'Comptes actifs uniquement', 'seliweb' ); }
-if ( $filtre_archive === 'archives' ) { $filtres_actifs[] = __( 'Comptes archivés uniquement', 'seliweb' ); }
-if ( $filtre_archive === 'actifs' )   { $filtres_actifs[] = __( 'Comptes non archivés uniquement', 'seliweb' ); }
+if ( $filtre_bloque === 'bloques' ) { $filtres_actifs[] = __( 'Comptes bloqués', 'seliweb' ); }
+if ( $filtre_bloque === 'actifs' )  { $filtres_actifs[] = __( 'Comptes non bloqués', 'seliweb' ); }
+if ( $filtre_archive === 'archives' ) { $filtres_actifs[] = __( 'Comptes archivés', 'seliweb' ); }
+if ( $filtre_archive === 'actifs' )   { $filtres_actifs[] = __( 'Comptes actifs', 'seliweb' ); }
 
 $joins = "FROM $tm m
         LEFT JOIN $tg g ON g.id=m.groupe_id
@@ -974,16 +978,16 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
             <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Comptes bloqués','seliweb'); ?></label>
             <select name="filtre_bloque">
                 <option value=""><?php esc_html_e('Tous','seliweb'); ?></option>
-                <option value="bloques" <?php selected($filtre_bloque,'bloques'); ?>><?php esc_html_e('Bloqués uniquement','seliweb'); ?></option>
-                <option value="actifs"  <?php selected($filtre_bloque,'actifs'); ?>><?php esc_html_e('Actifs uniquement','seliweb'); ?></option>
+                <option value="bloques" <?php selected($filtre_bloque,'bloques'); ?>><?php esc_html_e('Bloqués','seliweb'); ?></option>
+                <option value="actifs"  <?php selected($filtre_bloque,'actifs'); ?>><?php esc_html_e('Non bloqués','seliweb'); ?></option>
             </select>
         </div>
         <div>
             <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e('Comptes archivés','seliweb'); ?></label>
             <select name="filtre_archive">
                 <option value=""><?php esc_html_e('Tous','seliweb'); ?></option>
-                <option value="archives" <?php selected($filtre_archive,'archives'); ?>><?php esc_html_e('Archivés uniquement','seliweb'); ?></option>
-                <option value="actifs"   <?php selected($filtre_archive,'actifs'); ?>><?php esc_html_e('Non archivés uniquement','seliweb'); ?></option>
+                <option value="archives" <?php selected($filtre_archive,'archives'); ?>><?php esc_html_e('Archivés','seliweb'); ?></option>
+                <option value="actifs"   <?php selected($filtre_archive,'actifs'); ?>><?php esc_html_e('Actifs','seliweb'); ?></option>
             </select>
         </div>
         <div>
@@ -1015,7 +1019,8 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                 <?php if ( $filtre_groupe ) : ?><input type="hidden" name="filtre_groupe" value="<?php echo esc_attr( $filtre_groupe ); ?>"><?php endif; ?>
                 <?php if ( $filtre_ville )  : ?><input type="hidden" name="filtre_ville" value="<?php echo esc_attr( $filtre_ville ); ?>"><?php endif; ?>
                 <?php if ( $filtre_bloque ) : ?><input type="hidden" name="filtre_bloque" value="<?php echo esc_attr( $filtre_bloque ); ?>"><?php endif; ?>
-                <?php if ( $filtre_archive ) : ?><input type="hidden" name="filtre_archive" value="<?php echo esc_attr( $filtre_archive ); ?>"><?php endif; ?>
+                <?php // Toujours transmis (même vide = « Tous » choisi explicitement), pour ne pas retomber sur le défaut "Actifs" à l'impression/export. ?>
+                <input type="hidden" name="filtre_archive" value="<?php echo esc_attr( $filtre_archive ); ?>">
                 <input type="hidden" name="orderby" value="<?php echo esc_attr( $orderby_key ); ?>">
                 <input type="hidden" name="order" value="<?php echo esc_attr( strtolower( $order ) ); ?>">
                 <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'seliweb_membres_export' ) ); ?>">
@@ -1059,7 +1064,9 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
     if ( $filtre_groupe )  $base_args['filtre_groupe']  = $filtre_groupe;
     if ( $filtre_ville )   $base_args['filtre_ville']   = $filtre_ville;
     if ( $filtre_bloque )  $base_args['filtre_bloque']  = $filtre_bloque;
-    if ( $filtre_archive ) $base_args['filtre_archive'] = $filtre_archive;
+    // Toujours propagé (même vide = « Tous » choisi explicitement) : sans
+    // paramètre dans l'URL, le défaut "Actifs" reprendrait le dessus.
+    $base_args['filtre_archive'] = $filtre_archive;
 
     $sort_url = function( $col ) use ( $orderby_key, $order, $base_args ) {
         $new_order = ( $orderby_key === $col && $order === 'ASC' ) ? 'desc' : 'asc';
