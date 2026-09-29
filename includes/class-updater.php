@@ -79,9 +79,25 @@ class Seliweb_Updater {
         // bon nom de dossier à la racine) plutôt que l'archive source générée
         // automatiquement par GitHub (leduigou-seliweb-{hash}/, qui casse la
         // détection de mise à jour et l'installation manuelle — cf. Seliweb_Updater).
-        $zip_url = ( ! empty( $body->assets[0]->browser_download_url ) )
-            ? $body->assets[0]->browser_download_url
-            : ( $body->zipball_url ?? '' );
+        // Repéré en prod (v1.0.0) : ne jamais supposer que c'est le premier
+        // asset (assets[0]) — un autre fichier joint à la release (ex. le
+        // manuel en PDF) peut apparaître avant le zip selon l'ordre renvoyé
+        // par l'API GitHub, WordPress tentant alors de décompresser ce
+        // fichier comme s'il s'agissait du paquet ("PCLZIP_ERR_BAD_FORMAT :
+        // Unable to find End of Central Dir Record signature"). On
+        // sélectionne explicitement l'asset dont le nom se termine par .zip.
+        $zip_url = '';
+        if ( ! empty( $body->assets ) && is_array( $body->assets ) ) {
+            foreach ( $body->assets as $asset ) {
+                if ( ! empty( $asset->browser_download_url ) && preg_match( '/\.zip$/i', $asset->name ?? '' ) ) {
+                    $zip_url = $asset->browser_download_url;
+                    break;
+                }
+            }
+        }
+        if ( ! $zip_url ) {
+            $zip_url = $body->zipball_url ?? '';
+        }
 
         $release = array(
             'version'  => ltrim( $body->tag_name, 'v' ),

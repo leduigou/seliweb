@@ -37,6 +37,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.0.1
+- Correctif de mise à jour automatique : la détection de la dernière version se fiait au premier fichier joint à la release GitHub, alors qu'un autre fichier (ex. le manuel en PDF) peut apparaître avant le zip de l'extension — WordPress tentait alors d'installer ce fichier comme s'il s'agissait du paquet, et échouait avec « PCLZIP_ERR_BAD_FORMAT : Unable to find End of Central Dir Record signature ». Corrigé en repérant explicitement le fichier `.zip`, quel que soit son ordre parmi les fichiers joints.
+
 ### 1.0.0
 - Première version stable publiée.
 - Gestion complète des annonces (catégories, rubriques, statuts, photos, prix libre/don), des membres (groupes, archivage RGPD, consentements tracés), des transactions SEL en monnaie(s) locale(s), des cotisations et abonnements (avec synchronisation HelloAsso et Paheko), des événements.
