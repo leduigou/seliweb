@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.0.1' );
+define( 'SELIWEB_VERSION', '1.0.2' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -107,6 +107,12 @@ class Seliweb {
         // Sélecteur d'image (médiathèque) sur l'écran Événements.
         if ( strpos( $hook, 'seliweb_evenements' ) !== false ) {
             wp_enqueue_media();
+            // Écran « Ajouter une inscription » : réutilise le rendu des
+            // champs de question du formulaire public (render_question_field()),
+            // dont le style vit dans public.css, jamais chargé par défaut en admin.
+            if ( ( $_GET['action'] ?? '' ) === 'inscrire' ) {
+                wp_enqueue_style( 'seliweb-public', SELIWEB_URL . 'assets/css/public.css', array(), SELIWEB_VERSION );
+            }
         }
     }
 

@@ -37,6 +37,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.0.2
+- Événements → Synthèse des inscriptions : nouveau bouton « Ajouter une inscription », pour inscrire un membre manuellement (et répondre aux questions pour lui) depuis le back-office, sans passer par « Mon compte ». Sans restriction de groupe ni de date contrairement à l'inscription en front-end.
+
 ### 1.0.1
 - Correctif de mise à jour automatique : la détection de la dernière version se fiait au premier fichier joint à la release GitHub, alors qu'un autre fichier (ex. le manuel en PDF) peut apparaître avant le zip de l'extension — WordPress tentait alors d'installer ce fichier comme s'il s'agissait du paquet, et échouait avec « PCLZIP_ERR_BAD_FORMAT : Unable to find End of Central Dir Record signature ». Corrigé en repérant explicitement le fichier `.zip`, quel que soit son ordre parmi les fichiers joints.
 

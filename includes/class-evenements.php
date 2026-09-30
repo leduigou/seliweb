@@ -20,6 +20,7 @@ class Seliweb_Evenements {
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
         add_action( 'init', array( __CLASS__, 'handle_duplicate' ) );
         add_action( 'init', array( __CLASS__, 'handle_inscription' ) );
+        add_action( 'init', array( __CLASS__, 'handle_inscrire_admin' ) );
         add_action( 'admin_post_seliweb_evt_csv', array( __CLASS__, 'handle_csv' ) );
     }
 
@@ -278,6 +279,8 @@ class Seliweb_Evenements {
             self::form_admin( $id );
         } elseif ( 'synthese' === $action ) {
             self::synthese( $id );
+        } elseif ( 'inscrire' === $action ) {
+            self::form_inscrire_admin( $id );
         } else {
             echo ' <a href="' . esc_url( admin_url( 'admin.php?page=seliweb_evenements&action=new' ) ) . '" class="page-title-action">'
                . esc_html__( 'Ajouter', 'seliweb' ) . '</a><hr class="wp-header-end">';
@@ -877,11 +880,16 @@ class Seliweb_Evenements {
             <strong><?php printf( esc_html( _n( '%d inscrit', '%d inscrits', count( $lignes ), 'seliweb' ) ), count( $lignes ) ); ?></strong>
         </p>
 
+        <?php if ( isset( $_GET['inscrit_ajoute'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Inscription ajoutée.', 'seliweb' ); ?></p></div>
+        <?php endif; ?>
+
         <p class="seliweb-synthese-actions">
             <a href="<?php echo esc_url( $base ); ?>" class="button">&larr; <?php esc_html_e( 'Retour à la liste', 'seliweb' ); ?></a>
             <a href="<?php echo esc_url( add_query_arg( array( 'action' => 'edit', 'id' => $evt->id ), $base ) ); ?>" class="button"><?php esc_html_e( 'Modifier l\'événement', 'seliweb' ); ?></a>
+            <a href="<?php echo esc_url( add_query_arg( array( 'action' => 'inscrire', 'id' => $evt->id ), $base ) ); ?>" class="button button-primary"><?php esc_html_e( 'Ajouter une inscription', 'seliweb' ); ?></a>
             <button type="button" class="button" onclick="window.print();return false;"><?php esc_html_e( 'Imprimer', 'seliweb' ); ?></button>
-            <a href="<?php echo esc_url( $csv_url ); ?>" class="button button-primary"><?php esc_html_e( 'Exporter en CSV', 'seliweb' ); ?></a>
+            <a href="<?php echo esc_url( $csv_url ); ?>" class="button"><?php esc_html_e( 'Exporter en CSV', 'seliweb' ); ?></a>
         </p>
 
         <?php if ( ! $lignes ) : ?>
@@ -918,6 +926,140 @@ class Seliweb_Evenements {
                 <?php endif; ?>
             </table>
         <?php endif; ?>
+        <?php
+    }
+
+    // ================================================================
+    // Ajout manuel d'une inscription par l'administrateur (pour un membre
+    // inscrit par téléphone, en personne, etc.). Pas de restriction de
+    // groupe ni de date contrairement à l'inscription en Mon Compte : le
+    // back-office n'est pas soumis aux mêmes règles que le front-end.
+    // ================================================================
+    private static function form_inscrire_admin( $id ) {
+        global $wpdb;
+        $base = admin_url( 'admin.php?page=seliweb_evenements' );
+        $evt  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", (int) $id ) );
+
+        if ( ! $evt ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Événement introuvable.', 'seliweb' ) . '</p></div>';
+            echo '<p><a href="' . esc_url( $base ) . '" class="button">&larr; ' . esc_html__( 'Retour à la liste', 'seliweb' ) . '</a></p>';
+            return;
+        }
+
+        $synthese_url = add_query_arg( array( 'action' => 'synthese', 'id' => $evt->id ), $base );
+
+        $err = isset( $_GET['error'] ) ? sanitize_key( $_GET['error'] ) : '';
+        if ( 'membre' === $err ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Choisissez un membre dans la liste proposée.', 'seliweb' ) . '</p></div>';
+        } elseif ( 'deja' === $err ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Ce membre est déjà inscrit à cet événement.', 'seliweb' ) . '</p></div>';
+        } elseif ( 'reponses' === $err ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Merci de répondre aux questions obligatoires.', 'seliweb' ) . '</p></div>';
+        }
+
+        // Membres non archivés, pas déjà inscrits à cet événement.
+        $membres = $wpdb->get_results( $wpdb->prepare(
+            "SELECT m.id, u.display_name FROM {$wpdb->prefix}seliweb_membres m
+              LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+             WHERE m.archive = 0
+               AND m.id NOT IN (
+                   SELECT membre_id FROM " . self::table_inscr() . " WHERE evenement_id = %d
+               )
+             ORDER BY u.display_name ASC",
+            (int) $evt->id
+        ) );
+        $ac_membres = array_map( function( $m ) {
+            return array( 'id' => (int) $m->id, 'label' => (int) $m->id . ' — ' . $m->display_name );
+        }, $membres );
+
+        $questions = self::get_questions( (int) $evt->id );
+        ?>
+        <style>
+        .swv-ac-wrap{position:relative;display:inline-block;min-width:320px;}
+        .swv-ac-input{width:100%;padding:6px 8px;font-size:14px;border:1px solid #8c8f94;border-radius:3px;box-sizing:border-box;}
+        .swv-ac-input:focus{border-color:#2271b1;box-shadow:0 0 0 1px #2271b1;outline:none;}
+        .swv-ac-list{position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1px solid #8c8f94;border-top:0;list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.18);}
+        .swv-ac-list li{padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f6f7f7;}
+        .swv-ac-list li:hover{background:#f0f6ff;}
+        </style>
+
+        <h2 style="margin-top:1em;"><?php printf( esc_html__( 'Ajouter une inscription — %s', 'seliweb' ), esc_html( $evt->titre ) ); ?></h2>
+
+        <form method="post" style="max-width:640px;">
+            <?php wp_nonce_field( 'seliweb_evt_inscrire_' . $evt->id, 'seliweb_evt_inscrire_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="inscrire_membre">
+            <input type="hidden" name="evenement_id" value="<?php echo (int) $evt->id; ?>">
+
+            <table class="form-table">
+                <tr>
+                    <th><label><?php esc_html_e( 'Membre', 'seliweb' ); ?> <span style="color:#b32d2e;">*</span></label></th>
+                    <td>
+                        <?php if ( ! $membres ) : ?>
+                            <em><?php esc_html_e( 'Tous les membres sont déjà inscrits, ou aucun membre disponible.', 'seliweb' ); ?></em>
+                        <?php else : ?>
+                            <div class="swv-ac-wrap" id="swv_wrap_evt_membre"></div>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php if ( $questions ) : ?>
+                <tr>
+                    <th><?php esc_html_e( 'Réponses', 'seliweb' ); ?></th>
+                    <td>
+                        <?php foreach ( $questions as $q ) self::render_question_field( $q ); ?>
+                    </td>
+                </tr>
+                <?php endif; ?>
+            </table>
+
+            <?php if ( $membres ) : ?>
+                <?php submit_button( __( 'Enregistrer l\'inscription', 'seliweb' ) ); ?>
+            <?php endif; ?>
+            <a href="<?php echo esc_url( $synthese_url ); ?>" class="button"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></a>
+        </form>
+
+        <script>
+        function swvAc(wrapId, hiddenName, items, placeholder) {
+            var wrap = document.getElementById(wrapId);
+            if (!wrap) return;
+            var txt = document.createElement('input');
+            txt.type = 'text'; txt.placeholder = placeholder || ''; txt.autocomplete = 'off'; txt.className = 'swv-ac-input';
+            var hid = document.createElement('input');
+            hid.type = 'hidden'; hid.name = hiddenName; hid.value = '';
+            var list = document.createElement('ul');
+            list.className = 'swv-ac-list'; list.hidden = true;
+            wrap.appendChild(txt); wrap.appendChild(hid); wrap.appendChild(list);
+            function render(matches) {
+                list.innerHTML = '';
+                if (!matches.length) { list.hidden = true; return; }
+                matches.slice(0, 15).forEach(function(item) {
+                    var li = document.createElement('li');
+                    li.textContent = item.label;
+                    li.addEventListener('mousedown', function(e) { e.preventDefault(); txt.value = item.label; hid.value = item.id; list.hidden = true; });
+                    list.appendChild(li);
+                });
+                list.hidden = false;
+            }
+            txt.addEventListener('input', function() {
+                hid.value = '';
+                var q = this.value.toLowerCase().trim();
+                if (!q) { list.hidden = true; return; }
+                render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+            });
+            txt.addEventListener('focus', function() {
+                var q = this.value.toLowerCase().trim();
+                if (q) render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+            });
+            txt.addEventListener('blur', function() { setTimeout(function() { list.hidden = true; }, 200); });
+        }
+        var swvEvtMembres = <?php echo wp_json_encode( $ac_membres ); ?>;
+        swvAc('swv_wrap_evt_membre', 'membre_id', swvEvtMembres, '<?php echo esc_js( __( 'Taper un nom ou un N°…', 'seliweb' ) ); ?>');
+        document.querySelector('form').addEventListener('submit', function(e) {
+            if (!document.querySelector('[name="membre_id"]') || !document.querySelector('[name="membre_id"]').value) {
+                e.preventDefault();
+                alert('<?php echo esc_js( __( 'Veuillez choisir un membre dans la liste proposée.', 'seliweb' ) ); ?>');
+            }
+        });
+        </script>
         <?php
     }
 
@@ -1168,6 +1310,65 @@ class Seliweb_Evenements {
         }
 
         wp_safe_redirect( $retour );
+        exit;
+    }
+
+    // Même principe que handle_inscription(), déclenché depuis le
+    // back-office (voir form_inscrire_admin()) : pas de vérification de
+    // groupe ni de date (l'admin peut inscrire n'importe quel membre,
+    // même après le début de l'événement — utile pour les inscrits sur
+    // place).
+    public static function handle_inscrire_admin() {
+        if ( ! is_admin() ) return;
+        if ( ( $_GET['page'] ?? '' ) !== 'seliweb_evenements' ) return;
+        if ( ! isset( $_POST['seliweb_evt_inscrire_nonce'] ) ) return;
+        if ( 'inscrire_membre' !== sanitize_key( $_POST['seliweb_action'] ?? '' ) ) return;
+
+        $evt_id = (int) ( $_POST['evenement_id'] ?? 0 );
+        if ( ! wp_verify_nonce( $_POST['seliweb_evt_inscrire_nonce'], 'seliweb_evt_inscrire_' . $evt_id ) ) return;
+        if ( ! current_user_can( 'manage_options' ) ) return;
+
+        global $wpdb;
+        $base      = admin_url( 'admin.php?page=seliweb_evenements' );
+        $evt       = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", $evt_id ) );
+        $membre_id = (int) ( $_POST['membre_id'] ?? 0 );
+        $membre    = $membre_id ? $wpdb->get_row( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}seliweb_membres WHERE id=%d AND archive=0", $membre_id
+        ) ) : null;
+
+        if ( ! $evt || ! $membre ) {
+            wp_safe_redirect( add_query_arg( array( 'action' => 'inscrire', 'id' => $evt_id, 'error' => 'membre' ), $base ) );
+            exit;
+        }
+        if ( self::est_inscrit( $evt_id, $membre_id ) ) {
+            wp_safe_redirect( add_query_arg( array( 'action' => 'inscrire', 'id' => $evt_id, 'error' => 'deja' ), $base ) );
+            exit;
+        }
+
+        $questions = self::get_questions( $evt_id );
+        $reponses  = self::valider_reponses( $questions, $_POST['reponse'] ?? array() );
+
+        if ( false === $reponses ) {
+            wp_safe_redirect( add_query_arg( array( 'action' => 'inscrire', 'id' => $evt_id, 'error' => 'reponses' ), $base ) );
+            exit;
+        }
+
+        $wpdb->insert( self::table_inscr(), array(
+            'evenement_id'     => $evt_id,
+            'membre_id'        => $membre_id,
+            'date_inscription' => current_time( 'mysql' ),
+        ) );
+        $inscr_id = (int) $wpdb->insert_id;
+        foreach ( $reponses as $qid => $val ) {
+            $wpdb->insert( self::table_reponses(), array(
+                'inscription_id' => $inscr_id,
+                'question_id'    => (int) $qid,
+                'valeur'         => $val,
+            ) );
+        }
+        self::notifier_organisateur( $evt, $membre_id, false );
+
+        wp_safe_redirect( add_query_arg( array( 'action' => 'synthese', 'id' => $evt_id, 'inscrit_ajoute' => 1 ), $base ) );
         exit;
     }
 
