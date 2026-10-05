@@ -104,7 +104,11 @@ $mes_annonces       = $wpdb->get_results( $wpdb->prepare(
      WHERE a.membre_id=%d ORDER BY a.date_creation DESC", $membre->id
 ) );
 $nb_annonces_membre = count( $mes_annonces );
-$limite             = (int) ( $membre->limite_annonces ?? 0 );
+// Un membre sans groupe n'a aucun droit de publication (voir la même
+// garde côté serveur dans seliweb.php::handle_mon_compte_post()) — ne pas
+// confondre avec "limite_annonces" vide/0, qui veut dire "illimité" pour
+// un groupe réel.
+$limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0 ) : -1;
 ?>
 
 <div class="seliweb-wrap seliweb-compte">
@@ -166,6 +170,11 @@ $limite             = (int) ( $membre->limite_annonces ?? 0 );
     <?php if ( isset( $_GET['sel_limite'] ) ) : ?>
         <div class="seliweb-notice seliweb-notice-warn">
             <?php printf( esc_html__( 'Limite atteinte : votre groupe autorise %d annonce(s) maximum.', 'seliweb' ), $limite ); ?>
+        </div>
+    <?php endif; ?>
+    <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'sans_groupe' ) : ?>
+        <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
+            <?php esc_html_e( "Votre compte n'est rattaché à aucun groupe : vous ne pouvez pas créer d'annonce. Contactez l'administrateur du site.", 'seliweb' ); ?>
         </div>
     <?php endif; ?>
 

@@ -37,6 +37,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.0.3
+- Correctif de sécurité (signalé par un testeur) : un compte créé via la page d'inscription native de WordPress (`wp-login.php?action=register`) échappait au formulaire d'inscription Seliweb, et pouvait publier des annonces sans restriction s'il n'était rattaché à aucun groupe. Corrigé en deux temps : la page d'inscription native redirige désormais systématiquement vers l'inscription Seliweb, et un membre sans groupe ne peut plus créer d'annonce même par un autre moyen.
+
 ### 1.0.2
 - Événements → Synthèse des inscriptions : nouveau bouton « Ajouter une inscription », pour inscrire un membre manuellement (et répondre aux questions pour lui) depuis le back-office, sans passer par « Mon compte ». Sans restriction de groupe ni de date contrairement à l'inscription en front-end.
 

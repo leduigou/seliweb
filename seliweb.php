@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.0.2' );
+define( 'SELIWEB_VERSION', '1.0.3' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -79,6 +79,15 @@ class Seliweb {
         // Redirection connexion / déconnexion vers le front-end
         add_filter( 'login_redirect',        array( $this, 'redirect_apres_connexion' ), 10, 3 );
         add_action( 'wp_logout',             array( $this, 'redirect_apres_deconnexion' ) );
+
+        // Bloque l'inscription native de WordPress (wp-login.php?action=register) :
+        // un compte créé par ce formulaire échappe entièrement au formulaire
+        // d'inscription Seliweb (pas de consentement, pas de rattachement à un
+        // groupe si aucun groupe par défaut n'est configuré). "login_form_register"
+        // se déclenche avant tout affichage/traitement de ce formulaire, en GET
+        // comme en POST — redirige systématiquement vers l'inscription Seliweb,
+        // qui affiche elle-même le message "inscriptions fermées" si besoin.
+        add_action( 'login_form_register', array( $this, 'bloquer_inscription_native' ) );
 
         // Blocage de compte membre : refuse l'authentification, puis renvoie
         // vers la page de connexion front-end avec un message dédié.
@@ -250,6 +259,17 @@ class Seliweb {
             wp_safe_redirect( $url );
             exit;
         }
+    }
+
+    // ----------------------------------------------------------------
+    // Bloque wp-login.php?action=register (voir le hook login_form_register
+    // ci-dessus) : redirige vers le formulaire d'inscription Seliweb, seul
+    // point d'entrée garantissant consentement + rattachement au groupe.
+    // ----------------------------------------------------------------
+    public function bloquer_inscription_native() {
+        $url = $this->get_page_url_par_shortcode( 'seliweb_inscription' );
+        wp_safe_redirect( $url ?: home_url( '/' ) );
+        exit;
     }
 
     // ----------------------------------------------------------------
@@ -1314,6 +1334,17 @@ class Seliweb {
 
             $id_post = intval( $_POST['annonce_id'] ?? 0 );
             $is_new  = ( $id_post === 0 );
+
+            // Un membre sans groupe n'a aucun droit de publication — à ne pas
+            // confondre avec "limite_annonces" vide/0, qui signifie "illimité"
+            // pour un groupe réel (cf. class-groupes.php). Sans cette garde,
+            // un membre sans groupe (ex. inscrit via wp-login.php?action=register
+            // avant le blocage ci-dessus, ou groupe retiré depuis) héritait par
+            // erreur d'annonces illimitées via ce même cast.
+            if ( $is_new && ! $membre->groupe_id ) {
+                wp_safe_redirect( add_query_arg( 'sel_error', 'sans_groupe', wp_get_referer() ?: $page_url ) );
+                exit;
+            }
 
             $nb     = (int) $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM $ta WHERE membre_id=%d", $membre->id) );
             $limite = (int) ( $membre->limite_annonces ?? 0 );
