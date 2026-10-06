@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.0.3' );
+define( 'SELIWEB_VERSION', '1.0.4' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -291,15 +291,16 @@ class Seliweb {
     // ----------------------------------------------------------------
     // Échec de connexion depuis la page de connexion front-end : on y
     // reste plutôt que de tomber sur l'écran wp-login.php par défaut.
+    // Identifié par le champ caché du formulaire, et non par le referer,
+    // que certains navigateurs/extensions/politiques de confidentialité
+    // suppriment (ce qui renvoyait alors vers l'écran WordPress natif).
     // ----------------------------------------------------------------
     public function redirect_echec_connexion( $username, $error = null ) {
-        $login_url = $this->get_page_url_par_shortcode( 'seliweb_login' );
-        if ( ! $login_url ) return;
-
-        $referer = wp_get_referer();
-        if ( ! $referer || strpos( $referer, untrailingslashit( $login_url ) ) === false ) {
+        if ( empty( $_POST['seliweb_login_form'] ) ) {
             return; // ne concerne pas notre formulaire (ex. wp-admin)
         }
+        $login_url = $this->get_page_url_par_shortcode( 'seliweb_login' );
+        if ( ! $login_url ) return;
 
         $code   = ( $error instanceof WP_Error ) ? $error->get_error_code() : '';
         $motif  = ( $code === 'seliweb_bloque' ) ? 'blocked' : 'failed';
@@ -366,6 +367,7 @@ class Seliweb {
                     <?php esc_html_e( 'Connexion', 'seliweb' ); ?>
                 </h2>
                 <form method="post" action="<?php echo esc_url( site_url( 'wp-login.php', 'login_post' ) ); ?>">
+                    <input type="hidden" name="seliweb_login_form" value="1">
                     <input type="hidden" name="redirect_to"
                            value="<?php echo esc_attr( $this->get_page_url_par_shortcode('seliweb_mon_compte') ?: home_url('/') ); ?>">
                     <div class="seliweb-field">

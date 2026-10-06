@@ -9,7 +9,7 @@ if ( ! is_user_logged_in() ) {
         echo '<p><em>' . esc_html__( 'Espace membre Seliweb — connexion requise.', 'seliweb' ) . '</em></p>';
         return;
     }
-    wp_safe_redirect( wp_login_url( get_permalink() ) );
+    wp_safe_redirect( swv_login_page_url( get_permalink() ) );
     exit;
 }
 

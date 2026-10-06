@@ -37,6 +37,10 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.0.4
+- Un visiteur déconnecté ouvrant « Mon compte » est désormais renvoyé vers la page de connexion Seliweb (et non plus vers l'écran de connexion WordPress).
+- Un mot de passe erroné depuis la page de connexion Seliweb reste sur cette page, même si le navigateur ne transmet pas l'en-tête referer (confidentialité, extensions).
+
 ### 1.0.3
 - Correctif de sécurité (signalé par un testeur) : un compte créé via la page d'inscription native de WordPress (`wp-login.php?action=register`) échappait au formulaire d'inscription Seliweb, et pouvait publier des annonces sans restriction s'il n'était rattaché à aucun groupe. Corrigé en deux temps : la page d'inscription native redirige désormais systématiquement vers l'inscription Seliweb, et un membre sans groupe ne peut plus créer d'annonce même par un autre moyen.
 
