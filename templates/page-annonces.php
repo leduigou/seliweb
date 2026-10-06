@@ -98,6 +98,7 @@ swv_render_pagination( $page_courante, $nb_pages, $total, true );
                     <?php foreach ( $annonces as $annonce ) swv_render_card( $annonce ); ?>
                 </div>
             <?php endif; ?>
+            <?php swv_render_pagination( $page_courante, $nb_pages, $total ); ?>
         </section>
 
         <aside id="swv-sidebar">
@@ -115,5 +116,4 @@ swv_render_pagination( $page_courante, $nb_pages, $total, true );
     </div>
 </main>
 
-<?php swv_render_pagination( $page_courante, $nb_pages, $total ); ?>
 <?php get_footer(); ?>

@@ -96,7 +96,7 @@ $offre_id_detail = isset( $_GET['sel_offre_id'] ) ? intval( $_GET['sel_offre_id'
 
 // Mes annonces
 $mes_annonces       = $wpdb->get_results( $wpdb->prepare(
-    "SELECT a.*, c.nom AS cat_nom, r.nom AS rub_nom, s.nom AS statut_nom, s.slug AS statut_slug
+    "SELECT a.*, c.nom AS cat_nom, c.slug AS cat_slug, r.nom AS rub_nom, s.nom AS statut_nom, s.slug AS statut_slug
      FROM $ta a
      LEFT JOIN $tc c ON c.id=a.categorie_id
      LEFT JOIN $tr r ON r.id=a.rubrique_id
@@ -272,13 +272,30 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                     <th style="width:80px;"><?php esc_html_e( 'Actions', 'seliweb' ); ?></th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ( $mes_annonces as $a ) : ?>
+                <?php foreach ( $mes_annonces as $a ) :
+                    // Libellé court (complet en infobulle) : Offre / Demande pour la
+                    // catégorie Annonces, sinon Compétence / Objet (prêt).
+                    if ( $a->cat_slug === 'annonces' ) {
+                        $cat_court = $a->type_annonce === 'offre' ? __( 'Offre', 'seliweb' )
+                            : ( $a->type_annonce === 'demande' ? __( 'Deman.', 'seliweb' ) : '' );
+                        $cat_complet = $a->type_annonce === 'offre' ? __( 'Offre', 'seliweb' )
+                            : ( $a->type_annonce === 'demande' ? __( 'Demande', 'seliweb' ) : $a->cat_nom );
+                    } elseif ( $a->cat_slug === 'competences' ) {
+                        $cat_court = __( 'Comp.', 'seliweb' );
+                        $cat_complet = __( 'Compétence', 'seliweb' );
+                    } elseif ( $a->cat_slug === 'objets-pret' ) {
+                        $cat_court = __( 'Prêt', 'seliweb' );
+                        $cat_complet = __( 'Objet (prêt)', 'seliweb' );
+                    } else {
+                        $cat_court = $cat_complet = $a->cat_nom;
+                    }
+                ?>
                     <tr>
                         <td>#<?php echo intval( $a->id ); ?></td>
                         <td><?php echo esc_html( $a->titre ); ?></td>
-                        <td><?php echo esc_html( $a->cat_nom ); ?></td>
+                        <td><?php if ( $cat_court !== '' ) : ?><abbr title="<?php echo esc_attr( $cat_complet ); ?>"><?php echo esc_html( $cat_court ); ?></abbr><?php else : ?>—<?php endif; ?></td>
                         <td><?php echo esc_html( $a->rub_nom ?: '—' ); ?></td>
-                        <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime($a->date_creation) ) ); ?></td>
+                        <td><?php echo esc_html( date_i18n( 'd/m/y', strtotime( $a->date_creation ) ) ); ?></td>
                         <td>
                             <?php if ( $a->statut_nom ) :
                                 $bold = in_array($a->statut_slug, array('urgent','repondu','expire'));
@@ -609,6 +626,23 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
         ?>
 
     <h3><?php esc_html_e('Mon profil','seliweb'); ?></h3>
+
+    <?php
+    $nom_groupe = $membre->groupe_id
+        ? $wpdb->get_var( $wpdb->prepare( "SELECT nom FROM $tg WHERE id=%d", $membre->groupe_id ) )
+        : '';
+    if ( $nom_groupe ) : ?>
+        <p style="margin-bottom:16px;">
+            <?php esc_html_e( 'Groupe :', 'seliweb' ); ?>
+            <span class="seliweb-tag" style="margin-left:6px;"><?php echo esc_html( $nom_groupe ); ?></span>
+            <?php if ( $sel_gid > 0 && (int)$membre->groupe_id === $sel_gid && !empty($membre->numero_sel) ) : ?>
+                <span style="margin-left:10px;font-size:13px;color:#555;font-weight:600;">
+                    <?php printf( esc_html__( 'N° %d', 'seliweb' ), intval( $membre->numero_sel ) ); ?>
+                </span>
+            <?php endif; ?>
+        </p>
+    <?php endif; ?>
+
     <form method="post" action="<?php echo esc_url($page_url); ?>" style="max-width:560px;" enctype="multipart/form-data">
         <?php wp_nonce_field('seliweb_profil_'.$wp_user_id,'seliweb_nonce_profil'); ?>
         <style>
@@ -761,26 +795,11 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
     <?php elseif ( $action === 'prefs' ) : ?>
 
     <?php
-    $nom_groupe = $membre->groupe_id
-        ? $wpdb->get_var( $wpdb->prepare( "SELECT nom FROM $tg WHERE id=%d", $membre->groupe_id ) )
-        : '';
     $tous_groupes       = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
     $notif_groupes_pref = array_filter( array_map( 'intval', explode( ',', $membre->notif_groupes ?? '' ) ) );
     ?>
 
     <h3><?php esc_html_e( 'Préférences', 'seliweb' ); ?></h3>
-
-    <?php if ( $nom_groupe ) : ?>
-        <p style="margin-bottom:16px;">
-            <?php esc_html_e( 'Groupe :', 'seliweb' ); ?>
-            <span class="seliweb-tag" style="margin-left:6px;"><?php echo esc_html( $nom_groupe ); ?></span>
-            <?php if ( $sel_gid > 0 && (int)$membre->groupe_id === $sel_gid && !empty($membre->numero_sel) ) : ?>
-                <span style="margin-left:10px;font-size:13px;color:#555;font-weight:600;">
-                    <?php printf( esc_html__( 'N° %d', 'seliweb' ), intval( $membre->numero_sel ) ); ?>
-                </span>
-            <?php endif; ?>
-        </p>
-    <?php endif; ?>
 
     <form method="post" action="<?php echo esc_url( $page_url ); ?>" style="max-width:560px;">
         <?php wp_nonce_field( 'seliweb_prefs_' . $wp_user_id, 'seliweb_nonce_prefs' ); ?>
@@ -970,10 +989,11 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                 <th style="width:50px;">ID</th>
                 <th style="width:88px;"><?php esc_html_e( 'Date', 'seliweb' ); ?></th>
                 <th><?php esc_html_e( 'Libellé', 'seliweb' ); ?></th>
-                <th style="width:76px;text-align:right;"><?php esc_html_e( 'Débit', 'seliweb' ); ?></th>
-                <th style="width:76px;text-align:right;"><?php esc_html_e( 'Crédit', 'seliweb' ); ?></th>
+                <th style="width:76px;text-align:right;"><?php esc_html_e( 'Sortie', 'seliweb' ); ?></th>
+                <th style="width:76px;text-align:right;"><?php esc_html_e( 'Entrée', 'seliweb' ); ?></th>
+                <th style="width:50px;"></th>
+                <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
                 <th style="width:60px;text-align:center;"><?php esc_html_e( 'N°', 'seliweb' ); ?></th>
-                <th><?php esc_html_e( 'Contrepartie', 'seliweb' ); ?></th>
             </tr></thead>
             <tbody>
             <?php foreach ( $ecritures_txn as $e_row ) :
@@ -985,7 +1005,7 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
             ?>
             <tr>
                 <td><?php echo '#' . intval( $e_row->txn_id ); ?></td>
-                <td><?php echo esc_html( date_i18n( get_option('date_format'), strtotime( $e_row->date ) ) ); ?></td>
+                <td><?php echo esc_html( date_i18n( 'd/m/y', strtotime( $e_row->date ) ) ); ?></td>
                 <td><?php echo esc_html( $e_row->libelle ); ?></td>
                 <td style="text-align:right;">
                     <?php if ( $is_debit ) : ?>
@@ -997,8 +1017,9 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                         <span style="color:#27ae60;font-weight:600;"><?php echo esc_html( $montant_fmt ); ?></span>
                     <?php endif; ?>
                 </td>
-                <td style="text-align:center;"><?php echo esc_html( $e_row->ctr_numero ); ?></td>
+                <td><?php echo $is_debit ? esc_html__( 'vers', 'seliweb' ) : esc_html__( 'de', 'seliweb' ); ?></td>
                 <td><?php echo esc_html( $ctr_label ); ?></td>
+                <td style="text-align:center;"><?php echo esc_html( $e_row->ctr_numero ); ?></td>
             </tr>
             <?php endforeach; ?>
             </tbody>

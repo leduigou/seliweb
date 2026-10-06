@@ -139,7 +139,7 @@ if ( $sel_info && $sel_info['actif'] ) {
             <?php esc_html_e( '+ Nouvelle annonce', 'seliweb' ); ?>
         </a>
         &nbsp;
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_groupes&action=new' ) ); ?>" class="button">
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&action=new' ) ); ?>" class="button">
             <?php esc_html_e( '+ Nouveau groupe', 'seliweb' ); ?>
         </a>
         &nbsp;

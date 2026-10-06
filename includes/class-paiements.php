@@ -76,6 +76,16 @@ class Seliweb_Paiements {
             exit;
         }
 
+        $consentement_titre_f = sanitize_text_field( wp_unslash( $_POST['consentement_titre'] ?? '' ) );
+        $consentement_texte_f = sanitize_textarea_field( wp_unslash( $_POST['consentement_texte'] ?? '' ) );
+        if ( $consentement_texte_f !== '' && $consentement_titre_f === '' ) {
+            wp_safe_redirect( admin_url(
+                'admin.php?page=seliweb_parametres&tab=paiements&action=' . $redir_action
+                . '&id=' . intval( $_POST['id'] ?? 0 ) . '&error=consentement_titre_requis'
+            ) );
+            exit;
+        }
+
         $data = array(
             'nom'                   => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             'description'           => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
@@ -221,6 +231,9 @@ class Seliweb_Paiements {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'tarif_requis' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Au moins un tarif (libellé + montant) est obligatoire.', 'seliweb' ) . '</p></div>';
         }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'consentement_titre_requis' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Un titre de consentement est obligatoire dès que le texte de consentement est renseigné.', 'seliweb' ) . '</p></div>';
+        }
         $tarifs_item = array();
         if ( $item && $item->tarifs ) {
             $tarifs_item = json_decode( $item->tarifs, true ) ?: array();
@@ -294,6 +307,14 @@ class Seliweb_Paiements {
                     <td>
                         <textarea id="consentement_texte" name="consentement_texte" class="large-text" rows="3"><?php echo $item ? esc_textarea( $item->consentement_texte ) : ''; ?></textarea>
                         <p class="description"><?php esc_html_e( 'Facultatif. Si renseigné, le membre doit cocher une case d\'acceptation de ce texte avant de payer (ex. statuts de l\'association pour une adhésion).', 'seliweb' ); ?></p>
+                        <script>
+                        (function(){
+                            var t = document.getElementById('consentement_texte'), ti = document.getElementById('consentement_titre');
+                            if (!t || !ti) return;
+                            function sync(){ ti.required = t.value.trim() !== ''; }
+                            t.addEventListener('input', sync); sync();
+                        })();
+                        </script>
                     </td>
                 </tr>
 

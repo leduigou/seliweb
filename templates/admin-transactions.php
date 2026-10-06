@@ -483,6 +483,7 @@ $csv_url     = wp_nonce_url( add_query_arg( array(
     <?php endif; ?>
 
     <!-- Tableau -->
+    <p class="description" style="margin:0 0 8px;"><?php esc_html_e( 'Une transaction est constituée de deux écritures de même ID', 'seliweb' ); ?></p>
     <table class="wp-list-table widefat fixed striped">
         <thead>
             <tr>

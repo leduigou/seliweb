@@ -511,6 +511,9 @@ if ( ! function_exists( 'swv_render_card' ) ) {
         $prix       = Seliweb_Annonces::get_prix( $annonce->id );
         $has_statut = ( ! empty( $annonce->statut_slug ) && $annonce->statut_slug !== 'expire' );
         $url        = add_query_arg( 'seliweb_annonce', $annonce->id, swv_annonces_page_url() );
+        // Garde la page de la liste d'où vient le visiteur, pour le lien « Retour aux annonces ».
+        $page_courante = max( 1, intval( $_GET['sel_page'] ?? 1 ) );
+        if ( $page_courante > 1 ) $url = add_query_arg( 'sel_page', $page_courante, $url );
         $date       = date_i18n( get_option('date_format'), strtotime( $annonce->date_creation ) );
         // Photo choisie par le membre, sinon image de la rubrique
         $img_url    = $annonce->photo_affichee ?: $annonce->rub_image;

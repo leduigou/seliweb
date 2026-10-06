@@ -1375,6 +1375,11 @@
     padding: 10px 0 0;
     margin-top: 16px;
 }
+#swv-annonces .swv-pagination-bar-bottom .swv-pagination-bar-inner {
+    justify-content: center;
+    max-width: none;
+    padding: 0;
+}
 .swv-pagination-bar-inner {
     max-width: var(--container, 1200px);
     margin: 0 auto;

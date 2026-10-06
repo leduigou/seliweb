@@ -37,6 +37,15 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.0.13
+- Tableau de bord : le bouton « + Nouveau groupe » ouvre désormais la bonne page (Paramètres → Groupes).
+- Mon compte → Mes annonces : colonne Catégorie avec Offre / Demande / Comp. / Prêt (nom complet en infobulle), dates au format jj/mm/aa.
+- Mon compte → Mon profil : groupe et N° SEL affichés en tête de profil (plus dans Préférences).
+- Liste des annonces : pagination du bas centrée sous la liste ; le lien « Détail » garde le numéro de page d'origine pour le retour.
+- Abonnements : un texte de consentement exige désormais un titre.
+- Transactions (admin) : phrase explicative au-dessus du tableau.
+- Mon compte → Transactions : vocabulaire Sortie / Entrée / Membre, colonne « de / vers », N° en dernier, dates jj/mm/aa.
+
 ### 1.0.4
 - Un visiteur déconnecté ouvrant « Mon compte » est désormais renvoyé vers la page de connexion Seliweb (et non plus vers l'écran de connexion WordPress).
 - Un mot de passe erroné depuis la page de connexion Seliweb reste sur cette page, même si le navigateur ne transmet pas l'en-tête referer (confidentialité, extensions).
