@@ -16,7 +16,7 @@ class Seliweb_Cotisations {
         if ( ! is_admin() ) return;
         if ( ( $_GET['page'] ?? '' ) !== 'seliweb_cotisations' ) return;
         if ( ! isset( $_GET['exclu_id'] ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'cotisations', 'modifier' ) ) return;
 
         $id = intval( $_GET['exclu_id'] );
         if ( ! check_admin_referer( 'seliweb_exclu_' . $id ) ) return;
@@ -473,10 +473,10 @@ class Seliweb_Cotisations {
     // ================================================================
     public static function handle_admin_post() {
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_cotisations' ) return;
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( __( 'Accès refusé.', 'seliweb' ) );
 
         // Rafraîchissement du cache Paheko (GET, avant tout affichage)
         if ( isset( $_GET['refresh_paheko'] ) && wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'seliweb_refresh_paheko' ) ) {
+            if ( ! Seliweb_Permissions::peut( 'cotisations', 'lire' ) ) wp_die( __( 'Accès refusé.', 'seliweb' ) );
             delete_transient( 'seliweb_paheko_years' );
             delete_transient( 'seliweb_paheko_services' );
             $exercice = sanitize_text_field( wp_unslash( $_GET['exercice'] ?? '' ) );
@@ -492,12 +492,21 @@ class Seliweb_Cotisations {
             if ( ! wp_verify_nonce( $_POST['seliweb_cot_nonce'] ?? '', 'seliweb_cotisation_save' ) ) {
                 wp_die( __( 'Nonce invalide.', 'seliweb' ) );
             }
+            // Création = même droit que suppression (décision produit) ;
+            // modification d'une cotisation existante = droit "modification".
+            $droit_requis = ! empty( $_POST['cotisation_id'] ) ? 'modifier' : 'creer';
+            if ( ! Seliweb_Permissions::peut( 'cotisations', $droit_requis ) ) {
+                wp_die( __( 'Accès refusé.', 'seliweb' ) );
+            }
             self::save_cotisation();
         }
 
         if ( $action === 'sync_paheko' ) {
             if ( ! wp_verify_nonce( $_POST['seliweb_sync_nonce'] ?? '', 'seliweb_sync_paheko' ) ) {
                 wp_die( __( 'Nonce invalide.', 'seliweb' ) );
+            }
+            if ( ! Seliweb_Permissions::peut( 'cotisations', 'modifier' ) ) {
+                wp_die( __( 'Accès refusé.', 'seliweb' ) );
             }
             self::process_sync();
         }
@@ -594,8 +603,11 @@ class Seliweb_Cotisations {
     }
 
     public static function display_cotisations() {
+        if ( ! Seliweb_Permissions::verifier_acces( 'cotisations', 'lire' ) ) return;
+
         $action = sanitize_key( $_GET['sel_action'] ?? '' );
         if ( $action === 'ajouter' || $action === 'modifier' ) {
+            if ( ! Seliweb_Permissions::verifier_acces( 'cotisations', $action === 'ajouter' ? 'creer' : 'modifier' ) ) return;
             self::form_cotisation( $action );
             return;
         }

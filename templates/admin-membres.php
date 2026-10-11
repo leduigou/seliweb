@@ -1,6 +1,8 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-if ( ! current_user_can( 'manage_options' ) ) { wp_die( __( 'Accès refusé.', 'seliweb' ) ); }
+// L'accès en lecture (au minimum) a déjà été vérifié par
+// Seliweb::display_membres() avant l'include de ce fichier — les POST
+// ci-dessous vérifient chacun le niveau requis (modification/création).
 
 global $wpdb;
 $tm = $wpdb->prefix . 'seliweb_membres';
@@ -20,7 +22,8 @@ $edit_id   = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
 // ----------------------------------------------------------------
 if ( isset( $_POST['seliweb_nonce'] )
      && wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_membres' )
-     && isset( $_POST['membre_id'] ) ) {
+     && isset( $_POST['membre_id'] )
+     && Seliweb_Permissions::peut( 'membres', 'modifier' ) ) {
     $membre_id = intval( $_POST['membre_id'] );
     $groupe_id = ! empty( $_POST['groupe_id'] ) ? intval( $_POST['groupe_id'] ) : null;
 
@@ -65,7 +68,8 @@ $erreurs_modif = array();
 $modif_ok      = false;
 
 if ( isset( $_POST['seliweb_nonce_modif'] )
-     && wp_verify_nonce( $_POST['seliweb_nonce_modif'], 'seliweb_modif_membre' ) ) {
+     && wp_verify_nonce( $_POST['seliweb_nonce_modif'], 'seliweb_modif_membre' )
+     && Seliweb_Permissions::peut( 'membres', 'modifier' ) ) {
 
     $mid       = intval( $_POST['membre_id_modif'] );
     $civilite  = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
@@ -209,7 +213,8 @@ $erreurs_creation = array();
 $creation_ok      = false;
 
 if ( isset( $_POST['seliweb_nonce_creation'] )
-     && wp_verify_nonce( $_POST['seliweb_nonce_creation'], 'seliweb_creation_membre' ) ) {
+     && wp_verify_nonce( $_POST['seliweb_nonce_creation'], 'seliweb_creation_membre' )
+     && Seliweb_Permissions::peut( 'membres', 'creer' ) ) {
 
     $civilite    = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
     $identifiant = sanitize_user( wp_unslash( $_POST['identifiant'] ?? '' ), true );

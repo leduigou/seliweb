@@ -229,6 +229,7 @@ class Seliweb_Parametres {
             'cotisations' => __( 'Cotisations',  'seliweb' ),
             'paiements'   => __( 'Abonnements',  'seliweb' ),
             'api'         => __( 'API',          'seliweb' ),
+            'gestionnaires' => __( 'Gestionnaires', 'seliweb' ),
         );
 
         echo '<div class="wrap">';
@@ -266,6 +267,7 @@ class Seliweb_Parametres {
             case 'api':          Seliweb_Cotisations::tab_api();          break;
             case 'cotisations':  Seliweb_Cotisations::tab_cotisations();  break;
             case 'paiements':    self::tab_paiements();                   break;
+            case 'gestionnaires': self::tab_gestionnaires();               break;
             default:             self::tab_general();                    break;
         }
 
@@ -300,6 +302,7 @@ class Seliweb_Parametres {
             case 'mails':        self::handle_mails( $action );                     break;
             case 'api':          Seliweb_Cotisations::handle_api( $action );        break;
             case 'cotisations':  Seliweb_Cotisations::handle_cotisations( $action ); break;
+            case 'gestionnaires': self::handle_gestionnaires();                     break;
         }
     }
 
@@ -2111,6 +2114,216 @@ class Seliweb_Parametres {
         self::$mail_cfg = null;
 
         wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=mails&updated=1' ) );
+        exit;
+    }
+
+    // ================================================================
+    // GESTIONNAIRES — droits de back-office par membre, module par module
+    // (voir Seliweb_Permissions). Réservé aux administrateurs WP, comme
+    // tout le reste de Paramètres : ce n'est pas un module concerné par le
+    // système de droits qu'il configure.
+    // ================================================================
+    private static function tab_gestionnaires() {
+        global $wpdb;
+
+        if ( isset( $_GET['updated'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Droits enregistrés.', 'seliweb' ) . '</p></div>';
+        }
+
+        $tm    = $wpdb->prefix . 'seliweb_membres';
+        $tperm = $wpdb->prefix . 'seliweb_permissions';
+
+        // Vue synthétique : seulement les membres ayant déjà au moins un
+        // droit. Le sélecteur « Ajouter un gestionnaire » propose le reste.
+        $gestionnaires = $wpdb->get_results(
+            "SELECT DISTINCT m.id, u.display_name FROM $tm m
+             INNER JOIN $tperm p ON p.membre_id = m.id
+             LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+             ORDER BY u.display_name ASC"
+        );
+        $gest_ids = array_map( function( $g ) { return (int) $g->id; }, $gestionnaires );
+
+        $tous_membres = $wpdb->get_results(
+            "SELECT m.id, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+             WHERE m.archive = 0 ORDER BY u.display_name ASC"
+        );
+        $ac_membres = array();
+        $ac_noms    = array();
+        foreach ( $tous_membres as $m ) {
+            if ( in_array( (int) $m->id, $gest_ids, true ) ) continue;
+            $nom = $m->display_name ?: ( '#' . $m->id );
+            $ac_membres[] = array( 'id' => (int) $m->id, 'label' => (int) $m->id . ' — ' . $nom );
+            $ac_noms[ (int) $m->id ] = $nom;
+        }
+
+        $droits  = Seliweb_Permissions::tous_les_droits();
+        $modules = Seliweb_Permissions::modules();
+        ?>
+        <h2><?php esc_html_e( 'Gestionnaires', 'seliweb' ); ?></h2>
+        <p class="description" style="max-width:720px;">
+            <?php esc_html_e( "Donnez à certains membres un accès au back-office Seliweb sans en faire des administrateurs WordPress. Trois niveaux par module, hiérarchiques : Création/Suppression inclut Modification, qui inclut Lecture. Un membre sans aucun droit ne voit aucun module ; celui qui n'a la Lecture nulle part ailleurs ne voit que les modules qui lui ont été assignés. Les Paramètres restent réservés aux administrateurs WordPress dans tous les cas.", 'seliweb' ); ?>
+        </p>
+
+        <p>
+            <button type="button" class="button button-primary" id="seliweb-gest-toggle">
+                <?php esc_html_e( '+ Ajouter un gestionnaire', 'seliweb' ); ?>
+            </button>
+        </p>
+        <p id="seliweb-gest-picker" style="display:none;">
+            <span class="swv-ac-wrap" id="swv_wrap_gest" style="position:relative;display:inline-block;min-width:280px;"></span>
+            <button type="button" class="button" id="seliweb-gest-confirmer"><?php esc_html_e( 'Ajouter à la liste', 'seliweb' ); ?></button>
+        </p>
+
+        <p id="seliweb-gest-vide" <?php echo $gestionnaires ? 'style="display:none;"' : ''; ?>>
+            <em><?php esc_html_e( "Aucun gestionnaire pour le moment. Utilisez « Ajouter un gestionnaire » ci-dessus.", 'seliweb' ); ?></em>
+        </p>
+
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=gestionnaires' ) ); ?>">
+            <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
+            <input type="hidden" name="seliweb_action" value="save_gestionnaires">
+            <table class="wp-list-table widefat fixed striped" id="seliweb-gest-table" <?php echo $gestionnaires ? '' : 'style="display:none;"'; ?>>
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
+                        <?php foreach ( $modules as $label ) : ?>
+                            <th><?php echo esc_html( $label ); ?></th>
+                        <?php endforeach; ?>
+                    </tr>
+                </thead>
+                <tbody id="seliweb-gest-tbody">
+                    <?php foreach ( $gestionnaires as $m ) :
+                        $nom = $m->display_name ?: ( '#' . $m->id );
+                    ?>
+                        <tr data-id="<?php echo (int) $m->id; ?>" data-nom="<?php echo esc_attr( strtolower( $nom ) ); ?>">
+                            <td><?php echo esc_html( $nom ); ?></td>
+                            <?php foreach ( $modules as $mod => $label ) :
+                                $courant = $droits[ $m->id ][ $mod ] ?? '';
+                            ?>
+                                <td>
+                                    <select name="droits[<?php echo (int) $m->id; ?>][<?php echo esc_attr( $mod ); ?>]">
+                                        <option value=""><?php esc_html_e( 'Aucun', 'seliweb' ); ?></option>
+                                        <option value="lecture" <?php selected( $courant, 'lecture' ); ?>><?php esc_html_e( 'Lecture', 'seliweb' ); ?></option>
+                                        <option value="modification" <?php selected( $courant, 'modification' ); ?>><?php esc_html_e( 'Modification', 'seliweb' ); ?></option>
+                                        <option value="creation" <?php selected( $courant, 'creation' ); ?>><?php esc_html_e( 'Création/Suppression', 'seliweb' ); ?></option>
+                                    </select>
+                                </td>
+                            <?php endforeach; ?>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description" style="margin-top:10px;"><?php esc_html_e( "Pour retirer un gestionnaire, remettez tous ses modules sur « Aucun » puis enregistrez — il disparaîtra de cette liste.", 'seliweb' ); ?></p>
+            <?php submit_button( __( 'Enregistrer les droits', 'seliweb' ) ); ?>
+        </form>
+        <script>
+        (function(){
+            var swvModules = <?php echo wp_json_encode( $modules ); ?>;
+            var swvNoms    = <?php echo wp_json_encode( $ac_noms ); ?>;
+            var niveaux    = [
+                ['', <?php echo wp_json_encode( __( 'Aucun', 'seliweb' ) ); ?>],
+                ['lecture', <?php echo wp_json_encode( __( 'Lecture', 'seliweb' ) ); ?>],
+                ['modification', <?php echo wp_json_encode( __( 'Modification', 'seliweb' ) ); ?>],
+                ['creation', <?php echo wp_json_encode( __( 'Création/Suppression', 'seliweb' ) ); ?>]
+            ];
+
+            function ajouterLigne( id, nom ) {
+                var tbody = document.getElementById('seliweb-gest-tbody');
+                if ( tbody.querySelector('tr[data-id="' + id + '"]') ) return; // déjà ajouté
+                var tr = document.createElement('tr');
+                tr.dataset.id  = id;
+                tr.dataset.nom = nom.toLowerCase();
+                var tdNom = document.createElement('td');
+                tdNom.textContent = nom;
+                tr.appendChild(tdNom);
+                Object.keys(swvModules).forEach(function(mod){
+                    var td  = document.createElement('td');
+                    var sel = document.createElement('select');
+                    sel.name = 'droits[' + id + '][' + mod + ']';
+                    niveaux.forEach(function(p){
+                        var opt = document.createElement('option');
+                        opt.value = p[0]; opt.textContent = p[1];
+                        sel.appendChild(opt);
+                    });
+                    td.appendChild(sel);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+                document.getElementById('seliweb-gest-vide').style.display  = 'none';
+                document.getElementById('seliweb-gest-table').style.display = '';
+            }
+
+            function swvAc(wrapId, hiddenName, items, placeholder) {
+                var wrap = document.getElementById(wrapId);
+                if (!wrap) return;
+                var txt = document.createElement('input');
+                txt.type = 'text'; txt.placeholder = placeholder || ''; txt.autocomplete = 'off';
+                txt.style.cssText = 'width:280px;padding:6px 8px;font-size:14px;border:1px solid #8c8f94;border-radius:3px;';
+                var hid = document.createElement('input');
+                hid.type = 'hidden'; hid.name = hiddenName; hid.value = '';
+                var list = document.createElement('ul');
+                list.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1px solid #8c8f94;border-top:0;list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.18);';
+                list.hidden = true;
+                wrap.appendChild(txt); wrap.appendChild(hid); wrap.appendChild(list);
+                function render(matches) {
+                    list.innerHTML = '';
+                    if (!matches.length) { list.hidden = true; return; }
+                    matches.slice(0, 15).forEach(function(item) {
+                        var li = document.createElement('li');
+                        li.textContent = item.label;
+                        li.style.cssText = 'padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f6f7f7;';
+                        li.addEventListener('mousedown', function(e) { e.preventDefault(); txt.value = item.label; hid.value = item.id; list.hidden = true; });
+                        list.appendChild(li);
+                    });
+                    list.hidden = false;
+                }
+                txt.addEventListener('input', function() {
+                    hid.value = '';
+                    var q = this.value.toLowerCase().trim();
+                    if (!q) { list.hidden = true; return; }
+                    render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('focus', function() {
+                    var q = this.value.toLowerCase().trim();
+                    if (q) render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                });
+                txt.addEventListener('blur', function() { setTimeout(function() { list.hidden = true; }, 200); });
+                return { txt: txt, hid: hid };
+            }
+
+            var swvGestMembres = <?php echo wp_json_encode( $ac_membres ); ?>;
+            var ac = swvAc( 'swv_wrap_gest', 'gest_nouveau_membre_id', swvGestMembres, <?php echo wp_json_encode( __( 'Taper un nom ou un N°…', 'seliweb' ) ); ?> );
+
+            var toggle = document.getElementById('seliweb-gest-toggle');
+            var picker = document.getElementById('seliweb-gest-picker');
+            toggle.addEventListener('click', function(){
+                picker.style.display = picker.style.display === 'none' ? '' : 'none';
+            });
+            document.getElementById('seliweb-gest-confirmer').addEventListener('click', function(){
+                var id = ac.hid.value;
+                if ( ! id ) { alert( <?php echo wp_json_encode( __( 'Choisissez un membre dans la liste proposée.', 'seliweb' ) ); ?> ); return; }
+                ajouterLigne( id, swvNoms[id] || ( '#' + id ) );
+                ac.txt.value = ''; ac.hid.value = '';
+                picker.style.display = 'none';
+            });
+        })();
+        </script>
+        <?php
+    }
+
+    private static function handle_gestionnaires() {
+        $modules = array_keys( Seliweb_Permissions::modules() );
+        foreach ( (array) ( $_POST['droits'] ?? array() ) as $membre_id => $par_module ) {
+            $membre_id = intval( $membre_id );
+            if ( ! $membre_id ) continue;
+            foreach ( $modules as $mod ) {
+                $niveau = sanitize_key( $par_module[ $mod ] ?? '' );
+                if ( ! in_array( $niveau, array( 'lecture', 'modification', 'creation' ), true ) ) {
+                    $niveau = '';
+                }
+                Seliweb_Permissions::enregistrer( $membre_id, $mod, $niveau );
+            }
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=gestionnaires&updated=1' ) );
         exit;
     }
 }

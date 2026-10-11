@@ -54,13 +54,27 @@ function seliweb_calc_stats_membres( $groupe_id ) {
     $nb_age_declare = count( $ages );
     $age_moyen      = $nb_age_declare ? array_sum( $ages ) / $nb_age_declare : null;
 
-    $tranches = array( 'moins_20' => 0, '20_39' => 0, '40_59' => 0, '60_79' => 0, '80_plus' => 0 );
+    $tranches = array(
+        '0_18'    => 0,
+        '18_30'   => 0,
+        '30_40'   => 0,
+        '40_50'   => 0,
+        '50_60'   => 0,
+        '60_70'   => 0,
+        '70_80'   => 0,
+        '80_90'   => 0,
+        '90_plus' => 0,
+    );
     foreach ( $ages as $age ) {
-        if ( $age < 20 )      $tranches['moins_20']++;
-        elseif ( $age < 40 )  $tranches['20_39']++;
-        elseif ( $age < 60 )  $tranches['40_59']++;
-        elseif ( $age < 80 )  $tranches['60_79']++;
-        else                   $tranches['80_plus']++;
+        if ( $age < 18 )      $tranches['0_18']++;
+        elseif ( $age < 30 )  $tranches['18_30']++;
+        elseif ( $age < 40 )  $tranches['30_40']++;
+        elseif ( $age < 50 )  $tranches['40_50']++;
+        elseif ( $age < 60 )  $tranches['50_60']++;
+        elseif ( $age < 70 )  $tranches['60_70']++;
+        elseif ( $age < 80 )  $tranches['70_80']++;
+        elseif ( $age < 90 )  $tranches['80_90']++;
+        else                   $tranches['90_plus']++;
     }
 
     return array(
@@ -273,11 +287,15 @@ if ( $sel_info && $sel_info['actif'] ) {
                             <tbody>
                                 <?php
                                 $tranches_labels = array(
-                                    'moins_20' => __( 'Moins de 20 ans', 'seliweb' ),
-                                    '20_39'    => __( '20 à 40 ans', 'seliweb' ),
-                                    '40_59'    => __( '40 à 60 ans', 'seliweb' ),
-                                    '60_79'    => __( '60 à 80 ans', 'seliweb' ),
-                                    '80_plus'  => __( 'Plus de 80 ans', 'seliweb' ),
+                                    '0_18'    => __( '0 à 18 ans', 'seliweb' ),
+                                    '18_30'   => __( '18 à 30 ans', 'seliweb' ),
+                                    '30_40'   => __( '30 à 40 ans', 'seliweb' ),
+                                    '40_50'   => __( '40 à 50 ans', 'seliweb' ),
+                                    '50_60'   => __( '50 à 60 ans', 'seliweb' ),
+                                    '60_70'   => __( '60 à 70 ans', 'seliweb' ),
+                                    '70_80'   => __( '70 à 80 ans', 'seliweb' ),
+                                    '80_90'   => __( '80 à 90 ans', 'seliweb' ),
+                                    '90_plus' => __( '90 ans et plus', 'seliweb' ),
                                 );
                                 foreach ( $tranches_labels as $cle => $label ) :
                                     $n = $stats['tranches'][ $cle ];

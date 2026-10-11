@@ -1,6 +1,6 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
-if ( ! current_user_can( 'manage_options' ) ) return;
+if ( ! Seliweb_Permissions::verifier_acces( 'transactions', 'lire' ) ) return;
 
 global $wpdb;
 $tt = $wpdb->prefix . 'seliweb_transactions';

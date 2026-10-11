@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '3.9';
+    const DB_VERSION     = '4.0';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -353,6 +353,20 @@ class Seliweb_Database {
             PRIMARY KEY (id),
             KEY wp_user_id (wp_user_id),
             KEY type (type)
+        ) $charset;";
+
+        // Migration v4.0 : droits de back-office par membre, module par
+        // module (voir Seliweb_Permissions) — permet de donner accès à des
+        // écrans Seliweb sans faire du membre un administrateur WordPress.
+        // Un seul niveau par module : lecture < modification < création
+        // (la création emporte la suppression, même droit).
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_permissions (
+            id        INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            membre_id INT UNSIGNED NOT NULL,
+            module    VARCHAR(30)  NOT NULL,
+            niveau    VARCHAR(20)  NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY membre_module (membre_id, module)
         ) $charset;";
 
         foreach ( $sql as $query ) {

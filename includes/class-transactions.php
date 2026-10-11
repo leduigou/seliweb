@@ -135,11 +135,11 @@ class Seliweb_Transactions {
     // ================================================================
     public static function handle_post() {
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_transactions' ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
         if ( empty( $_POST ) ) return;
 
         if ( isset( $_POST['seliweb_ajouter_transaction'] ) ) {
             check_admin_referer( 'seliweb_transaction_add' );
+            if ( ! Seliweb_Permissions::peut( 'transactions', 'creer' ) ) return;
             $error = self::process_add();
             if ( $error ) {
                 self::$form_error   = $error;
@@ -151,6 +151,7 @@ class Seliweb_Transactions {
         if ( isset( $_POST['seliweb_modifier_transaction'] ) ) {
             $edit_id = intval( $_POST['transaction_id'] ?? 0 );
             check_admin_referer( 'seliweb_transaction_edit_' . $edit_id );
+            if ( ! Seliweb_Permissions::peut( 'transactions', 'modifier' ) ) return;
             $error = self::process_edit( $edit_id );
             if ( $error ) {
                 self::$form_error   = $error;
@@ -384,7 +385,7 @@ class Seliweb_Transactions {
     // — voir templates/admin-transactions.php).
     // ================================================================
     public static function handle_csv_transactions() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::peut( 'transactions', 'lire' ) ) {
             wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
         }
         check_admin_referer( 'seliweb_transactions_export' );
@@ -458,7 +459,7 @@ class Seliweb_Transactions {
     // Export CSV — Solde des comptes (même périmètre que l'onglet).
     // ================================================================
     public static function handle_csv_soldes() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::peut( 'transactions', 'lire' ) ) {
             wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
         }
         check_admin_referer( 'seliweb_soldes_export' );

@@ -268,7 +268,7 @@ class Seliweb_Evenements {
     // BACK-OFFICE
     // ================================================================
     public static function display() {
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::verifier_acces( 'evenements', 'lire' ) ) return;
         $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
         $id     = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
 
@@ -657,7 +657,10 @@ class Seliweb_Evenements {
         if ( ( $_GET['page'] ?? '' ) !== 'seliweb_evenements' ) return;
         if ( ! isset( $_POST['seliweb_evt_nonce'] ) ) return;
         if ( ! wp_verify_nonce( $_POST['seliweb_evt_nonce'], 'seliweb_evenement' ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        // Création = même droit que suppression (décision produit) ;
+        // modification d'un événement existant = droit "modification".
+        $droit_requis = ( 'update' === sanitize_key( $_POST['seliweb_action'] ?? '' ) ) ? 'modifier' : 'creer';
+        if ( ! Seliweb_Permissions::peut( 'evenements', $droit_requis ) ) return;
 
         global $wpdb;
 
@@ -731,7 +734,7 @@ class Seliweb_Evenements {
 
         $id = (int) $_GET['id'];
         if ( ! check_admin_referer( 'seliweb_delete_evt_' . $id ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'evenements', 'supprimer' ) ) return;
 
         global $wpdb;
         $inscr_ids = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare(
@@ -760,7 +763,7 @@ class Seliweb_Evenements {
 
         $id = (int) $_GET['id'];
         if ( ! check_admin_referer( 'seliweb_duplicate_evt_' . $id ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'evenements', 'creer' ) ) return;
 
         global $wpdb;
         $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM " . self::table() . " WHERE id=%d", $id ) );
@@ -936,6 +939,7 @@ class Seliweb_Evenements {
     // back-office n'est pas soumis aux mêmes règles que le front-end.
     // ================================================================
     private static function form_inscrire_admin( $id ) {
+        if ( ! Seliweb_Permissions::verifier_acces( 'evenements', 'modifier' ) ) return;
         global $wpdb;
         $base = admin_url( 'admin.php?page=seliweb_evenements' );
         $evt  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", (int) $id ) );
@@ -1064,7 +1068,7 @@ class Seliweb_Evenements {
     }
 
     public static function handle_csv() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::peut( 'evenements', 'lire' ) ) {
             wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
         }
         $id = (int) ( $_GET['id'] ?? 0 );
@@ -1326,7 +1330,7 @@ class Seliweb_Evenements {
 
         $evt_id = (int) ( $_POST['evenement_id'] ?? 0 );
         if ( ! wp_verify_nonce( $_POST['seliweb_evt_inscrire_nonce'], 'seliweb_evt_inscrire_' . $evt_id ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'evenements', 'modifier' ) ) return;
 
         global $wpdb;
         $base      = admin_url( 'admin.php?page=seliweb_evenements' );

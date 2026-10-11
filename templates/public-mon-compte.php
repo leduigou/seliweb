@@ -643,6 +643,14 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
         </p>
     <?php endif; ?>
 
+    <?php if ( current_user_can( Seliweb_Permissions::CAP ) ) : ?>
+        <p style="margin-bottom:16px;">
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb' ) ); ?>" class="seliweb-btn">
+                <?php esc_html_e( 'Accéder au back-office Seliweb', 'seliweb' ); ?>
+            </a>
+        </p>
+    <?php endif; ?>
+
     <form method="post" action="<?php echo esc_url($page_url); ?>" style="max-width:560px;" enctype="multipart/form-data">
         <?php wp_nonce_field('seliweb_profil_'.$wp_user_id,'seliweb_nonce_profil'); ?>
         <style>

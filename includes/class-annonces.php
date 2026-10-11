@@ -11,6 +11,8 @@ class Seliweb_Annonces {
     }
 
     public static function display() {
+        if ( ! Seliweb_Permissions::verifier_acces( 'annonces', 'lire' ) ) return;
+
         $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
         $id     = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
 
@@ -77,13 +79,16 @@ class Seliweb_Annonces {
         if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_annonces' ) return;
         if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_annonces' ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+
+        $action = sanitize_key( $_POST['seliweb_action'] );
+        // Création = même droit que suppression (décision produit) ;
+        // modification d'une annonce existante = droit "modification".
+        $droit_requis = ( $action === 'add_annonce' ) ? 'creer' : 'modifier';
+        if ( ! Seliweb_Permissions::peut( 'annonces', $droit_requis ) ) return;
 
         global $wpdb;
         $ta  = $wpdb->prefix . 'seliweb_annonces';
         $tap = $wpdb->prefix . 'seliweb_annonces_prix';
-
-        $action = sanitize_key( $_POST['seliweb_action'] );
 
         $categorie_id    = intval( $_POST['categorie_id'] );
         $rubrique_id     = ! empty( $_POST['rubrique_id'] ) ? intval( $_POST['rubrique_id'] ) : null;
@@ -237,6 +242,7 @@ class Seliweb_Annonces {
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_annonces' ) return;
         if ( ! isset( $_GET['action'], $_GET['id'] ) || $_GET['action'] !== 'delete' ) return;
         if ( ! check_admin_referer( 'seliweb_delete_annonce_' . intval( $_GET['id'] ) ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'annonces', 'supprimer' ) ) return;
         global $wpdb;
         $id = intval( $_GET['id'] );
         $wpdb->delete( $wpdb->prefix . 'seliweb_annonces_prix', array( 'annonce_id' => $id ) );

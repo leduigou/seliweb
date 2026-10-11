@@ -876,7 +876,7 @@ class Seliweb_Paiements {
         if ( $_POST['seliweb_action'] !== 'rattacher_paiement' ) return;
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_cotisations' ) return;
         if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_rattacher_paiement' ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'cotisations', 'modifier' ) ) return;
 
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements';
@@ -1064,7 +1064,7 @@ class Seliweb_Paiements {
         if ( ! isset( $_POST['seliweb_action'] ) || $_POST['seliweb_action'] !== 'sync_offres' ) return;
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_cotisations' ) return;
         if ( ! wp_verify_nonce( $_POST['seliweb_sync_nonce'] ?? '', 'seliweb_sync_offres' ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::peut( 'cotisations', 'modifier' ) ) return;
         if ( ! class_exists( 'Seliweb_Cotisations' ) ) return;
 
         global $wpdb;

@@ -49,7 +49,7 @@ class Seliweb_Consentements {
     }
 
     public static function handle_csv() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::peut( 'membres', 'lire' ) ) {
             wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
         }
         check_admin_referer( 'seliweb_consentements_export' );

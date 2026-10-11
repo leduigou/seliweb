@@ -37,6 +37,21 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.1.4
+- Back-office : bandeau rappelant le niveau d'accès (« mode Lecture » / « mode Modification ») en haut de chaque écran, pour les gestionnaires n'ayant pas tous les droits. Rien pour Création/Suppression (accès complet) ni pour les administrateurs.
+
+### 1.1.3
+- Mon compte → Mon profil : lien « Accéder au back-office Seliweb » sous Groupe, visible pour les administrateurs et les gestionnaires.
+
+### 1.1.2
+- Onglet Gestionnaires : retrait du champ de recherche (liste toujours courte par nature).
+
+### 1.1.1
+- Onglet Gestionnaires : vue synthétique (seuls les membres ayant déjà un droit apparaissent), bouton « + Ajouter un gestionnaire » avec recherche intelligente pour en ajouter un nouveau.
+
+### 1.1.0
+- Nouvel onglet Paramètres → Gestionnaires : donner un accès au back-office Seliweb (Tableau de bord, Annonces, Membres, Transactions, Cotis. Abo., Événements) à des membres qui ne sont pas administrateurs WordPress, avec trois niveaux par module (Lecture < Modification < Création/Suppression). Les Paramètres restent réservés aux administrateurs WP.
+
 ### 1.0.13
 - Tableau de bord : le bouton « + Nouveau groupe » ouvre désormais la bonne page (Paramètres → Groupes).
 - Mon compte → Mes annonces : colonne Catégorie avec Offre / Demande / Comp. / Prêt (nom complet en infobulle), dates au format jj/mm/aa.

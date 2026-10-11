@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.0.13
+ * Version: 1.1.4
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.0.13' );
+define( 'SELIWEB_VERSION', '1.1.4' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -35,6 +35,7 @@ require_once SELIWEB_DIR . 'includes/class-contact.php';
 require_once SELIWEB_DIR . 'includes/class-evenements.php';
 require_once SELIWEB_DIR . 'includes/class-membres.php';
 require_once SELIWEB_DIR . 'includes/class-consentements.php';
+require_once SELIWEB_DIR . 'includes/class-permissions.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -48,6 +49,7 @@ Seliweb_Contact::init();
 Seliweb_Evenements::init();
 Seliweb_Membres::init();
 Seliweb_Consentements::init();
+Seliweb_Permissions::init();
 
 class Seliweb {
 
@@ -146,22 +148,35 @@ class Seliweb {
     }
 
     public function create_menu() {
-        add_menu_page( __('Seliweb','seliweb'), __('Seliweb','seliweb'), 'manage_options', 'seliweb', array($this,'display_dashboard'), 'dashicons-networking', 2 );
-        add_submenu_page( 'seliweb', __('Tableau de bord','seliweb'), __('Tableau de bord','seliweb'), 'manage_options', 'seliweb',            array($this,'display_dashboard') );
-        add_submenu_page( 'seliweb', __('Paramètres','seliweb'),      __('Paramètres','seliweb'),      'manage_options', 'seliweb_parametres', array('Seliweb_Parametres','display') );
-        add_submenu_page( 'seliweb', __('Annonces','seliweb'),        __('Annonces','seliweb'),        'manage_options', 'seliweb_annonces',   array('Seliweb_Annonces','display') );
-        add_submenu_page( 'seliweb', __('Membres','seliweb'),         __('Membres','seliweb'),         'manage_options', 'seliweb_membres',    array($this,'display_membres') );
+        // Les 6 écrans partagés sont ouverts à la capacité technique
+        // seliweb_backend (administrateurs + membres ayant au moins un
+        // droit configuré dans Paramètres → Gestionnaires) : le menu reste
+        // visible même sans droit sur un module précis, l'écran lui-même
+        // affiche un refus poli (voir Seliweb_Permissions). Paramètres
+        // reste réservé aux administrateurs WP, y compris sa visibilité.
+        $cap = Seliweb_Permissions::CAP;
+        add_menu_page( __('Seliweb','seliweb'), __('Seliweb','seliweb'), $cap, 'seliweb', array($this,'display_dashboard'), 'dashicons-networking', 2 );
+        add_submenu_page( 'seliweb', __('Tableau de bord','seliweb'), __('Tableau de bord','seliweb'), $cap,              'seliweb',            array($this,'display_dashboard') );
+        add_submenu_page( 'seliweb', __('Paramètres','seliweb'),      __('Paramètres','seliweb'),      'manage_options',  'seliweb_parametres', array('Seliweb_Parametres','display') );
+        add_submenu_page( 'seliweb', __('Annonces','seliweb'),        __('Annonces','seliweb'),        $cap,              'seliweb_annonces',   array('Seliweb_Annonces','display') );
+        add_submenu_page( 'seliweb', __('Membres','seliweb'),         __('Membres','seliweb'),         $cap,              'seliweb_membres',    array($this,'display_membres') );
         if ( Seliweb_Transactions::sel_actif() ) {
-            add_submenu_page( 'seliweb', __('Transactions','seliweb'), __('Transactions','seliweb'), 'manage_options', 'seliweb_transactions', array('Seliweb_Transactions','display') );
+            add_submenu_page( 'seliweb', __('Transactions','seliweb'), __('Transactions','seliweb'), $cap, 'seliweb_transactions', array('Seliweb_Transactions','display') );
         }
         if ( Seliweb_Cotisations::cotisations_actif() ) {
-            add_submenu_page( 'seliweb', __('Trésorerie','seliweb'), __('Cotis. Abo.','seliweb'), 'manage_options', 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
+            add_submenu_page( 'seliweb', __('Trésorerie','seliweb'), __('Cotis. Abo.','seliweb'), $cap, 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
         }
-        add_submenu_page( 'seliweb', __('Événements','seliweb'),      __('Événements','seliweb'),      'manage_options', 'seliweb_evenements', array('Seliweb_Evenements','display') );
+        add_submenu_page( 'seliweb', __('Événements','seliweb'),      __('Événements','seliweb'),      $cap,              'seliweb_evenements', array('Seliweb_Evenements','display') );
     }
 
-    public function display_dashboard() { include SELIWEB_DIR . 'templates/admin-dashboard.php'; }
-    public function display_membres()   { include SELIWEB_DIR . 'templates/admin-membres.php'; }
+    public function display_dashboard() {
+        if ( ! Seliweb_Permissions::verifier_acces( 'dashboard', 'lire' ) ) return;
+        include SELIWEB_DIR . 'templates/admin-dashboard.php';
+    }
+    public function display_membres() {
+        if ( ! Seliweb_Permissions::verifier_acces( 'membres', 'lire' ) ) return;
+        include SELIWEB_DIR . 'templates/admin-membres.php';
+    }
 
     // ----------------------------------------------------------------
     // Rattachement au groupe par défaut à l'inscription
