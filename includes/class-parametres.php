@@ -1586,8 +1586,15 @@ class Seliweb_Parametres {
         $consentement_titre  = (string) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='inscription_consentement_titre' LIMIT 1" );
         $consentement_texte  = (string) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='inscription_consentement_texte' LIMIT 1" );
 
+        $tg             = $wpdb->prefix . 'seliweb_groupes';
+        $groupes        = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
+        $groupe_defaut  = (int) $wpdb->get_var( "SELECT id FROM $tg WHERE est_defaut=1 LIMIT 1" );
+
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
+        }
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'groupe_defaut_requis' ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( "Impossible d'activer l'ouverture des inscriptions sans groupe par défaut : choisissez-en un ci-dessous.", 'seliweb' ) . '</p></div>';
         }
         ?>
         <h2><?php esc_html_e( 'Inscription', 'seliweb' ); ?></h2>
@@ -1606,6 +1613,20 @@ class Seliweb_Parametres {
                         </label>
                         <p class="description">
                             <?php esc_html_e( "C'est le même réglage que « Tout le monde peut s'inscrire » dans Réglages → Général de WordPress — centralisé ici pour rester à côté du reste de l'inscription Seliweb.", 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="groupe_defaut_id"><?php esc_html_e( 'Groupe par défaut', 'seliweb' ); ?></label></th>
+                    <td>
+                        <select id="groupe_defaut_id" name="groupe_defaut_id">
+                            <option value="0"><?php esc_html_e( '— Aucun —', 'seliweb' ); ?></option>
+                            <?php foreach ( $groupes as $g ) : ?>
+                                <option value="<?php echo (int) $g->id; ?>" <?php selected( $groupe_defaut, $g->id ); ?>><?php echo esc_html( $g->nom ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">
+                            <?php esc_html_e( "Groupe auquel est rattaché automatiquement tout nouvel inscrit. Obligatoire pour pouvoir activer l'ouverture des inscriptions ci-dessus.", 'seliweb' ); ?>
                         </p>
                     </td>
                 </tr>
@@ -1640,8 +1661,25 @@ class Seliweb_Parametres {
         if ( $action !== 'save_inscription' ) return;
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_parametres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
 
-        update_option( 'users_can_register', isset( $_POST['users_can_register'] ) ? 1 : 0 );
+        $users_can_register = isset( $_POST['users_can_register'] );
+        $groupe_defaut_id    = intval( $_POST['groupe_defaut_id'] ?? 0 );
+
+        // Un nouvel inscrit sans groupe n'a aucun droit (voir
+        // Seliweb_Permissions/handle_mon_compte_post()) : plutôt que de
+        // laisser ouvrir les inscriptions sans destination, on bloque.
+        if ( $users_can_register && ! $groupe_defaut_id ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=inscription&error=groupe_defaut_requis' ) );
+            exit;
+        }
+
+        update_option( 'users_can_register', $users_can_register ? 1 : 0 );
+
+        $wpdb->update( $tg, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
+        if ( $groupe_defaut_id ) {
+            $wpdb->update( $tg, array( 'est_defaut' => 1 ), array( 'id' => $groupe_defaut_id ) );
+        }
 
         $params = array(
             'inscription_consentement_titre' => sanitize_text_field( wp_unslash( $_POST['inscription_consentement_titre'] ?? '' ) ),

@@ -39,22 +39,16 @@ class Seliweb_Groupes {
         $tg  = $wpdb->prefix . 'seliweb_groupes';
         $tgm = $wpdb->prefix . 'seliweb_groupes_monnaies';
 
-        $est_defaut = isset( $_POST['est_defaut'] ) ? 1 : 0;
-
+        // Le groupe par défaut se choisit désormais dans Paramètres →
+        // Inscription (voir Seliweb_Parametres::handle_inscription()) —
+        // ce formulaire ne touche plus jamais à la colonne est_defaut.
         $data = array(
             'nom'             => sanitize_text_field( wp_unslash( $_POST['nom'] ) ),
             'limite_annonces' => ( $_POST['limite_annonces'] !== '' ) ? intval( $_POST['limite_annonces'] ) : null,
-            'est_defaut'      => $est_defaut,
             'photos_max'      => max( 1, min( 10, intval( $_POST['photos_max'] ?? 1 ) ) ),
         );
 
         $action = sanitize_key( $_POST['seliweb_action'] );
-
-        // Si ce groupe devient le groupe par défaut,
-        // on retire le statut par défaut des autres
-        if ( $est_defaut ) {
-            $wpdb->update( $tg, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
-        }
 
         if ( $action === 'add_groupe' ) {
             $wpdb->insert( $tg, $data );
@@ -169,9 +163,6 @@ class Seliweb_Groupes {
             ? $wpdb->get_col( $wpdb->prepare( "SELECT monnaie_id FROM $tgm WHERE groupe_id=%d", $id ) )
             : array();
         $is_edit = (bool) $item;
-
-        // Y a-t-il déjà un groupe par défaut ?
-        $defaut_existant = $wpdb->get_var( "SELECT id FROM $tg WHERE est_defaut=1 LIMIT 1" );
         ?>
         <form method="post" style="max-width:700px;">
             <?php wp_nonce_field( 'seliweb_groupes', 'seliweb_nonce' ); ?>
@@ -186,24 +177,24 @@ class Seliweb_Groupes {
                                value="<?php echo $item ? esc_attr( $item->nom ) : ''; ?>" required></td>
                 </tr>
 
+                <?php if ( $is_edit && $item->est_defaut ) : ?>
                 <tr>
                     <th><?php esc_html_e( 'Groupe par défaut', 'seliweb' ); ?></th>
                     <td>
-                        <label>
-                            <input type="checkbox" name="est_defaut" value="1"
-                                   <?php checked( $item ? $item->est_defaut : 0 ); ?>>
-                            <?php esc_html_e( 'Rattacher automatiquement les nouveaux membres à ce groupe', 'seliweb' ); ?>
-                        </label>
-                        <?php if ( $defaut_existant && ( ! $item || $defaut_existant != $item->id ) ) : ?>
-                            <p class="description" style="color:#b32d2e;">
-                                <?php
-                                $nom_defaut = $wpdb->get_var( $wpdb->prepare( "SELECT nom FROM $tg WHERE id=%d", $defaut_existant ) );
-                                printf( esc_html__( 'Attention : le groupe "%s" est actuellement le groupe par défaut. Cocher cette case le remplacera.', 'seliweb' ), esc_html( $nom_defaut ) );
-                                ?>
-                            </p>
-                        <?php endif; ?>
+                        <span style="color:green;font-weight:700;">&#10003;</span>
+                        <?php esc_html_e( "C'est le groupe par défaut : les nouveaux inscrits y sont rattachés automatiquement.", 'seliweb' ); ?>
+                        <p class="description">
+                            <?php
+                            printf(
+                                /* translators: %s: lien vers l'onglet Inscription */
+                                esc_html__( 'Se change désormais dans %s.', 'seliweb' ),
+                                '<a href="' . esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=inscription' ) ) . '">' . esc_html__( 'Paramètres → Inscription', 'seliweb' ) . '</a>'
+                            );
+                            ?>
+                        </p>
                     </td>
                 </tr>
+                <?php endif; ?>
 
                 <tr>
                     <th><label for="limite_annonces"><?php esc_html_e( 'Limite d\'annonces', 'seliweb' ); ?></label></th>

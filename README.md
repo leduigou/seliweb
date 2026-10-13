@@ -37,6 +37,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.1.5
+- Le groupe par défaut (rattaché automatiquement à l'inscription) se choisit désormais dans Paramètres → Inscription, pas dans la fiche de chaque groupe. Impossible d'activer l'ouverture des inscriptions sans en avoir choisi un.
+
 ### 1.1.4
 - Back-office : bandeau rappelant le niveau d'accès (« mode Lecture » / « mode Modification ») en haut de chaque écran, pour les gestionnaires n'ayant pas tous les droits. Rien pour Création/Suppression (accès complet) ni pour les administrateurs.
 
