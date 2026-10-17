@@ -161,11 +161,11 @@ if ( $sel_info && $sel_info['actif'] ) {
             <?php esc_html_e( 'Paramètres', 'seliweb' ); ?>
         </a>
         <?php
-        $doc_file = SELIWEB_DIR . 'docs/Manuel-Utilisateur-Seliweb-WP.odt';
+        $doc_file = SELIWEB_DIR . 'docs/Manuel-Utilisateur-Seliweb-WP.pdf';
         if ( file_exists( $doc_file ) ) :
         ?>
         &nbsp;
-        <a href="<?php echo esc_url( SELIWEB_URL . 'docs/Manuel-Utilisateur-Seliweb-WP.odt' ); ?>" class="button" download>
+        <a href="<?php echo esc_url( SELIWEB_URL . 'docs/Manuel-Utilisateur-Seliweb-WP.pdf' ); ?>" class="button" download>
             <?php esc_html_e( 'Télécharger la doc', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
@@ -209,12 +209,41 @@ if ( $sel_info && $sel_info['actif'] ) {
                     <?php endif; ?>
                     <br><small style="color:#888;">
                         <?php
+                        // wp_date() convertit correctement un timestamp GMT (tel que
+                        // renvoyé par wp_next_scheduled()) vers l'heure locale du site —
+                        // contrairement à date_i18n() sur un timestamp qu'on lui fournit
+                        // soi-même, qui l'affiche tel quel sans corriger le décalage.
                         $next = wp_next_scheduled('seliweb_cron_expire');
                         echo $next
-                            ? esc_html__('Prochain passage : ','seliweb') . esc_html(date_i18n(get_option('date_format').' H:i', $next))
+                            ? esc_html__('Prochain passage : ','seliweb') . esc_html(wp_date(get_option('date_format').' H:i', $next))
                             : esc_html__('Cron non planifié','seliweb');
                         ?>
                     </small>
+                </td>
+            </tr>
+            <?php $mailq_info = get_option( Seliweb_Mail_Queue::OPTION_KEY ); ?>
+            <tr>
+                <td><?php esc_html_e( 'File des mails de notification (cron)', 'seliweb' ); ?></td>
+                <td>
+                    <?php if ( $mailq_info ) : ?>
+                        <strong><?php echo esc_html( $mailq_info['date'] ); ?></strong>
+                        — <?php printf(
+                            /* translators: %d: nombre de mails envoyés lors du dernier passage du cron (pas un total journalier, remis à zéro à chaque passage) */
+                            esc_html( _n('%d mail envoyé lors du dernier passage', '%d mails envoyés lors du dernier passage', $mailq_info['envoyes'], 'seliweb') ),
+                            $mailq_info['envoyes']
+                        ); ?>,
+                        <?php printf(
+                            esc_html( _n('%d en attente', '%d en attente', Seliweb_Mail_Queue::en_attente(), 'seliweb') ),
+                            Seliweb_Mail_Queue::en_attente()
+                        ); ?>
+                    <?php else : ?>
+                        <em><?php esc_html_e('Pas encore exécuté','seliweb'); ?></em>
+                    <?php endif; ?>
+                    <?php /* Pas de « Prochain passage » ici : le cron tourne toutes les
+                             minutes, l'information n'apporte rien (toujours « dans
+                             environ une minute »), contrairement au cron quotidien
+                             ci-dessus. La date du dernier passage suffit à vérifier que
+                             le cron tourne toujours. */ ?>
                 </td>
             </tr>
         </tbody>

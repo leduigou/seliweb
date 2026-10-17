@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.1.5
+ * Version: 1.2.2
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.1.5' );
+define( 'SELIWEB_VERSION', '1.2.2' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -36,6 +36,7 @@ require_once SELIWEB_DIR . 'includes/class-evenements.php';
 require_once SELIWEB_DIR . 'includes/class-membres.php';
 require_once SELIWEB_DIR . 'includes/class-consentements.php';
 require_once SELIWEB_DIR . 'includes/class-permissions.php';
+require_once SELIWEB_DIR . 'includes/class-mail-queue.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -50,6 +51,7 @@ Seliweb_Evenements::init();
 Seliweb_Membres::init();
 Seliweb_Consentements::init();
 Seliweb_Permissions::init();
+Seliweb_Mail_Queue::init();
 
 class Seliweb {
 
@@ -1561,6 +1563,7 @@ register_deactivation_hook( __FILE__, 'seliweb_deactivate' );
 
 function seliweb_deactivate() {
     wp_clear_scheduled_hook( 'seliweb_cron_expire' );
+    wp_clear_scheduled_hook( Seliweb_Mail_Queue::CRON_HOOK );
     Seliweb_Database::delete_pages_and_menu();
 }
 

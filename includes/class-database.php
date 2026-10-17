@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '4.0';
+    const DB_VERSION     = '4.1';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -367,6 +367,23 @@ class Seliweb_Database {
             niveau    VARCHAR(20)  NOT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY membre_module (membre_id, module)
+        ) $charset;";
+
+        // Migration v4.1 : file d'attente des mails de notification
+        // d'annonce (voir Seliweb_Mail_Queue) — l'hébergeur (O2Switch)
+        // limite les envois SMTP à 30/minute ; publier une annonce peut
+        // notifier un nombre de membres supérieur à cette limite en un
+        // seul coup. Les mails sont déposés ici puis envoyés par lots
+        // via un cron à la minute, au lieu d'un envoi direct et massif.
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_mail_queue (
+            id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            destinataire  VARCHAR(190) NOT NULL,
+            sujet         VARCHAR(255) NOT NULL,
+            corps         LONGTEXT     NOT NULL,
+            headers       TEXT         DEFAULT NULL,
+            date_creation DATETIME     NOT NULL,
+            PRIMARY KEY (id),
+            KEY date_creation (date_creation)
         ) $charset;";
 
         foreach ( $sql as $query ) {

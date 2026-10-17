@@ -37,6 +37,18 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.2.2
+- Paramètres → Mails : avertissement si l'adresse email de l'expéditeur configurée est sur un domaine différent de celui du site (risque de blocage ou de classement en spam, SPF).
+
+### 1.2.1
+- Tableau de bord : correction de l'heure affichée pour le prochain passage du cron (décalage GMT/heure locale) ; la file des mails de notification n'affiche plus de « prochain passage » (peu utile à la minute), et précise que le nombre de mails envoyés est celui du dernier passage, pas un cumul.
+
+### 1.2.0
+- Notifications de nouvelle annonce : envoyées désormais via une file d'attente dépilée par un cron à la minute (20 mails/minute maximum), au lieu d'un envoi direct et massif — conforme à la limite de 30 mails/minute imposée par certains hébergeurs (ex. O2Switch). Panneau d'information ajouté au tableau de bord.
+
+### 1.1.6
+- Page SEL (/sel/) : la pagination, les filtres et le lien « Détail » restaient sur la page Annonces générale au lieu de rester sur la page SEL — corrigé, le filtre SEL reste maintenant actif en changeant de page.
+
 ### 1.1.5
 - Le groupe par défaut (rattaché automatiquement à l'inscription) se choisit désormais dans Paramètres → Inscription, pas dans la fiche de chaque groupe. Impossible d'activer l'ouverture des inscriptions sans en avoir choisi un.
 

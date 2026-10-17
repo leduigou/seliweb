@@ -442,9 +442,13 @@ class Seliweb_Annonces {
             $headers[] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
         }
 
+        // Déposé dans la file au lieu d'un envoi direct : un groupe avec
+        // de nombreux membres abonnés dépasserait facilement la limite
+        // de 30 mails/minute de l'hébergeur si tout partait d'un coup
+        // (voir Seliweb_Mail_Queue).
         foreach ( $membres as $m ) {
             $user = get_userdata( $m->wp_user_id );
-            if ( $user && $user->user_email ) wp_mail( $user->user_email, $sujet, $corps, $headers );
+            if ( $user && $user->user_email ) Seliweb_Mail_Queue::ajouter( $user->user_email, $sujet, $corps, $headers );
         }
     }
 

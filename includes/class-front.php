@@ -208,6 +208,26 @@ if ( ! function_exists( 'swv_annonces_page_url' ) ) {
 }
 
 // ================================================================
+// URL DE LA PAGE ANNONCES COURANTE (Annonces, ou SEL si on y est déjà)
+//
+// swv_annonces_page_url() renvoie toujours LA page Annonces générale —
+// correct pour un widget/une recherche affichée n'importe où sur le
+// site, mais pagination/filtres/détail doivent rester sur la page où le
+// visiteur se trouve déjà (ex. /sel/, filtrée sur le groupe SEL) : sans
+// ça, "page suivante" depuis /sel/ ramenait vers la page Annonces
+// générale, perdant le filtre SEL en cours de route.
+// ================================================================
+if ( ! function_exists( 'swv_current_list_url' ) ) {
+    function swv_current_list_url() {
+        if ( is_page() && in_array( get_page_template_slug(), array( 'template-annonces.php', 'template-annonces-sel.php' ), true ) ) {
+            $url = get_permalink();
+            if ( $url ) return $url;
+        }
+        return swv_annonces_page_url();
+    }
+}
+
+// ================================================================
 // URL DE LA PAGE DE CONNEXION (page contenant [seliweb_login])
 // ================================================================
 if ( ! function_exists( 'swv_login_page_url' ) ) {
@@ -231,7 +251,7 @@ if ( ! function_exists( 'swv_page_url' ) ) {
         $params = $_GET;
         unset( $params['seliweb_annonce'] );
         $params['sel_page'] = $num;
-        return add_query_arg( array_map( 'urlencode', $params ), swv_annonces_page_url() );
+        return add_query_arg( array_map( 'urlencode', $params ), swv_current_list_url() );
     }
 }
 
@@ -403,7 +423,7 @@ if ( ! function_exists( 'swv_render_search' ) ) {
         $categories = Seliweb_Annonces::categories_visibles_pour( $viewer_groupe_id );
         $rubriques  = Seliweb_Annonces::rubriques_visibles_pour( $viewer_groupe_id );
         $villes     = Seliweb_Annonces::get_villes();
-        $page_url   = swv_annonces_page_url();
+        $page_url   = swv_current_list_url();
         ?>
         <div id="swv-search">
             <div class="swv-search-inner">
@@ -510,7 +530,7 @@ if ( ! function_exists( 'swv_render_card' ) ) {
 
         $prix       = Seliweb_Annonces::get_prix( $annonce->id );
         $has_statut = ( ! empty( $annonce->statut_slug ) && $annonce->statut_slug !== 'expire' );
-        $url        = add_query_arg( 'seliweb_annonce', $annonce->id, swv_annonces_page_url() );
+        $url        = add_query_arg( 'seliweb_annonce', $annonce->id, swv_current_list_url() );
         // Garde la page de la liste d'où vient le visiteur, pour le lien « Retour aux annonces ».
         $page_courante = max( 1, intval( $_GET['sel_page'] ?? 1 ) );
         if ( $page_courante > 1 ) $url = add_query_arg( 'sel_page', $page_courante, $url );

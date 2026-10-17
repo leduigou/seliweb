@@ -1830,6 +1830,15 @@ class Seliweb_Parametres {
         $intro      = $cfg[ $key_intro ]      ?? '';
         $signature  = $cfg[ $key_sig ]        ?? '';
 
+        // Délivrabilité (SPF) : une adresse « From » sur un domaine autre que
+        // celui du site a de fortes chances d'être rejetée ou mise en spam,
+        // le serveur d'envoi n'étant pas autorisé pour ce domaine-là. Simple
+        // comparaison de domaine — on ne peut pas vérifier le SPF réel depuis
+        // PHP sans une requête DNS, fragile et hors de propos ici.
+        $site_domain    = preg_replace( '/^www\./', '', strtolower( $_SERVER['HTTP_HOST'] ?? '' ) );
+        $from_domain    = $from_email !== '' ? strtolower( substr( strrchr( $from_email, '@' ), 1 ) ) : '';
+        $domaine_differe = $from_email !== '' && $from_domain && $site_domain && $from_domain !== $site_domain;
+
         $to_info  = self::mail_to_config( $slug );
         $to_email = $to_info ? ( $cfg[ $to_info['key'] ] ?? '' ) : '';
         $signal_prompt = ( $slug === 'signalement_annonce' ) ? ( $cfg['mail_signal_prompt'] ?? '' ) : '';
@@ -1904,12 +1913,21 @@ class Seliweb_Parametres {
                                value="<?php echo esc_attr( $from_email ); ?>"
                                placeholder="<?php echo esc_attr( $default_from_email ); ?>">
                         <p class="description"><?php printf( esc_html__( 'Par défaut WordPress : "%s"', 'seliweb' ), esc_html( $default_from_email ) ); ?></p>
-                        <p class="description" style="margin-top:4px;color:#b32d2e;">
-                            <?php printf(
-                                esc_html__( 'Pour éviter des problèmes de délivrabilité, utilisez une adresse rattachée au domaine du site (%s).', 'seliweb' ),
-                                esc_html( preg_replace( '/^www\./', '', strtolower( $_SERVER['HTTP_HOST'] ?? '' ) ) )
-                            ); ?>
-                        </p>
+                        <?php if ( $domaine_differe ) : ?>
+                            <p class="description" style="margin-top:4px;color:#b32d2e;font-weight:600;">
+                                <?php printf(
+                                    esc_html__( '⚠ Cette adresse est sur le domaine « %1$s », différent de celui du site (« %2$s ») : risque réel d\'être rejetée ou classée en spam (SPF). Préférez une adresse en @%2$s.', 'seliweb' ),
+                                    esc_html( $from_domain ), esc_html( $site_domain )
+                                ); ?>
+                            </p>
+                        <?php else : ?>
+                            <p class="description" style="margin-top:4px;color:#888;">
+                                <?php printf(
+                                    esc_html__( 'Pour éviter des problèmes de délivrabilité, utilisez une adresse rattachée au domaine du site (%s).', 'seliweb' ),
+                                    esc_html( $site_domain )
+                                ); ?>
+                            </p>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </table>

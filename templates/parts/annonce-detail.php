@@ -95,7 +95,7 @@ if ( ! $detail_ok ) {
 }
 
 $prix      = Seliweb_Annonces::get_prix( $annonce_id );
-$page_url  = swv_annonces_page_url();
+$page_url  = swv_current_list_url();
 $retour_page = max( 1, intval( $_GET['sel_page'] ?? 1 ) );
 $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page_url ) : $page_url;
 ?>
