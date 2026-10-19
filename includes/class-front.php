@@ -530,6 +530,9 @@ if ( ! function_exists( 'swv_render_card' ) ) {
 
         $prix       = Seliweb_Annonces::get_prix( $annonce->id );
         $has_statut = ( ! empty( $annonce->statut_slug ) && $annonce->statut_slug !== 'expire' );
+        // Montre que le site est actif (des membres répondent aux annonces) :
+        // bandeau diagonal sur la photo, en plus du libellé de statut classique.
+        $est_repondu = ( $annonce->statut_slug === 'repondu' );
         $url        = add_query_arg( 'seliweb_annonce', $annonce->id, swv_current_list_url() );
         // Garde la page de la liste d'où vient le visiteur, pour le lien « Retour aux annonces ».
         $page_courante = max( 1, intval( $_GET['sel_page'] ?? 1 ) );
@@ -541,6 +544,7 @@ if ( ! function_exists( 'swv_render_card' ) ) {
         if ( $mode === 'grille' ) : ?>
             <div class="swv-card">
                 <div class="swv-card-photo">
+                    <?php if ($est_repondu): ?><span class="swv-ribbon-termine"><?php esc_html_e('Terminé','seliweb'); ?></span><?php endif; ?>
                     <?php if ($img_url): ?>
                         <a href="<?php echo esc_url($url); ?>">
                             <img src="<?php echo esc_url($img_url); ?>" alt="<?php echo esc_attr($annonce->titre); ?>">
@@ -574,6 +578,7 @@ if ( ! function_exists( 'swv_render_card' ) ) {
         <?php else: // liste ?>
             <div class="swv-card">
                 <div class="swv-card-photo">
+                    <?php if ($est_repondu): ?><span class="swv-ribbon-termine"><?php esc_html_e('Terminé','seliweb'); ?></span><?php endif; ?>
                     <?php if ($img_url): ?>
                         <a href="<?php echo esc_url($url); ?>">
                             <img src="<?php echo esc_url($img_url); ?>" alt="<?php echo esc_attr($annonce->titre); ?>">

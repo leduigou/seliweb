@@ -212,10 +212,11 @@ class Seliweb_Parametres {
 
         // Sous-onglets regroupés sous l'onglet parent "Annonces"
         $annonces_subtabs = array(
-            'general'    => __( 'Affichage',  'seliweb' ),
-            'categories' => __( 'Catégories', 'seliweb' ),
-            'rubriques'  => __( 'Rubriques',  'seliweb' ),
-            'statuts'    => __( 'Statuts',    'seliweb' ),
+            'general'      => __( 'Affichage',    'seliweb' ),
+            'categories'   => __( 'Catégories',   'seliweb' ),
+            'rubriques'    => __( 'Rubriques',    'seliweb' ),
+            'statuts'      => __( 'Statuts',      'seliweb' ),
+            'taille_poids' => __( 'Taille/Poids', 'seliweb' ),
         );
         $is_annonces = array_key_exists( $tab, $annonces_subtabs );
 
@@ -259,6 +260,7 @@ class Seliweb_Parametres {
             case 'categories':   self::tab_categories();  break;
             case 'rubriques':    self::tab_rubriques();   break;
             case 'statuts':      self::tab_statuts();     break;
+            case 'taille_poids': self::tab_taille_poids(); break;
             case 'groupes':      self::tab_groupes();     break;
             case 'monnaies':     self::tab_monnaies();    break;
             case 'sel':          self::tab_sel();                         break;
@@ -708,7 +710,7 @@ class Seliweb_Parametres {
         <?php
         $img_errors = array(
             'photo_bad_format'   => __( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ),
-            'photo_too_large'    => __( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ),
+            'photo_too_large'    => __( 'Le fichier est trop volumineux (15 Mo maximum).', 'seliweb' ),
             'photo_upload_error' => __( 'Erreur lors de l\'envoi de l\'image, merci de réessayer.', 'seliweb' ),
             'photo_requise'      => __( 'Une image est obligatoire pour créer une rubrique.', 'seliweb' ),
         );
@@ -750,7 +752,7 @@ class Seliweb_Parametres {
                         <?php endif; ?>
                         <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" <?php echo $item ? '' : 'required'; ?>>
                         <p class="description">
-                            <?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 5 Mo maximum. Affichée sur la page des annonces quand le membre n\'ajoute pas de photo à son annonce (ou choisit de l\'utiliser).', 'seliweb' ); ?>
+                            <?php esc_html_e( 'Formats acceptés : JPG, PNG, GIF, WEBP — 15 Mo maximum. Affichée sur la page des annonces quand le membre n\'ajoute pas de photo à son annonce (ou choisit de l\'utiliser).', 'seliweb' ); ?>
                         </p>
                         <?php if ( ! $item ) : ?>
                             <p class="description"><?php esc_html_e( 'Obligatoire à la création de la rubrique.', 'seliweb' ); ?></p>
@@ -935,6 +937,92 @@ class Seliweb_Parametres {
             wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&updated=1' ) );
             exit;
         }
+    }
+
+    // Onglet informatif (lecture seule) : rappelle les limites d'envoi de
+    // fichiers configurées sur le serveur d'hébergement — utile car Seliweb
+    // peut être installé chez n'importe quel hébergeur, pas seulement celui
+    // utilisé pour développer le plugin.
+    private static function tab_taille_poids() {
+        global $wpdb;
+
+        $upload_max = wp_convert_hr_to_bytes( (string) ini_get( 'upload_max_filesize' ) );
+        $post_max   = wp_convert_hr_to_bytes( (string) ini_get( 'post_max_size' ) );
+
+        $plafond_app = Seliweb_Annonces::PHOTO_TAILLE_MAX;
+        $dimension   = Seliweb_Annonces::PHOTO_DIMENSION_MAX;
+
+        $tg = $wpdb->prefix . 'seliweb_groupes';
+        $photos_max_groupes = (int) $wpdb->get_var( "SELECT MAX(photos_max) FROM $tg" );
+        if ( $photos_max_groupes < 1 ) $photos_max_groupes = 1;
+
+        $post_recommande = $plafond_app * $photos_max_groupes;
+        ?>
+        <h2><?php esc_html_e( 'Taille/Poids des photos', 'seliweb' ); ?></h2>
+        <p class="description" style="max-width:760px;">
+            <?php esc_html_e( "Avant même d'arriver jusqu'à Seliweb, chaque envoi de fichier passe par des limites fixées par le serveur qui héberge votre site — pas par le plugin. Si elles sont trop basses, un membre peut se voir refuser une photo sans comprendre pourquoi.", 'seliweb' ); ?>
+        </p>
+
+        <table class="form-table" style="max-width:760px;">
+            <tr>
+                <th><?php esc_html_e( 'Taille max. d\'une seule photo (serveur)', 'seliweb' ); ?></th>
+                <td>
+                    <strong><?php echo esc_html( size_format( $upload_max ) ); ?></strong>
+                    <p class="description"><?php esc_html_e( 'Réglage serveur upload_max_filesize.', 'seliweb' ); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e( 'Taille max. de l\'ensemble d\'un envoi (serveur)', 'seliweb' ); ?></th>
+                <td>
+                    <strong><?php echo esc_html( size_format( $post_max ) ); ?></strong>
+                    <p class="description"><?php esc_html_e( 'Réglage serveur post_max_size — couvre la totalité d\'un formulaire envoyé, donc toutes les photos à la fois si un membre en ajoute plusieurs en une seule fois.', 'seliweb' ); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e( 'Taille max. acceptée par Seliweb', 'seliweb' ); ?></th>
+                <td>
+                    <strong><?php echo esc_html( size_format( $plafond_app ) ); ?></strong>
+                    <p class="description"><?php esc_html_e( 'Au-delà, Seliweb refuse le fichier avant même d\'essayer de le réduire.', 'seliweb' ); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th><?php esc_html_e( 'Réduction automatique', 'seliweb' ); ?></th>
+                <td>
+                    <?php printf(
+                        esc_html__( 'Toute photo acceptée est automatiquement réduite à %d pixels maximum sur son plus grand côté, ce qui diminue fortement son poids final sans perte visible à l\'affichage.', 'seliweb' ),
+                        (int) $dimension
+                    ); ?>
+                </td>
+            </tr>
+        </table>
+
+        <?php if ( $upload_max > 0 && $upload_max < $plafond_app ) : ?>
+            <div class="notice notice-warning" style="margin:16px 0;max-width:760px;">
+                <p>
+                    <?php printf(
+                        esc_html__( 'Le serveur limite actuellement une photo à %1$s, en dessous de la taille que Seliweb est prêt à accepter (%2$s). C\'est donc la limite du serveur qui s\'applique en pratique.', 'seliweb' ),
+                        esc_html( size_format( $upload_max ) ),
+                        esc_html( size_format( $plafond_app ) )
+                    ); ?>
+                </p>
+            </div>
+        <?php endif; ?>
+
+        <h3 style="margin-top:24px;"><?php esc_html_e( 'Recommandation à transmettre à votre hébergeur', 'seliweb' ); ?></h3>
+        <p class="description" style="max-width:760px;">
+            <?php printf(
+                esc_html__( 'Un formulaire peut envoyer jusqu\'à %d photo(s) en une seule fois (plafond le plus élevé parmi vos groupes). Pour éviter tout rejet, demandez à votre hébergeur de régler :', 'seliweb' ),
+                (int) $photos_max_groupes
+            ); ?>
+        </p>
+        <ul style="max-width:760px;list-style:disc;margin-left:20px;">
+            <li><?php printf( esc_html__( 'upload_max_filesize : au moins %s', 'seliweb' ), esc_html( size_format( $plafond_app ) ) ); ?></li>
+            <li><?php printf( esc_html__( 'post_max_size : au moins %s', 'seliweb' ), esc_html( size_format( $post_recommande ) ) ); ?></li>
+        </ul>
+        <p class="description" style="max-width:760px;font-style:italic;">
+            <?php esc_html_e( 'Ces réglages se trouvent généralement dans le panneau de configuration PHP de l\'hébergeur (parfois nommé « Sélecteur de version PHP », « MultiPHP INI Editor », etc.) — Seliweb ne peut pas les modifier lui-même.', 'seliweb' ); ?>
+        </p>
+        <?php
     }
 
     private static function tab_monnaies() {
@@ -2192,7 +2280,7 @@ class Seliweb_Parametres {
         // Vue synthétique : seulement les membres ayant déjà au moins un
         // droit. Le sélecteur « Ajouter un gestionnaire » propose le reste.
         $gestionnaires = $wpdb->get_results(
-            "SELECT DISTINCT m.id, u.display_name FROM $tm m
+            "SELECT DISTINCT m.id, m.numero_sel, u.display_name FROM $tm m
              INNER JOIN $tperm p ON p.membre_id = m.id
              LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
              ORDER BY u.display_name ASC"
@@ -2200,16 +2288,18 @@ class Seliweb_Parametres {
         $gest_ids = array_map( function( $g ) { return (int) $g->id; }, $gestionnaires );
 
         $tous_membres = $wpdb->get_results(
-            "SELECT m.id, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+            "SELECT m.id, m.numero_sel, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
              WHERE m.archive = 0 ORDER BY u.display_name ASC"
         );
         $ac_membres = array();
         $ac_noms    = array();
+        $ac_numeros = array();
         foreach ( $tous_membres as $m ) {
             if ( in_array( (int) $m->id, $gest_ids, true ) ) continue;
             $nom = $m->display_name ?: ( '#' . $m->id );
             $ac_membres[] = array( 'id' => (int) $m->id, 'label' => (int) $m->id . ' — ' . $nom );
-            $ac_noms[ (int) $m->id ] = $nom;
+            $ac_noms[ (int) $m->id ]    = $nom;
+            $ac_numeros[ (int) $m->id ] = $m->numero_sel !== null ? (string) $m->numero_sel : '';
         }
 
         $droits  = Seliweb_Permissions::tous_les_droits();
@@ -2240,6 +2330,8 @@ class Seliweb_Parametres {
             <table class="wp-list-table widefat fixed striped" id="seliweb-gest-table" <?php echo $gestionnaires ? '' : 'style="display:none;"'; ?>>
                 <thead>
                     <tr>
+                        <th style="width:50px;"><?php esc_html_e( 'Id', 'seliweb' ); ?></th>
+                        <th style="width:80px;"><?php esc_html_e( 'N° membre', 'seliweb' ); ?></th>
                         <th><?php esc_html_e( 'Membre', 'seliweb' ); ?></th>
                         <?php foreach ( $modules as $label ) : ?>
                             <th><?php echo esc_html( $label ); ?></th>
@@ -2251,6 +2343,8 @@ class Seliweb_Parametres {
                         $nom = $m->display_name ?: ( '#' . $m->id );
                     ?>
                         <tr data-id="<?php echo (int) $m->id; ?>" data-nom="<?php echo esc_attr( strtolower( $nom ) ); ?>">
+                            <td><?php echo (int) $m->id; ?></td>
+                            <td><?php echo esc_html( $m->numero_sel !== null ? (string) $m->numero_sel : '' ); ?></td>
                             <td><?php echo esc_html( $nom ); ?></td>
                             <?php foreach ( $modules as $mod => $label ) :
                                 $courant = $droits[ $m->id ][ $mod ] ?? '';
@@ -2260,7 +2354,7 @@ class Seliweb_Parametres {
                                         <option value=""><?php esc_html_e( 'Aucun', 'seliweb' ); ?></option>
                                         <option value="lecture" <?php selected( $courant, 'lecture' ); ?>><?php esc_html_e( 'Lecture', 'seliweb' ); ?></option>
                                         <option value="modification" <?php selected( $courant, 'modification' ); ?>><?php esc_html_e( 'Modification', 'seliweb' ); ?></option>
-                                        <option value="creation" <?php selected( $courant, 'creation' ); ?>><?php esc_html_e( 'Création/Suppression', 'seliweb' ); ?></option>
+                                        <option value="creation" <?php selected( $courant, 'creation' ); ?>><?php esc_html_e( 'Création/suppr.', 'seliweb' ); ?></option>
                                     </select>
                                 </td>
                             <?php endforeach; ?>
@@ -2275,19 +2369,26 @@ class Seliweb_Parametres {
         (function(){
             var swvModules = <?php echo wp_json_encode( $modules ); ?>;
             var swvNoms    = <?php echo wp_json_encode( $ac_noms ); ?>;
+            var swvNumeros = <?php echo wp_json_encode( $ac_numeros ); ?>;
             var niveaux    = [
                 ['', <?php echo wp_json_encode( __( 'Aucun', 'seliweb' ) ); ?>],
                 ['lecture', <?php echo wp_json_encode( __( 'Lecture', 'seliweb' ) ); ?>],
                 ['modification', <?php echo wp_json_encode( __( 'Modification', 'seliweb' ) ); ?>],
-                ['creation', <?php echo wp_json_encode( __( 'Création/Suppression', 'seliweb' ) ); ?>]
+                ['creation', <?php echo wp_json_encode( __( 'Création/suppr.', 'seliweb' ) ); ?>]
             ];
 
-            function ajouterLigne( id, nom ) {
+            function ajouterLigne( id, nom, numero ) {
                 var tbody = document.getElementById('seliweb-gest-tbody');
                 if ( tbody.querySelector('tr[data-id="' + id + '"]') ) return; // déjà ajouté
                 var tr = document.createElement('tr');
                 tr.dataset.id  = id;
                 tr.dataset.nom = nom.toLowerCase();
+                var tdId = document.createElement('td');
+                tdId.textContent = id;
+                tr.appendChild(tdId);
+                var tdNumero = document.createElement('td');
+                tdNumero.textContent = numero || '';
+                tr.appendChild(tdNumero);
                 var tdNom = document.createElement('td');
                 tdNom.textContent = nom;
                 tr.appendChild(tdNom);
@@ -2357,7 +2458,7 @@ class Seliweb_Parametres {
             document.getElementById('seliweb-gest-confirmer').addEventListener('click', function(){
                 var id = ac.hid.value;
                 if ( ! id ) { alert( <?php echo wp_json_encode( __( 'Choisissez un membre dans la liste proposée.', 'seliweb' ) ); ?> ); return; }
-                ajouterLigne( id, swvNoms[id] || ( '#' + id ) );
+                ajouterLigne( id, swvNoms[id] || ( '#' + id ), swvNumeros[id] );
                 ac.txt.value = ''; ac.hid.value = '';
                 picker.style.display = 'none';
             });

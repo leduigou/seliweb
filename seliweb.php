@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.2.2
+ * Version: 1.3.2
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.2.2' );
+define( 'SELIWEB_VERSION', '1.3.2' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -1106,8 +1106,24 @@ class Seliweb {
 
         global $wpdb;
         $ta      = $wpdb->prefix . 'seliweb_annonces';
-        $annonce = $wpdb->get_row( $wpdb->prepare( "SELECT id, titre FROM $ta WHERE id=%d", $annonce_id ) );
+        $tc      = $wpdb->prefix . 'seliweb_categories';
+        $tr      = $wpdb->prefix . 'seliweb_rubriques';
+        $annonce = $wpdb->get_row( $wpdb->prepare(
+            "SELECT a.id, a.titre, a.type_annonce, c.nom AS cat_nom, c.slug AS cat_slug, r.nom AS rub_nom
+             FROM $ta a
+             LEFT JOIN $tc c ON c.id = a.categorie_id
+             LEFT JOIN $tr r ON r.id = a.rubrique_id
+             WHERE a.id=%d",
+            $annonce_id
+        ) );
         if ( ! $annonce ) return;
+
+        // Catégorie "Annonces" : on affiche Offre/Demande plutôt que le nom
+        // générique de la catégorie (même logique que le filtre front-end,
+        // voir class-front.php : cat_slug==='annonces' && type_annonce).
+        $categorie_affichee = ( $annonce->cat_slug === 'annonces' && $annonce->type_annonce )
+            ? ( $annonce->type_annonce === 'offre' ? __( 'Offre', 'seliweb' ) : __( 'Demande', 'seliweb' ) )
+            : $annonce->cat_nom;
 
         $raison = sanitize_textarea_field( wp_unslash( $_POST['raison'] ?? '' ) );
 
@@ -1149,9 +1165,11 @@ class Seliweb {
         }
 
         $corps_systeme = sprintf(
-            "%s %d\n%s %s\n\n%s\n%s\n\n%s\n%s",
+            "%s %d\n%s %s\n%s %s\n%s %s\n\n%s\n%s\n\n%s\n%s",
             __( 'N° annonce :', 'seliweb' ), $annonce->id,
             __( 'Titre :', 'seliweb' ), $annonce->titre,
+            __( 'Catégorie :', 'seliweb' ), $categorie_affichee,
+            __( 'Rubrique :', 'seliweb' ), $annonce->rub_nom ?: '—',
             __( 'Déclarant :', 'seliweb' ), trim( $declarant ),
             __( 'Raison invoquée :', 'seliweb' ), $raison
         );
@@ -1436,9 +1454,15 @@ class Seliweb {
                     $id_post
                 ) );
             }
+            // Un emplacement est rempli soit par un fichier classique, soit par
+            // l'identifiant d'une photo déjà envoyée en différé (voir
+            // Seliweb_Annonces::ajax_upload_photo()).
+            $slot_rempli_f = function( $i ) {
+                return ! empty( $_FILES[ 'photo_new_' . $i ]['name'] ) || ! empty( $_POST[ 'photo_new_id_' . $i ] );
+            };
             $nouvelles_count_f = 0;
             for ( $i = 1; $i <= 10; $i++ ) {
-                if ( ! empty( $_FILES[ 'photo_new_' . $i ]['name'] ) ) $nouvelles_count_f++;
+                if ( $slot_rempli_f( $i ) ) $nouvelles_count_f++;
             }
             $total_photos_f = $existantes_kept_f + $nouvelles_count_f;
 
@@ -1459,7 +1483,7 @@ class Seliweb {
                     ) );
                 } elseif ( strpos( $choix_photo_f, 'new_' ) === 0 ) {
                     $slot_f = intval( substr( $choix_photo_f, 4 ) );
-                    $principale_valide_f = ! empty( $_FILES[ 'photo_new_' . $slot_f ]['name'] );
+                    $principale_valide_f = $slot_rempli_f( $slot_f );
                 }
                 if ( ! $principale_valide_f ) {
                     wp_safe_redirect( add_query_arg( array(

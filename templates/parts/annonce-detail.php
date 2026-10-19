@@ -104,6 +104,10 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
     <div class="swv-main-inner">
         <div class="swv-detail-wrap">
 
+            <?php if ( $detail->statut_slug === 'repondu' ) : ?>
+                <span class="swv-ribbon-termine"><?php esc_html_e( 'Terminé', 'seliweb' ); ?></span>
+            <?php endif; ?>
+
             <a href="<?php echo esc_url( $retour_url ); ?>" class="swv-detail-back">
                 &larr; <?php esc_html_e( 'Retour aux annonces', 'seliweb-view' ); ?>
             </a>

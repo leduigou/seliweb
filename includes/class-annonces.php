@@ -8,6 +8,8 @@ class Seliweb_Annonces {
     public static function init() {
         add_action( 'init', array( __CLASS__, 'handle_post' ) );
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
+        add_action( 'wp_ajax_seliweb_upload_photo', array( __CLASS__, 'ajax_upload_photo' ) );
+        add_action( 'seliweb_cron_expire', array( __CLASS__, 'nettoyer_photos_en_attente' ) );
     }
 
     public static function display() {
@@ -39,7 +41,7 @@ class Seliweb_Annonces {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
         }
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' ) {
-            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ) . '</p></div>';
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (15 Mo maximum).', 'seliweb' ) . '</p></div>';
         }
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_upload_error' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) . '</p></div>';
@@ -140,9 +142,14 @@ class Seliweb_Annonces {
                 $id_post_v
             ) );
         }
+        // Un emplacement est rempli soit par un fichier classique, soit par
+        // l'identifiant d'une photo déjà envoyée en différé (voir ajax_upload_photo()).
+        $slot_rempli_v = function( $i ) {
+            return ! empty( $_FILES[ 'photo_new_' . $i ]['name'] ) || ! empty( $_POST[ 'photo_new_id_' . $i ] );
+        };
         $nouvelles_count_v = 0;
         for ( $i = 1; $i <= 10; $i++ ) {
-            if ( ! empty( $_FILES[ 'photo_new_' . $i ]['name'] ) ) $nouvelles_count_v++;
+            if ( $slot_rempli_v( $i ) ) $nouvelles_count_v++;
         }
         $total_photos_v = $existantes_kept_v + $nouvelles_count_v;
 
@@ -164,7 +171,7 @@ class Seliweb_Annonces {
                 ) );
             } elseif ( strpos( $choix_photo_v, 'new_' ) === 0 ) {
                 $slot_v = intval( substr( $choix_photo_v, 4 ) );
-                $principale_valide_v = ! empty( $_FILES[ 'photo_new_' . $slot_v ]['name'] );
+                $principale_valide_v = $slot_rempli_v( $slot_v );
             }
             if ( ! $principale_valide_v ) {
                 wp_safe_redirect( add_query_arg( array(
@@ -253,37 +260,41 @@ class Seliweb_Annonces {
 
     // ----------------------------------------------------------------
     // Upload photo via médiathèque WP, avec contrôle format/taille.
-    // Retourne [ url|null, code_erreur|null ] — un fichier absent n'est
-    // pas une erreur (les deux valeurs sont alors null).
+    // Retourne [ url|null, code_erreur|null, attachment_id|null ] — un
+    // fichier absent n'est pas une erreur (les trois valeurs sont alors null).
     // ----------------------------------------------------------------
     const PHOTO_EXTENSIONS_AUTORISEES = array( 'jpg', 'jpeg', 'png', 'gif', 'webp' );
-    const PHOTO_TAILLE_MAX            = 5 * MB_IN_BYTES;
+    const PHOTO_TAILLE_MAX            = 15 * MB_IN_BYTES;
+    // Au-delà, l'image est réduite automatiquement (voir redimensionner_si_besoin()) :
+    // ce plafond ne vaut donc que pour le fichier brut avant réduction, pas pour le
+    // poids final réellement servi aux visiteurs.
+    const PHOTO_DIMENSION_MAX         = 2000; // px, sur le plus grand côté
 
     public static function handle_photo_upload( $field ) {
         if ( empty( $_FILES[ $field ]['name'] ) ) {
-            return array( null, null );
+            return array( null, null, null );
         }
 
         $file = $_FILES[ $field ];
 
         if ( in_array( $file['error'], array( UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ), true ) ) {
-            return array( null, 'photo_too_large' );
+            return array( null, 'photo_too_large', null );
         }
         if ( $file['error'] !== UPLOAD_ERR_OK ) {
-            return array( null, 'photo_upload_error' );
+            return array( null, 'photo_upload_error', null );
         }
         if ( $file['size'] > self::PHOTO_TAILLE_MAX ) {
-            return array( null, 'photo_too_large' );
+            return array( null, 'photo_too_large', null );
         }
 
         $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
         if ( ! in_array( $ext, self::PHOTO_EXTENSIONS_AUTORISEES, true ) ) {
-            return array( null, 'photo_bad_format' );
+            return array( null, 'photo_bad_format', null );
         }
         // Le type MIME réel doit correspondre — une extension renommée ne suffit pas.
         $filetype = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'] );
         if ( empty( $filetype['ext'] ) || ! in_array( strtolower( $filetype['ext'] ), self::PHOTO_EXTENSIONS_AUTORISEES, true ) ) {
-            return array( null, 'photo_bad_format' );
+            return array( null, 'photo_bad_format', null );
         }
 
         require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -291,9 +302,107 @@ class Seliweb_Annonces {
         require_once ABSPATH . 'wp-admin/includes/image.php';
         $attachment_id = media_handle_upload( $field, 0 );
         if ( is_wp_error( $attachment_id ) ) {
-            return array( null, 'photo_upload_error' );
+            return array( null, 'photo_upload_error', null );
         }
-        return array( wp_get_attachment_url( $attachment_id ), null );
+
+        self::redimensionner_si_besoin( $attachment_id, $filetype['type'] );
+
+        return array( wp_get_attachment_url( $attachment_id ), null, $attachment_id );
+    }
+
+    // ----------------------------------------------------------------
+    // Point d'entrée AJAX : envoi d'une photo en différé, dès qu'elle est
+    // choisie dans le formulaire (Mon compte ou admin), avant la soumission
+    // finale — évite de transporter plusieurs photos d'un coup dans une
+    // seule requête (voir discussion sur les limites upload_max_filesize/
+    // post_max_size, onglet Paramètres > Annonces > Taille/Poids).
+    // La pièce jointe créée est marquée "en attente" (non rattachée à une
+    // annonce) : save_annonce_photos() la rattache définitivement si son id
+    // est repassé dans le formulaire final (photo_new_id_N), sinon
+    // nettoyer_photos_en_attente() la supprime après quelques heures.
+    // ----------------------------------------------------------------
+    public static function ajax_upload_photo() {
+        check_ajax_referer( 'seliweb_upload_photo', 'nonce' );
+
+        global $wpdb;
+        $tm        = $wpdb->prefix . 'seliweb_membres';
+        $est_membre = (bool) $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM $tm WHERE wp_user_id=%d", get_current_user_id()
+        ) );
+        if ( ! $est_membre && ! Seliweb_Permissions::verifier_acces( 'annonces', 'creer' ) ) {
+            wp_send_json_error( array( 'code' => 'acces_refuse' ), 403 );
+        }
+
+        list( $url, $err, $attachment_id ) = self::handle_photo_upload( 'photo' );
+        if ( $err || ! $attachment_id ) {
+            wp_send_json_error( array( 'code' => $err ?: 'photo_upload_error' ) );
+        }
+
+        update_post_meta( $attachment_id, '_seliweb_pending_upload', time() );
+        update_post_meta( $attachment_id, '_seliweb_pending_upload_user', get_current_user_id() );
+
+        wp_send_json_success( array( 'id' => $attachment_id, 'url' => $url ) );
+    }
+
+    // Valide et détache une photo envoyée en différé (doit porter la marque
+    // posée par ajax_upload_photo(), par le même utilisateur) ; retourne son
+    // URL si c'est bon, sinon null (id invalide, pas la nôtre, déjà utilisée).
+    private static function attacher_photo_en_attente( $attachment_id ) {
+        $horodatage = get_post_meta( $attachment_id, '_seliweb_pending_upload', true );
+        $proprietaire = (int) get_post_meta( $attachment_id, '_seliweb_pending_upload_user', true );
+        if ( $horodatage === '' || $proprietaire !== get_current_user_id() ) {
+            return null;
+        }
+        delete_post_meta( $attachment_id, '_seliweb_pending_upload' );
+        delete_post_meta( $attachment_id, '_seliweb_pending_upload_user' );
+        return wp_get_attachment_url( $attachment_id );
+    }
+
+    // Supprime les photos envoyées en différé jamais rattachées à une
+    // annonce (formulaire abandonné) — appelé par le cron quotidien existant
+    // (voir Seliweb::cron_expire_annonces()), pas besoin d'un cron dédié.
+    public static function nettoyer_photos_en_attente() {
+        global $wpdb;
+        $limite = time() - 3 * HOUR_IN_SECONDS;
+        $ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_seliweb_pending_upload' AND meta_value < %d",
+            $limite
+        ) );
+        foreach ( $ids as $id ) {
+            wp_delete_attachment( (int) $id, true );
+        }
+    }
+
+    // Réduit la pièce jointe déjà enregistrée par media_handle_upload() si
+    // elle dépasse PHOTO_DIMENSION_MAX sur son plus grand côté, puis
+    // régénère ses métadonnées/tailles intermédiaires. Fait après l'upload
+    // (pas avant) : WP_Image_Editor détermine son format de sortie à partir
+    // de l'extension du fichier — or le fichier temporaire d'upload PHP n'en
+    // a pas, ce qui lui fait écrire ailleurs et casse la validation « fichier
+    // réellement envoyé » de wp_handle_upload(). Une fois dans la médiathèque,
+    // le fichier a une vraie extension, plus de souci.
+    // Les GIF sont ignorés (risque de casser l'animation). Échec silencieux :
+    // si le redimensionnement échoue, l'image déjà enregistrée reste telle quelle.
+    private static function redimensionner_si_besoin( $attachment_id, $mime_type ) {
+        if ( $mime_type === 'image/gif' ) return;
+
+        $path = get_attached_file( $attachment_id );
+        if ( ! $path ) return;
+
+        $size = @getimagesize( $path );
+        if ( ! $size || ( $size[0] <= self::PHOTO_DIMENSION_MAX && $size[1] <= self::PHOTO_DIMENSION_MAX ) ) {
+            return;
+        }
+
+        $editor = wp_get_image_editor( $path );
+        if ( is_wp_error( $editor ) ) return;
+
+        $editor->resize( self::PHOTO_DIMENSION_MAX, self::PHOTO_DIMENSION_MAX, false );
+        $saved = $editor->save( $path, $mime_type );
+        if ( is_wp_error( $saved ) ) return;
+
+        $metadata = wp_generate_attachment_metadata( $attachment_id, $saved['path'] );
+        wp_update_attachment_metadata( $attachment_id, $metadata );
     }
 
     // ----------------------------------------------------------------
@@ -320,13 +429,24 @@ class Seliweb_Annonces {
         $ordre_suivant = count( $existantes );
         $nouvelles_ids = array(); // slot => id nouvellement créé
 
-        // 3. Nouveaux uploads, dans la limite du plafond du groupe
+        // 3. Nouveaux uploads, dans la limite du plafond du groupe — soit déjà
+        // envoyés en différé (photo_new_id_N, voir ajax_upload_photo()), soit
+        // via le circuit classique ($_FILES, repli si JS indisponible).
         for ( $i = 1; $i <= 10; $i++ ) {
             if ( ( count( $existantes ) + count( $nouvelles_ids ) ) >= $photos_max ) break;
-            $field = 'photo_new_' . $i;
-            if ( empty( $_FILES[ $field ]['name'] ) ) continue;
-            list( $url, $err ) = self::handle_photo_upload( $field );
-            if ( $err ) return $err;
+            $field       = 'photo_new_' . $i;
+            $id_en_attente = intval( $_POST[ 'photo_new_id_' . $i ] ?? 0 );
+
+            if ( $id_en_attente ) {
+                $url = self::attacher_photo_en_attente( $id_en_attente );
+                if ( ! $url ) continue; // identifiant invalide/déjà attaché/pas le bon propriétaire
+            } elseif ( ! empty( $_FILES[ $field ]['name'] ) ) {
+                list( $url, $err ) = self::handle_photo_upload( $field );
+                if ( $err ) return $err;
+            } else {
+                continue;
+            }
+
             if ( $url ) {
                 $wpdb->insert( $tap, array( 'annonce_id' => $annonce_id, 'url' => $url, 'ordre' => $ordre_suivant++ ) );
                 $nouvelles_ids[ $i ] = $wpdb->insert_id;
@@ -480,7 +600,7 @@ class Seliweb_Annonces {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_rubrique' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Vous devez choisir une rubrique.', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'bad_date' )    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Veuillez corriger la date d'expiration ou laisser le champ vide.", 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_bad_format' )  echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Format d\'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.', 'seliweb' ) . '</p></div>';
-        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ) . '</p></div>';
+        if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_too_large' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Le fichier est trop volumineux (15 Mo maximum).', 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'photo_upload_error' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_photo_choice' ) echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( "Choisissez l'image de la rubrique ou ajoutez une image.", 'seliweb' ) . '</p></div>';
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'no_principale' )   echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Plusieurs photos sont ajoutées : choisissez laquelle est la photo principale.', 'seliweb' ) . '</p></div>';
@@ -508,6 +628,7 @@ class Seliweb_Annonces {
         $categorie_id_filtre = isset( $_GET['categorie_id_filtre'] ) ? intval( $_GET['categorie_id_filtre'] ) : 0;
         $rubrique_id_filtre  = isset( $_GET['rubrique_id_filtre'] )  ? intval( $_GET['rubrique_id_filtre'] )  : 0;
         $statut_id_filtre    = isset( $_GET['statut_id_filtre'] )    ? intval( $_GET['statut_id_filtre'] )    : 0;
+        $annonce_id_filtre   = isset( $_GET['annonce_id_filtre'] )   ? intval( $_GET['annonce_id_filtre'] )   : 0;
 
         $where_parts = array();
         $where_vals  = array();
@@ -515,20 +636,30 @@ class Seliweb_Annonces {
         if ( $categorie_id_filtre ) { $where_parts[] = 'a.categorie_id = %d'; $where_vals[] = $categorie_id_filtre; }
         if ( $rubrique_id_filtre )  { $where_parts[] = 'a.rubrique_id = %d';  $where_vals[] = $rubrique_id_filtre; }
         if ( $statut_id_filtre )    { $where_parts[] = 'a.statut_id = %d';    $where_vals[] = $statut_id_filtre; }
+        if ( $annonce_id_filtre )   { $where_parts[] = 'a.id = %d';           $where_vals[] = $annonce_id_filtre; }
         $where = $where_parts ? $wpdb->prepare( 'WHERE ' . implode( ' AND ', $where_parts ), ...$where_vals ) : '';
 
-        // Listes pour les filtres (catégorie/rubrique/statut + recherche membre)
+        // Listes pour les filtres (catégorie/rubrique/statut + recherche membre/annonce)
         $categories_filtre = $wpdb->get_results( "SELECT id, nom FROM $tc ORDER BY nom ASC" );
         $rubriques_filtre  = $wpdb->get_results( "SELECT id, nom FROM $tr ORDER BY nom ASC" );
         $statuts_filtre    = $wpdb->get_results( "SELECT id, nom FROM $ts ORDER BY id ASC" );
         $membres_filtre    = $wpdb->get_results(
-            "SELECT m.id, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id ORDER BY u.display_name"
+            "SELECT m.id, m.numero_sel, u.display_name FROM $tm m LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id ORDER BY u.display_name"
         );
         $membre_label_filtre = '';
-        if ( $membre_id_filtre ) {
-            foreach ( $membres_filtre as $m ) {
-                if ( (int) $m->id === $membre_id_filtre ) {
-                    $membre_label_filtre = intval( $m->id ) . ' — ' . $m->display_name;
+        foreach ( $membres_filtre as $m ) {
+            $label = ( $m->numero_sel !== null ? $m->numero_sel . ' — ' : '' ) . $m->display_name;
+            if ( $membre_id_filtre && (int) $m->id === $membre_id_filtre ) {
+                $membre_label_filtre = $label;
+            }
+        }
+
+        $annonces_filtre = $wpdb->get_results( "SELECT id, titre, texte FROM $ta ORDER BY id DESC" );
+        $annonce_label_filtre = '';
+        if ( $annonce_id_filtre ) {
+            foreach ( $annonces_filtre as $an ) {
+                if ( (int) $an->id === $annonce_id_filtre ) {
+                    $annonce_label_filtre = intval( $an->id ) . ' — ' . $an->titre;
                     break;
                 }
             }
@@ -542,7 +673,7 @@ class Seliweb_Annonces {
         $offset      = ( $page - 1 ) * $per_page;
 
         $items = $wpdb->get_results(
-            "SELECT a.*, c.nom AS cat_nom, r.nom AS rub_nom, s.nom AS statut_nom, u.display_name AS membre_nom
+            "SELECT a.*, c.nom AS cat_nom, r.nom AS rub_nom, s.nom AS statut_nom, u.display_name AS membre_nom, m.numero_sel AS membre_numero
              FROM $ta a
              LEFT JOIN $tc c ON c.id=a.categorie_id
              LEFT JOIN $tr r ON r.id=a.rubrique_id
@@ -560,6 +691,7 @@ class Seliweb_Annonces {
         if ( $categorie_id_filtre ) $base_params['categorie_id_filtre'] = $categorie_id_filtre;
         if ( $rubrique_id_filtre )  $base_params['rubrique_id_filtre']  = $rubrique_id_filtre;
         if ( $statut_id_filtre )    $base_params['statut_id_filtre']    = $statut_id_filtre;
+        if ( $annonce_id_filtre )   $base_params['annonce_id_filtre']    = $annonce_id_filtre;
         if ( $orderby_key )         $base_params['orderby']             = $orderby_key;
         if ( $orderby_key )         $base_params['order']               = strtolower( $order_dir );
         $base_url = admin_url( 'admin.php?' . http_build_query( $base_params ) );
@@ -610,6 +742,10 @@ class Seliweb_Annonces {
             <div>
                 <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Membre', 'seliweb' ); ?></label>
                 <div id="swv_annonces_ac_membre" data-value="<?php echo esc_attr( $membre_id_filtre ); ?>" data-label="<?php echo esc_attr( $membre_label_filtre ); ?>" style="position:relative;display:inline-block;min-width:220px;"></div>
+            </div>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Annonce', 'seliweb' ); ?></label>
+                <div id="swv_annonces_ac_annonce" data-value="<?php echo esc_attr( $annonce_id_filtre ); ?>" data-label="<?php echo esc_attr( $annonce_label_filtre ); ?>" style="position:relative;display:inline-block;min-width:220px;"></div>
             </div>
             <div>
                 <label style="display:block;font-size:12px;font-weight:600;margin-bottom:3px;"><?php esc_html_e( 'Catégorie', 'seliweb' ); ?></label>
@@ -670,22 +806,33 @@ class Seliweb_Annonces {
                     });
                     list.hidden = false;
                 }
+                function matcher(i) { return (i.match || i.label).toLowerCase(); }
                 txt.addEventListener('input', function() {
                     hid.value = '';
                     var q = this.value.toLowerCase().trim();
                     if (!q) { list.hidden = true; return; }
-                    render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                    render(items.filter(function(i) { return matcher(i).indexOf(q) !== -1; }));
                 });
                 txt.addEventListener('focus', function() {
                     var q = this.value.toLowerCase().trim();
-                    if (q) render(items.filter(function(i) { return i.label.toLowerCase().indexOf(q) !== -1; }));
+                    if (q) render(items.filter(function(i) { return matcher(i).indexOf(q) !== -1; }));
                 });
                 txt.addEventListener('blur', function() { setTimeout(function() { list.hidden = true; }, 200); });
             }
             var swvAnnoncesMembres = <?php echo wp_json_encode( array_map( function( $m ) {
-                return array( 'id' => intval( $m->id ), 'label' => intval( $m->id ) . ' — ' . $m->display_name );
+                $label = ( $m->numero_sel !== null ? $m->numero_sel . ' — ' : '' ) . $m->display_name;
+                return array( 'id' => intval( $m->id ), 'label' => $label );
             }, $membres_filtre ) ); ?>;
-            swvAnnoncesAc('swv_annonces_ac_membre', 'membre_id', swvAnnoncesMembres, <?php echo wp_json_encode( __( 'ID, nom ou prénom…', 'seliweb' ) ); ?>);
+            swvAnnoncesAc('swv_annonces_ac_membre', 'membre_id', swvAnnoncesMembres, <?php echo wp_json_encode( __( 'N° membre, nom ou prénom…', 'seliweb' ) ); ?>);
+
+            var swvAnnoncesListe = <?php echo wp_json_encode( array_map( function( $an ) {
+                return array(
+                    'id'    => intval( $an->id ),
+                    'label' => intval( $an->id ) . ' — ' . $an->titre,
+                    'match' => $an->id . ' ' . $an->titre . ' ' . $an->texte,
+                );
+            }, $annonces_filtre ) ); ?>;
+            swvAnnoncesAc('swv_annonces_ac_annonce', 'annonce_id_filtre', swvAnnoncesListe, <?php echo wp_json_encode( __( 'ID, titre ou contenu…', 'seliweb' ) ); ?>);
         })();
         </script>
 
@@ -698,6 +845,7 @@ class Seliweb_Annonces {
                 <th><?php esc_html_e( 'Titre', 'seliweb' ); ?></th>
                 <th><a href="<?php echo $col_url( 'categorie' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Catégorie', 'seliweb' ); ?><?php echo $col_arrow( 'categorie' ); ?></a></th>
                 <th><a href="<?php echo $col_url( 'rubrique' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Rubrique', 'seliweb' ); ?><?php echo $col_arrow( 'rubrique' ); ?></a></th>
+                <th style="width:80px;"><?php esc_html_e( 'N° Membre', 'seliweb' ); ?></th>
                 <th><a href="<?php echo $col_url( 'membre' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Membre', 'seliweb' ); ?><?php echo $col_arrow( 'membre' ); ?></a></th>
                 <th><a href="<?php echo $col_url( 'statut' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Statut', 'seliweb' ); ?><?php echo $col_arrow( 'statut' ); ?></a></th>
                 <th><a href="<?php echo $col_url( 'expiration' ); ?>" style="text-decoration:none; color:inherit; white-space:nowrap;"><?php esc_html_e( 'Expiration', 'seliweb' ); ?><?php echo $col_arrow( 'expiration' ); ?></a></th>
@@ -705,7 +853,7 @@ class Seliweb_Annonces {
             </tr></thead>
             <tbody>
             <?php if ( empty( $items ) ) : ?>
-                <tr><td colspan="8"><em><?php esc_html_e( 'Aucune annonce.', 'seliweb' ); ?></em></td></tr>
+                <tr><td colspan="9"><em><?php esc_html_e( 'Aucune annonce.', 'seliweb' ); ?></em></td></tr>
             <?php else : ?>
                 <?php foreach ( $items as $row ) : ?>
                 <tr>
@@ -713,6 +861,7 @@ class Seliweb_Annonces {
                     <td><strong><?php echo esc_html( $row->titre ); ?></strong><?php if ( $row->type_annonce ) echo '<br><em>' . esc_html( ucfirst( $row->type_annonce ) ) . '</em>'; ?></td>
                     <td><?php echo esc_html( $row->cat_nom ); ?></td>
                     <td><?php echo esc_html( $row->rub_nom ?: '—' ); ?></td>
+                    <td><?php echo esc_html( $row->membre_numero !== null ? (string) $row->membre_numero : '' ); ?></td>
                     <td><?php echo esc_html( $row->membre_nom ); ?></td>
                     <td><?php echo esc_html( $row->statut_nom ); ?></td>
                     <td><?php echo $row->date_expiration ? esc_html( $row->date_expiration ) : '—'; ?></td>
@@ -895,7 +1044,7 @@ class Seliweb_Annonces {
                     <th><label for="statut_id"><?php esc_html_e( 'Statut', 'seliweb' ); ?></label></th>
                     <td>
                         <select id="statut_id" name="statut_id">
-                            <option value=""><?php esc_html_e( '— Aucun —', 'seliweb' ); ?></option>
+                            <option value=""><?php esc_html_e( 'Actif', 'seliweb' ); ?></option>
                             <?php foreach ( $statuts as $st ) : ?>
                                 <option value="<?php echo intval( $st->id ); ?>"
                                         <?php selected( $item ? $item->statut_id : '', $st->id ); ?>>
@@ -910,6 +1059,9 @@ class Seliweb_Annonces {
                     <td>
                         <input type="date" id="date_expiration" name="date_expiration"
                                value="<?php echo $item ? esc_attr( $item->date_expiration ) : ''; ?>">
+                        <button type="button" class="button button-link" onclick="document.getElementById('date_expiration').value='';">
+                            <?php esc_html_e( 'Remettre à zéro', 'seliweb' ); ?>
+                        </button>
                         <p class="description"><?php esc_html_e( 'Ne pas remplir si annonce permanente', 'seliweb' ); ?></p>
                     </td>
                 </tr>
@@ -1011,7 +1163,7 @@ class Seliweb_Annonces {
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
-                                <p class="description"><?php esc_html_e( 'Ajoutez vos propres photos — formats JPG, PNG, GIF, WEBP, 5 Mo maximum.', 'seliweb' ); ?></p>
+                                <p class="description"><?php esc_html_e( 'Ajoutez vos propres photos — formats JPG, PNG, GIF, WEBP, 15 Mo maximum.', 'seliweb' ); ?></p>
 
                                 <p class="description" id="adm_photo_quota_hint" style="display:none;"></p>
                                 <div id="adm_photo_add_zone" class="seliweb-photo-gallery"></div>
@@ -1072,6 +1224,14 @@ class Seliweb_Annonces {
         var admTexteQuota      = <?php echo wp_json_encode( __( 'Vous pouvez ajouter %d image(s) supplémentaire(s) (%d maximum pour ce membre).', 'seliweb' ) ); ?>;
         var admTexteParcourir    = <?php echo wp_json_encode( __( 'Parcourir…', 'seliweb' ) ); ?>;
         var admTexteAucunFichier = <?php echo wp_json_encode( __( 'Aucun fichier choisi.', 'seliweb' ) ); ?>;
+        var admAjaxUrl           = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var admUploadNonce       = <?php echo wp_json_encode( wp_create_nonce( 'seliweb_upload_photo' ) ); ?>;
+        var admTexteEnvoiEnCours = <?php echo wp_json_encode( __( 'Envoi…', 'seliweb' ) ); ?>;
+        var admMessagesErreur = {
+            photo_bad_format:   <?php echo wp_json_encode( __( "Format d'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.", 'seliweb' ) ); ?>,
+            photo_too_large:    <?php echo wp_json_encode( __( 'Le fichier est trop volumineux (15 Mo maximum).', 'seliweb' ) ); ?>,
+            photo_upload_error: <?php echo wp_json_encode( __( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) ); ?>
+        };
 
         var admPhotoGallery = document.getElementById('adm_photos_gallery');
         var admPhotoZone    = document.getElementById('adm_photo_add_zone');
@@ -1090,8 +1250,7 @@ class Seliweb_Annonces {
         }
         function admPhotoNewSlotsFilled(){
             return admPhotoNewSlots().filter(function(card){
-                var f = card.querySelector('input[type=file]');
-                return f && f.files && f.files.length > 0;
+                return !!card.dataset.photoId;
             });
         }
 
@@ -1118,9 +1277,8 @@ class Seliweb_Annonces {
                 if (lbl) lbl.style.display = (total >= 2) ? '' : 'none';
             });
             slots.forEach(function(card){
-                var f   = card.querySelector('input[type=file]');
                 var lbl = card.querySelector('.seliweb-photo-card-principale');
-                var isFilled = f && f.files && f.files.length > 0;
+                var isFilled = !!card.dataset.photoId;
                 if (lbl) lbl.style.display = (isFilled && total >= 2) ? '' : 'none';
             });
 
@@ -1156,17 +1314,57 @@ class Seliweb_Annonces {
             admPhotoZone.appendChild(card);
 
             card.querySelector('input[type=file]').addEventListener('change', function(){
-                var choisi     = !!(this.files && this.files[0]);
+                var input      = this;
                 var statut     = card.querySelector('.seliweb-photo-card-status');
                 var nomFichier = card.querySelector('.seliweb-photo-card-filename');
-                if (statut)     statut.textContent = choisi ? '' : admTexteAucunFichier;
-                if (nomFichier) nomFichier.textContent = choisi ? this.files[0].name : '';
+                var fichier    = input.files && input.files[0];
+
+                card.dataset.photoId = '';
+                var ancienHidden = card.querySelector('input[name^="photo_new_id_"]');
+                if (ancienHidden) ancienHidden.remove();
+
+                if (!fichier) {
+                    if (statut)     statut.textContent = admTexteAucunFichier;
+                    if (nomFichier) nomFichier.textContent = '';
+                    admPhotoRefresh();
+                    return;
+                }
+
+                if (nomFichier) nomFichier.textContent = fichier.name;
+                if (statut)      statut.textContent = admTexteEnvoiEnCours;
 
                 var autresPhotos = admPhotoKeptExisting().length + admPhotoNewSlotsFilled().filter(function(c){ return c !== card; }).length;
-                if (autresPhotos === 0 && choisi && admPhotoRubrique) {
-                    admPhotoRubrique.checked = false;
-                }
+                if (autresPhotos === 0 && admPhotoRubrique) admPhotoRubrique.checked = false;
                 admPhotoRefresh();
+
+                var donnees = new FormData();
+                donnees.append('action', 'seliweb_upload_photo');
+                donnees.append('nonce', admUploadNonce);
+                donnees.append('photo', fichier);
+
+                fetch(admAjaxUrl, { method: 'POST', credentials: 'same-origin', body: donnees })
+                    .then(function(r){ return r.json(); })
+                    .then(function(reponse){
+                        if (reponse && reponse.success) {
+                            card.dataset.photoId = String(reponse.data.id);
+                            var hid = document.createElement('input');
+                            hid.type  = 'hidden';
+                            hid.name  = 'photo_new_id_' + n;
+                            hid.value = reponse.data.id;
+                            card.appendChild(hid);
+                            if (statut) statut.textContent = '';
+                        } else {
+                            var code = reponse && reponse.data && reponse.data.code;
+                            if (statut) statut.textContent = admMessagesErreur[code] || admMessagesErreur.photo_upload_error;
+                        }
+                        input.value = '';
+                        admPhotoRefresh();
+                    })
+                    .catch(function(){
+                        if (statut) statut.textContent = admMessagesErreur.photo_upload_error;
+                        input.value = '';
+                        admPhotoRefresh();
+                    });
             });
             card.querySelector('.seliweb-photo-card-remove-btn').addEventListener('click', function(){
                 card.remove();

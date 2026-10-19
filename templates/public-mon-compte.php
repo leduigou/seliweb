@@ -143,7 +143,7 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
     <?php endif; ?>
     <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'photo_too_large' ) : ?>
         <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:10px 14px;border-radius:4px;margin-bottom:12px;color:#b32d2e;">
-            <?php esc_html_e( 'Le fichier est trop volumineux (5 Mo maximum).', 'seliweb' ); ?>
+            <?php esc_html_e( 'Le fichier est trop volumineux (15 Mo maximum).', 'seliweb' ); ?>
         </div>
     <?php endif; ?>
     <?php if ( isset( $_GET['sel_error'] ) && $_GET['sel_error'] === 'photo_upload_error' ) : ?>
@@ -460,7 +460,7 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                 <div class="seliweb-field">
                     <label><?php esc_html_e('Statut','seliweb'); ?></label>
                     <select name="statut_id" class="seliweb-select">
-                        <option value=""><?php esc_html_e('— Aucun —','seliweb'); ?></option>
+                        <option value=""><?php esc_html_e('Actif','seliweb'); ?></option>
                         <?php foreach ($statuts as $st) : ?>
                             <option value="<?php echo intval($st->id); ?>"
                                     <?php selected($is_modif ? $edit_annonce->statut_id : 0, $st->id); ?>>
@@ -472,8 +472,11 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
 
                 <div class="seliweb-field">
                     <label><?php esc_html_e("Date d'expiration",'seliweb'); ?></label>
-                    <input type="date" name="date_expiration" class="seliweb-input"
+                    <input type="date" id="mc_date_expiration" name="date_expiration" class="seliweb-input"
                            value="<?php echo $is_modif ? esc_attr($edit_annonce->date_expiration) : ''; ?>">
+                    <button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" onclick="document.getElementById('mc_date_expiration').value='';">
+                        <?php esc_html_e('Remettre à zéro', 'seliweb'); ?>
+                    </button>
                     <p class="seliweb-hint"><?php esc_html_e('Ne pas remplir si annonce permanente', 'seliweb'); ?></p>
                 </div>
 
@@ -572,7 +575,7 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                            <p class="seliweb-hint"><?php esc_html_e('Ajoutez vos propres photos — formats JPG, PNG, GIF, WEBP, 5 Mo maximum.', 'seliweb'); ?></p>
+                            <p class="seliweb-hint"><?php esc_html_e('Ajoutez vos propres photos — formats JPG, PNG, GIF, WEBP, 15 Mo maximum.', 'seliweb'); ?></p>
 
                             <p class="seliweb-hint" id="mc_photo_quota_hint" style="display:none;"></p>
                             <div id="mc_photo_add_zone" class="seliweb-photo-gallery"></div>
@@ -1596,6 +1599,14 @@ function selMCUpdateRubriqueImage(rubriqueId){
 
     var mcPhotosMax    = <?php echo isset( $photos_max ) ? (int) $photos_max : 1; ?>;
     var mcSlotCounter   = 0;
+    var mcAjaxUrl      = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+    var mcUploadNonce  = <?php echo wp_json_encode( wp_create_nonce( 'seliweb_upload_photo' ) ); ?>;
+    var mcTexteEnvoiEnCours = <?php echo wp_json_encode( __( 'Envoi…', 'seliweb' ) ); ?>;
+    var mcMessagesErreur = {
+        photo_bad_format:   <?php echo wp_json_encode( __( "Format d'image non pris en charge. Formats acceptés : JPG, PNG, GIF, WEBP.", 'seliweb' ) ); ?>,
+        photo_too_large:    <?php echo wp_json_encode( __( 'Le fichier est trop volumineux (15 Mo maximum).', 'seliweb' ) ); ?>,
+        photo_upload_error: <?php echo wp_json_encode( __( "Erreur lors de l'envoi de l'image, merci de réessayer.", 'seliweb' ) ); ?>
+    };
     var mcTexteAjouter  = <?php echo wp_json_encode( __( 'Ajouter une image', 'seliweb' ) ); ?>;
     var mcTextePrincipale = <?php echo wp_json_encode( __( 'Principale', 'seliweb' ) ); ?>;
     var mcTexteRetirer = <?php echo wp_json_encode( __( 'Retirer', 'seliweb' ) ); ?>;
@@ -1620,8 +1631,7 @@ function selMCUpdateRubriqueImage(rubriqueId){
     }
     function newSlotsFilled(){
         return newSlots().filter(function(card){
-            var f = card.querySelector('input[type=file]');
-            return f && f.files && f.files.length > 0;
+            return !!card.dataset.photoId;
         });
     }
 
@@ -1649,9 +1659,8 @@ function selMCUpdateRubriqueImage(rubriqueId){
             if (lbl) lbl.style.display = (total >= 2) ? '' : 'none';
         });
         slots.forEach(function(card){
-            var f   = card.querySelector('input[type=file]');
             var lbl = card.querySelector('.seliweb-photo-card-principale');
-            var isFilled = f && f.files && f.files.length > 0;
+            var isFilled = !!card.dataset.photoId;
             if (lbl) lbl.style.display = (isFilled && total >= 2) ? '' : 'none';
         });
 
@@ -1690,17 +1699,60 @@ function selMCUpdateRubriqueImage(rubriqueId){
         zone.appendChild(card);
 
         card.querySelector('input[type=file]').addEventListener('change', function(){
-            var choisi     = !!(this.files && this.files[0]);
+            var input      = this;
             var statut     = card.querySelector('.seliweb-photo-card-status');
             var nomFichier = card.querySelector('.seliweb-photo-card-filename');
-            if (statut)     statut.textContent = choisi ? '' : mcTexteAucunFichier;
-            if (nomFichier) nomFichier.textContent = choisi ? this.files[0].name : '';
+            var fichier    = input.files && input.files[0];
+
+            card.dataset.photoId = '';
+            var ancienHidden = card.querySelector('input[name^="photo_new_id_"]');
+            if (ancienHidden) ancienHidden.remove();
+
+            if (!fichier) {
+                if (statut)     statut.textContent = mcTexteAucunFichier;
+                if (nomFichier) nomFichier.textContent = '';
+                refresh();
+                return;
+            }
+
+            if (nomFichier) nomFichier.textContent = fichier.name;
+            if (statut)      statut.textContent = mcTexteEnvoiEnCours;
 
             var autresPhotos = keptExisting().length + newSlotsFilled().filter(function(c){ return c !== card; }).length;
-            if (autresPhotos === 0 && choisi && rubriqueRadio) {
-                rubriqueRadio.checked = false;
-            }
+            if (autresPhotos === 0 && rubriqueRadio) rubriqueRadio.checked = false;
             refresh();
+
+            // Envoi immédiat en arrière-plan : le fichier n'est plus transporté
+            // dans la soumission finale du formulaire, seul l'identifiant de
+            // la pièce jointe déjà enregistrée (hidden photo_new_id_N) l'est.
+            var donnees = new FormData();
+            donnees.append('action', 'seliweb_upload_photo');
+            donnees.append('nonce', mcUploadNonce);
+            donnees.append('photo', fichier);
+
+            fetch(mcAjaxUrl, { method: 'POST', credentials: 'same-origin', body: donnees })
+                .then(function(r){ return r.json(); })
+                .then(function(reponse){
+                    if (reponse && reponse.success) {
+                        card.dataset.photoId = String(reponse.data.id);
+                        var hid = document.createElement('input');
+                        hid.type  = 'hidden';
+                        hid.name  = 'photo_new_id_' + n;
+                        hid.value = reponse.data.id;
+                        card.appendChild(hid);
+                        if (statut) statut.textContent = '';
+                    } else {
+                        var code = reponse && reponse.data && reponse.data.code;
+                        if (statut) statut.textContent = mcMessagesErreur[code] || mcMessagesErreur.photo_upload_error;
+                    }
+                    input.value = '';
+                    refresh();
+                })
+                .catch(function(){
+                    if (statut) statut.textContent = mcMessagesErreur.photo_upload_error;
+                    input.value = '';
+                    refresh();
+                });
         });
         card.querySelector('.seliweb-photo-card-remove-btn').addEventListener('click', function(){
             card.remove();

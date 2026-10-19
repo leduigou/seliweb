@@ -37,6 +37,26 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.3.2
+- Formulaire de création/modification d'annonce (admin et Mon compte) : statut par défaut renommé « Aucun » → « Actif » (plus clair pour les membres) ; bouton « Remettre à zéro » sous le champ Date d'expiration.
+
+### 1.3.1
+- Frontend : bandeau diagonal « Terminé » sur les annonces au statut Répondu (liste et détail), pour montrer que des membres répondent aux annonces.
+
+### 1.3.0
+- Photos d'annonces : réduction automatique à 2000 px maximum sur le plus grand côté, sans perte visible, pour réduire fortement leur poids (plafond d'envoi relevé à 15 Mo pour laisser passer les photos brutes de smartphone).
+- Paramètres → Annonces : nouveau sous-onglet « Taille/Poids » rappelant les limites serveur (upload_max_filesize, post_max_size) et la recommandation à transmettre à l'hébergeur.
+- Mon compte et admin : chaque photo est désormais envoyée en arrière-plan dès qu'elle est choisie, au lieu d'être transportée avec le reste du formulaire à la validation finale — évite les rejets liés à l'envoi de plusieurs photos à la fois (jusqu'à 10 selon le groupe) sur des hébergeurs aux réglages serveur plus stricts.
+
+### 1.2.5
+- Mail de signalement d'une annonce : ajout de la catégorie (affichée « Offre »/« Demande » pour la catégorie Annonces) et de la rubrique.
+
+### 1.2.4
+- Backend Annonces : colonne N° Membre ajoutée après Rubrique. Recherche « Membre » basée sur le N° membre/nom/prénom (plus l'identifiant interne). Nouvelle recherche « Annonce » (par ID, titre ou contenu) pour filtrer directement sur une annonce précise.
+
+### 1.2.3
+- Onglet Gestionnaires : colonnes Id et N° membre ajoutées devant le nom ; libellé « Création/suppression » raccourci en « Création/suppr. » pour alléger le tableau.
+
 ### 1.2.2
 - Paramètres → Mails : avertissement si l'adresse email de l'expéditeur configurée est sur un domaine différent de celui du site (risque de blocage ou de classement en spam, SPF).
 
