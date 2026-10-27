@@ -8,6 +8,34 @@ class Seliweb_Groupes {
     public static function init() {
         add_action( 'init', array( __CLASS__, 'handle_post' ) );
         add_action( 'init', array( __CLASS__, 'handle_delete' ) );
+        // Points d'extension pour d'autres extensions (ex. SeliwebMedia) qui
+        // ont besoin des groupes/membres sans connaître la structure des
+        // tables Seliweb.
+        add_filter( 'seliweb_get_groupes',         array( __CLASS__, 'filter_get_groupes' ) );
+        add_filter( 'seliweb_get_membres_groupe',  array( __CLASS__, 'filter_get_membres_groupe' ), 10, 2 );
+    }
+
+    public static function filter_get_groupes( $groupes ) {
+        global $wpdb;
+        return $wpdb->get_results( "SELECT id, nom FROM {$wpdb->prefix}seliweb_groupes ORDER BY nom ASC" );
+    }
+
+    // $membres est ignoré (valeur par défaut passée par apply_filters) ; on
+    // renvoie tous les membres actifs (non archivés) du groupe. `notif_groupes`
+    // ne s'applique PAS ici : ce champ ne concerne que la notification de
+    // nouvelle annonce (Seliweb_Annonces::notify_membres()), pas les envois
+    // d'autres extensions comme SeliwebMedia — ne pas réutiliser ce champ
+    // pour autre chose que son usage d'origine.
+    public static function filter_get_membres_groupe( $membres, $groupe_id ) {
+        global $wpdb;
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT m.id, u.display_name, u.user_email
+             FROM {$wpdb->prefix}seliweb_membres m
+             LEFT JOIN {$wpdb->users} u ON u.ID = m.wp_user_id
+             WHERE m.groupe_id = %d AND m.archive = 0
+             ORDER BY u.display_name ASC",
+            intval( $groupe_id )
+        ) );
     }
 
     public static function render_tab() {

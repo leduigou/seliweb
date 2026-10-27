@@ -37,6 +37,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.3.3
+- Deux filtres ajoutés pour les extensions tierces (ex. SeliwebMedia) : `seliweb_get_groupes` et `seliweb_get_membres_groupe`, pour récupérer les groupes et leurs membres sans dépendre de la structure interne des tables.
+
 ### 1.3.2
 - Formulaire de création/modification d'annonce (admin et Mon compte) : statut par défaut renommé « Aucun » → « Actif » (plus clair pour les membres) ; bouton « Remettre à zéro » sous le champ Date d'expiration.
 
