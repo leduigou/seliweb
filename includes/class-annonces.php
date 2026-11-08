@@ -522,14 +522,26 @@ class Seliweb_Annonces {
         $ta = $wpdb->prefix . 'seliweb_annonces';
         $tm = $wpdb->prefix . 'seliweb_membres';
         $tp = $wpdb->prefix . 'seliweb_parametres';
+        $tc = $wpdb->prefix . 'seliweb_categories';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
 
-        $annonce = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $ta WHERE id=%d", $annonce_id ) );
+        $annonce = $wpdb->get_row( $wpdb->prepare(
+            "SELECT a.*, c.nom AS cat_nom, c.slug AS cat_slug
+             FROM $ta a
+             LEFT JOIN $tc c ON c.id = a.categorie_id
+             WHERE a.id=%d",
+            $annonce_id
+        ) );
         if ( ! $annonce ) return;
 
         // Groupe de l'annonceur : seuls les membres ayant coché ce groupe
         // dans leurs notifications reçoivent le mail.
-        $groupe_id = $wpdb->get_var( $wpdb->prepare( "SELECT groupe_id FROM $tm WHERE id=%d", $annonce->membre_id ) );
-        if ( ! $groupe_id ) return;
+        $groupe = $wpdb->get_row( $wpdb->prepare(
+            "SELECT g.id, g.nom FROM $tm m INNER JOIN $tg g ON g.id = m.groupe_id WHERE m.id=%d",
+            $annonce->membre_id
+        ) );
+        if ( ! $groupe ) return;
+        $groupe_id = $groupe->id;
 
         $membres = $wpdb->get_results( $wpdb->prepare(
             "SELECT wp_user_id FROM $tm WHERE notif_groupes IS NOT NULL AND FIND_IN_SET(%d, notif_groupes)",
@@ -545,10 +557,21 @@ class Seliweb_Annonces {
         $url   = add_query_arg( 'seliweb_annonce', $annonce_id, swv_annonces_page_url() );
         $titre = $annonce->titre;
 
-        $sujet_tpl = $cfg['mail_annonce_subject'] ?? sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle annonce : {titre}', 'seliweb' ) );
+        $sujet_tpl = trim( $cfg['mail_annonce_subject'] ?? '' )
+            ?: sprintf( '[%s] %s', get_bloginfo('name'), __( 'Nouvelle annonce : {titre}', 'seliweb' ) );
         $sujet     = str_replace( '{titre}', $titre, $sujet_tpl );
 
-        $corps = sprintf( __( "Une nouvelle annonce a été publiée :\n\n%s\n\nVoir : %s", 'seliweb' ), $titre, $url );
+        // Catégorie "Annonces" : Offre/Demande plutôt que le nom générique
+        // de la catégorie (même logique que seliweb.php pour le mail de
+        // signalement — voir le filtre front-end dans class-front.php).
+        $categorie_affichee = ( $annonce->cat_slug === 'annonces' && $annonce->type_annonce )
+            ? ( $annonce->type_annonce === 'offre' ? __( 'Offre', 'seliweb' ) : __( 'Demande', 'seliweb' ) )
+            : $annonce->cat_nom;
+
+        $corps = sprintf(
+            __( "Une nouvelle annonce a été publiée :\n\n%s\nCatégorie : %s\nGroupe : %s\n\nVoir : %s", 'seliweb' ),
+            $titre, $categorie_affichee, $groupe->nom, $url
+        );
 
         $intro      = trim( $cfg['mail_annonce_intro']      ?? '' );
         $sig        = trim( $cfg['mail_annonce_signature']  ?? '' );
@@ -1090,8 +1113,13 @@ class Seliweb_Annonces {
 
                 <!-- PRIX avec select monnaie -->
                 <tr id="row_prix" <?php echo ( $item && ( $item->est_don || $item->est_prix_libre ) ) ? 'style="display:none"' : ''; ?>>
-                    <th><?php esc_html_e( 'Prix', 'seliweb' ); ?></th>
+                    <th><?php esc_html_e( "Valeur de l'échange", 'seliweb' ); ?></th>
                     <td>
+                        <div class="seliweb-prix-entete" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:600;">
+                            <span style="display:inline-block;width:60px;"></span>
+                            <span style="display:inline-block;width:100px;"><?php esc_html_e( 'Montant', 'seliweb' ); ?></span>
+                            <span><?php esc_html_e( "Unité d'échange", 'seliweb' ); ?></span>
+                        </div>
                         <div id="adm_prix_container">
                             <?php
                             $coord_map = array();
@@ -1120,7 +1148,6 @@ class Seliweb_Annonces {
                                        min="1" step="1" style="width:100px;"
                                        placeholder="<?php esc_attr_e( 'Montant', 'seliweb' ); ?>">
                                 <select name="prix[<?php echo $adm_n; ?>][monnaie_id]" class="adm-prix-select">
-                                    <option value=""><?php esc_html_e( '— Monnaie —', 'seliweb' ); ?></option>
                                     <?php foreach ( $monnaies as $mon ) : ?>
                                         <option value="<?php echo intval( $mon->id ); ?>"
                                                 <?php selected( intval( $mon->id ), intval( $mon_id ) ); ?>>
@@ -1428,7 +1455,7 @@ class Seliweb_Annonces {
             // Mettre à jour les selects monnaie existants
             document.querySelectorAll('#adm_prix_container .adm-prix-select').forEach(function(sel) {
                 var currentVal = sel.value;
-                var opts = '<option value=""><?php esc_attr_e("— Monnaie —","seliweb"); ?></option>';
+                var opts = '';
                 monnaiesAutorisees.forEach(function(m){
                     opts += '<option value="'+m.id+'"'+(String(m.id)===String(currentVal)?' selected':'')+'>'+m.label+'</option>';
                 });
@@ -1537,8 +1564,10 @@ class Seliweb_Annonces {
                 return;
             }
             var idx = prixAdmNextIdx++;
-            var opts = '<option value=""><?php esc_attr_e('— Monnaie —','seliweb'); ?></option>';
-            selAdmMonnaiesFiltrees.forEach(function(m){ opts += '<option value="'+m.id+'">'+m.label+'</option>'; });
+            // Pas d'option vide : la nouvelle ligne part sur la première
+            // unité d'échange pas encore utilisée.
+            var opts = '';
+            selAdmMonnaiesFiltrees.forEach(function(m){ opts += '<option value="'+m.id+'"'+(m.id==available[0].id?' selected':'')+'>'+m.label+'</option>'; });
             var row = document.createElement('div');
             row.className = 'seliweb-prix-row';
             row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
@@ -1550,7 +1579,11 @@ class Seliweb_Annonces {
             row.querySelector('.adm-prix-select').addEventListener('change', function(){
                 var used = selAdmUsedIds();
                 var dups = used.filter(function(id,i){ return used.indexOf(id) !== i; });
-                if (dups.length > 0) { alert(<?php echo wp_json_encode( __('Cette monnaie est déjà utilisée.','seliweb') ); ?>); this.value=''; }
+                if (dups.length > 0) {
+                    alert(<?php echo wp_json_encode( __('Cette monnaie est déjà utilisée.','seliweb') ); ?>);
+                    var sel = this, libres = selAdmMonnaiesFiltrees.filter(function(m){ return used.indexOf(String(m.id)) === -1; });
+                    if (libres.length) sel.value = libres[0].id; else sel.closest('.seliweb-prix-row').remove();
+                }
             });
         }
         document.addEventListener('DOMContentLoaded', function(){
@@ -1626,6 +1659,7 @@ class Seliweb_Annonces {
         $tr = $wpdb->prefix . 'seliweb_rubriques';
         $ts = $wpdb->prefix . 'seliweb_statuts';
         $tm = $wpdb->prefix . 'seliweb_membres';
+        $tg = $wpdb->prefix . 'seliweb_groupes';
 
         $statut_expire    = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $ts WHERE slug=%s LIMIT 1", 'expire' ) );
         $viewer_groupe_id = (int) ( $filters['viewer_groupe_id'] ?? 0 );
@@ -1660,13 +1694,14 @@ class Seliweb_Annonces {
         $sql = $wpdb->prepare(
             "SELECT a.*, c.nom AS cat_nom, c.slug AS cat_slug,
                     r.nom AS rub_nom, r.image AS rub_image, s.nom AS statut_nom, s.slug AS statut_slug,
-                    m.ville, u.display_name AS membre_nom,
+                    m.ville, u.display_name AS membre_nom, g.nom AS groupe_nom,
                     ap.url AS photo_affichee
              FROM $ta a
              LEFT JOIN $tc c ON c.id=a.categorie_id
              LEFT JOIN $tr r ON r.id=a.rubrique_id
              LEFT JOIN $ts s ON s.id=a.statut_id
              LEFT JOIN $tm m ON m.id=a.membre_id
+             LEFT JOIN $tg g ON g.id=m.groupe_id
              LEFT JOIN {$wpdb->users} u ON u.ID=m.wp_user_id
              LEFT JOIN {$wpdb->prefix}seliweb_annonces_photos ap ON ap.id=a.photo_principale_id
              WHERE " . implode(' AND ', $where) . "

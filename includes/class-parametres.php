@@ -829,7 +829,7 @@ class Seliweb_Parametres {
         if ( isset( $_GET['deleted'] ) ) echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Statut supprimé.', 'seliweb' ) . '</p></div>';
         ?>
         <p class="description" style="margin-bottom:12px;">
-            <?php esc_html_e( 'Les statuts Urgent, Répondu et Expiré sont des statuts système non modifiables. Vous pouvez ajouter vos propres statuts.', 'seliweb' ); ?>
+            <?php esc_html_e( 'Les statuts Urgent, Terminé et Expiré sont des statuts système non modifiables. Vous pouvez ajouter vos propres statuts.', 'seliweb' ); ?>
         </p>
         <p>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=statuts&action=new' ) ); ?>"

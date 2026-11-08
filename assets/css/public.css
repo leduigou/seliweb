@@ -1573,6 +1573,7 @@
 .swv-tag-cat      { background: var(--color-tag-cat-bg, #e0ede7);           color: var(--color-tag-cat-text, #1d6a4a); }
 .swv-tag-type     { background: var(--color-tag-type-bg, #e8f0fe);          color: var(--color-tag-type-text, #1a56a0); }
 .swv-tag-rubrique { background: var(--color-tag-rubrique-bg, #fef3e2);      color: var(--color-tag-rubrique-text, #8a5100); }
+.swv-tag-groupe   { background: var(--color-tag-groupe-bg, #f1e9f7);        color: var(--color-tag-groupe-text, #6a3d99); }
 .swv-card-statut {
     display: inline-block;
     font-weight: 700;

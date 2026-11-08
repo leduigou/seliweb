@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '4.1';
+    const DB_VERSION     = '4.2';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -753,8 +753,8 @@ class Seliweb_Database {
         // Statuts — INSERT IGNORE fonctionne grâce à UNIQUE KEY slug
         $statuts = array(
             array( 'nom' => 'Urgent',    'slug' => 'urgent',    'modifiable' => 0, 'supprimable' => 0 ),
-            array( 'nom' => 'Répondu',  'slug' => 'repondu',  'modifiable' => 0, 'supprimable' => 0 ),
-            array( 'nom' => 'Expiré',   'slug' => 'expire',   'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Terminé (annonce reste affichée)', 'slug' => 'repondu', 'modifiable' => 0, 'supprimable' => 0 ),
+            array( 'nom' => 'Expiré (annonce non affichée)',    'slug' => 'expire',  'modifiable' => 0, 'supprimable' => 0 ),
             array( 'nom' => 'Permanent', 'slug' => 'permanent', 'modifiable' => 1, 'supprimable' => 1 ),
         );
         foreach ( $statuts as $st ) {
@@ -762,6 +762,12 @@ class Seliweb_Database {
                 "INSERT IGNORE INTO {$wpdb->prefix}seliweb_statuts (nom,slug,modifiable,supprimable) VALUES (%s,%s,%d,%d)",
                 $st['nom'], $st['slug'], $st['modifiable'], $st['supprimable']
             ) );
+            // Statuts système (non modifiables par l'admin) : leur libellé
+            // suit toujours celui du code, y compris sur les sites existants
+            // (migration v4.2 : Répondu → Terminé, précision sur Expiré).
+            if ( ! $st['modifiable'] ) {
+                $wpdb->update( "{$wpdb->prefix}seliweb_statuts", array( 'nom' => $st['nom'] ), array( 'slug' => $st['slug'] ) );
+            }
         }
 
         // Monnaies — vérification explicite par nom pour éviter les doublons

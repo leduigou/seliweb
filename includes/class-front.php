@@ -15,6 +15,18 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  */
 
 // ================================================================
+// LIBELLÉ DE STATUT CÔTÉ PUBLIC
+// Les libellés système portent une précision destinée à l'annonceur
+// (« Terminé (annonce reste affichée) ») : le visiteur ne voit que
+// la partie avant la parenthèse.
+// ================================================================
+if ( ! function_exists( 'swv_statut_libelle_public' ) ) {
+    function swv_statut_libelle_public( $nom ) {
+        return trim( preg_replace( '/\s*\(.*\)\s*$/u', '', (string) $nom ) );
+    }
+}
+
+// ================================================================
 // PAGINATION : nombre d'annonces par page (lu depuis la table plugin)
 // ================================================================
 if ( ! function_exists( 'swv_per_page' ) ) {
@@ -556,8 +568,21 @@ if ( ! function_exists( 'swv_render_card' ) ) {
                 <div class="swv-card-body">
                     <div class="swv-card-id">#<?php echo intval($annonce->id); ?></div>
                     <div class="swv-card-title"><a href="<?php echo esc_url($url); ?>"><?php echo esc_html($annonce->titre); ?></a></div>
+                    <div class="swv-card-tags">
+                        <?php if ($annonce->cat_slug==='annonces' && $annonce->type_annonce): ?>
+                            <span class="swv-tag swv-tag-type"><?php echo esc_html(ucfirst($annonce->type_annonce)); ?></span>
+                        <?php else: ?>
+                            <span class="swv-tag swv-tag-cat"><?php echo esc_html($annonce->cat_nom); ?></span>
+                        <?php endif; ?>
+                        <?php if ($annonce->groupe_nom): ?>
+                            <span class="swv-tag swv-tag-groupe"><?php echo esc_html($annonce->groupe_nom); ?></span>
+                        <?php endif; ?>
+                        <?php if ($annonce->rub_nom): ?>
+                            <span class="swv-tag swv-tag-rubrique"><?php echo esc_html($annonce->rub_nom); ?></span>
+                        <?php endif; ?>
+                    </div>
                     <div class="swv-card-date"><?php echo esc_html__('Publié le','seliweb') . ' ' . esc_html($date); ?></div>
-                    <?php if ($has_statut): ?><span class="swv-card-statut"><?php echo esc_html($annonce->statut_nom); ?></span><?php endif; ?>
+                    <?php if ($has_statut): ?><span class="swv-card-statut"><?php echo esc_html(swv_statut_libelle_public($annonce->statut_nom)); ?></span><?php endif; ?>
                     <div class="swv-card-prix">
                         <?php if ($annonce->est_don): ?>
                             <span class="swv-card-don"><?php esc_html_e('Don','seliweb'); ?></span>
@@ -591,16 +616,20 @@ if ( ! function_exists( 'swv_render_card' ) ) {
                     <div class="swv-card-id">#<?php echo intval($annonce->id); ?></div>
                     <div class="swv-card-title"><a href="<?php echo esc_url($url); ?>"><?php echo esc_html($annonce->titre); ?></a></div>
                     <div class="swv-card-tags">
-                        <span class="swv-tag swv-tag-cat"><?php echo esc_html($annonce->cat_nom); ?></span>
                         <?php if ($annonce->cat_slug==='annonces' && $annonce->type_annonce): ?>
                             <span class="swv-tag swv-tag-type"><?php echo esc_html(ucfirst($annonce->type_annonce)); ?></span>
+                        <?php else: ?>
+                            <span class="swv-tag swv-tag-cat"><?php echo esc_html($annonce->cat_nom); ?></span>
+                        <?php endif; ?>
+                        <?php if ($annonce->groupe_nom): ?>
+                            <span class="swv-tag swv-tag-groupe"><?php echo esc_html($annonce->groupe_nom); ?></span>
                         <?php endif; ?>
                         <?php if ($annonce->rub_nom): ?>
                             <span class="swv-tag swv-tag-rubrique"><?php echo esc_html($annonce->rub_nom); ?></span>
                         <?php endif; ?>
                     </div>
                     <div class="swv-card-date"><?php echo esc_html__('Publié le','seliweb') . ' ' . esc_html($date); ?></div>
-                    <?php if ($has_statut): ?><span class="swv-card-statut"><?php echo esc_html($annonce->statut_nom); ?></span><?php endif; ?>
+                    <?php if ($has_statut): ?><span class="swv-card-statut"><?php echo esc_html(swv_statut_libelle_public($annonce->statut_nom)); ?></span><?php endif; ?>
                     <div class="swv-card-prix">
                         <?php if ($annonce->est_don): ?>
                             <span class="swv-card-don"><?php esc_html_e('Don','seliweb'); ?></span>

@@ -385,15 +385,6 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
 
             <h3><?php echo $is_modif ? esc_html__("Modifier l'annonce",'seliweb') : esc_html__('Créer une annonce','seliweb'); ?></h3>
 
-            <?php if ( $is_modif ) : ?>
-            <div class="seliweb-notice seliweb-notice-info">
-                <label>
-                    <input type="checkbox" name="notifier_membres" form="seliweb-form-annonce" value="1">
-                    <?php esc_html_e('Notifier les membres par mail de cette modification','seliweb'); ?>
-                </label>
-            </div>
-            <?php endif; ?>
-
             <!-- Le formulaire pointe vers seliweb.php qui gère l'upload via init -->
             <form id="seliweb-form-annonce" method="post"
                   action="<?php echo esc_url($page_url); ?>"
@@ -503,7 +494,12 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                 <!-- PRIX — même logique que backend : montant + select monnaie -->
                 <div class="seliweb-field" id="mc_field_prix"
                      <?php echo ($is_modif && ($edit_annonce->est_don || $edit_annonce->est_prix_libre)) ? 'style="display:none"' : ''; ?>>
-                    <label><?php esc_html_e('Prix','seliweb'); ?></label>
+                    <label><?php esc_html_e("Valeur de l'échange",'seliweb'); ?></label>
+                    <div class="seliweb-prix-entete" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:600;font-size:14px;">
+                        <span style="display:inline-block;width:65px;"></span>
+                        <span style="display:inline-block;width:120px;"><?php esc_html_e('Montant','seliweb'); ?></span>
+                        <span><?php esc_html_e("Unité d'échange",'seliweb'); ?></span>
+                    </div>
                     <div id="mc_prix_container">
                         <?php
                         $mc_coord_map = array();
@@ -529,10 +525,9 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
                             <?php endif; ?>
                             <input type="number" name="prix[<?php echo $mc_n; ?>][montant]"
                                    value="<?php echo esc_attr($montant); ?>"
-                                   min="1" step="1" class="seliweb-input seliweb-prix-input"
+                                   min="1" step="1" class="seliweb-input seliweb-prix-input" style="width:120px;box-sizing:border-box;"
                                    placeholder="<?php esc_attr_e('Montant','seliweb'); ?>">
                             <select name="prix[<?php echo $mc_n; ?>][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">
-                                <option value=""><?php esc_html_e('— Monnaie —','seliweb'); ?></option>
                                 <?php foreach ($monnaies_dispo as $mon) : ?>
                                     <option value="<?php echo intval($mon->id); ?>"
                                             <?php selected(intval($mon->id), intval($mon_id)); ?>>
@@ -598,6 +593,15 @@ $limite             = $membre->groupe_id ? (int) ( $membre->limite_annonces ?? 0
 
                     <p class="seliweb-notice seliweb-notice-error" id="mc_photo_error" style="display:none;margin-top:10px;"></p>
                 </div>
+
+                <?php if ( $is_modif ) : ?>
+                <div class="seliweb-notice seliweb-notice-info">
+                    <label>
+                        <input type="checkbox" name="notifier_membres" value="1">
+                        <?php esc_html_e('Notifier les membres par mail de cette modification','seliweb'); ?>
+                    </label>
+                </div>
+                <?php endif; ?>
 
                 <div class="seliweb-form-footer">
                     <button type="submit" class="seliweb-btn">
@@ -1842,20 +1846,25 @@ function selMCAddPrix(){
     var available=selMCMonnaies.filter(function(m){ return usedIds.indexOf(String(m.id))===-1; });
     if(available.length===0){ alert(<?php echo wp_json_encode(__('Toutes les monnaies sont déjà utilisées.','seliweb')); ?>); return; }
     var idx=prixMCNextIdx++;
-    var opts='<option value=""><?php esc_attr_e("— Monnaie —","seliweb"); ?></option>';
-    selMCMonnaies.forEach(function(m){ opts+='<option value="'+m.id+'">'+m.label+'</option>'; });
+    // Pas d'option vide : la nouvelle ligne part sur la première unité d'échange libre.
+    var opts='';
+    selMCMonnaies.forEach(function(m){ opts+='<option value="'+m.id+'"'+(m.id==available[0].id?' selected':'')+'>'+m.label+'</option>'; });
     var row=document.createElement('div');
     row.className='seliweb-prix-row';
     row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
     row.innerHTML='<select name="prix['+idx+'][coordination]" style="width:65px;"><option value="OU">OU</option><option value="ET">ET</option></select>'
-                 +'<input type="number" name="prix['+idx+'][montant]" min="1" step="1" class="seliweb-input seliweb-prix-input" placeholder="Montant">'
+                 +'<input type="number" name="prix['+idx+'][montant]" min="1" step="1" class="seliweb-input seliweb-prix-input" style="width:120px;box-sizing:border-box;" placeholder="Montant">'
                  +'<select name="prix['+idx+'][monnaie_id]" class="seliweb-select mc-prix-select" style="max-width:200px;">'+opts+'</select>'
                  +'<button type="button" class="seliweb-btn seliweb-btn-secondary seliweb-btn-sm" onclick="this.closest(\'.seliweb-prix-row\').remove()">✕</button>';
     document.getElementById('mc_prix_container').appendChild(row);
     row.querySelector('.mc-prix-select').addEventListener('change',function(){
         var used=selMCUsedIds();
         var dups=used.filter(function(id,i){ return used.indexOf(id)!==i; });
-        if(dups.length>0){ alert(<?php echo wp_json_encode(__('Cette monnaie est déjà utilisée.','seliweb')); ?>); this.value=''; }
+        if(dups.length>0){
+            alert(<?php echo wp_json_encode(__('Cette monnaie est déjà utilisée.','seliweb')); ?>);
+            var libres=selMCMonnaies.filter(function(m){ return used.indexOf(String(m.id))===-1; });
+            if(libres.length) this.value=libres[0].id; else this.closest('.seliweb-prix-row').remove();
+        }
     });
 }
 // Compteur de caractères

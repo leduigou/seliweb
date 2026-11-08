@@ -125,7 +125,7 @@ $retour_url  = $retour_page > 1 ? add_query_arg( 'sel_page', $retour_page, $page
                     <span class="swv-tag swv-tag-rubrique"><?php echo esc_html( $detail->rub_nom ); ?></span>
                 <?php endif; ?>
                 <?php if ( $detail->statut_slug && $detail->statut_slug !== 'expire' ) : ?>
-                    <span class="swv-card-statut"><?php echo esc_html( $detail->statut_nom ); ?></span>
+                    <span class="swv-card-statut"><?php echo esc_html( swv_statut_libelle_public( $detail->statut_nom ) ); ?></span>
                 <?php endif; ?>
             </div>
 

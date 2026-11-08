@@ -37,6 +37,14 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 
 ## Changelog
 
+### 1.3.4
+- Page d'accueil (modèle "Annonces") : en affichage grille, les fiches annonces affichent désormais une étiquette de catégorie, jusqu'ici réservée à l'affichage liste. Pour la catégorie « Annonces », cette étiquette affiche « Offre »/« Demande » au lieu du nom générique de la catégorie ; pour les autres catégories (« Objets (prêt) », « Compétences »...), elle affiche le nom de la catégorie. La visibilité par groupe déjà réglée dans Paramétrage → Catégories continue de s'appliquer sans changement.
+- Mail de notification « Nouvelle annonce publiée » : ajout du groupe de l'annonceur et de la catégorie de l'annonce (avec la même règle Offre/Demande que ci-dessus pour la catégorie « Annonces »).
+- Correctif : le sujet de ce même mail ressortait vide dès que le champ « Sujet du mail » (Paramétrage → Mails → Nouvelle annonce) était laissé vide, au lieu d'utiliser le modèle par défaut annoncé dans l'aide du champ.
+- Statuts d'annonce : « Répondu » devient « Terminé (annonce reste affichée) », en cohérence avec le bandeau « Terminé », et « Expiré » devient « Expiré (annonce non affichée) ». Libellés mis à jour automatiquement sur les sites existants. Côté public (fiche et carte d'annonce), seule la partie avant la parenthèse est affichée (« Terminé »).
+- Formulaires d'annonce (admin et Mon compte) : « Prix » devient « Valeur de l'échange », avec les en-têtes de colonnes « Montant » et « Unité d'échange » ; l'option vide « — Monnaie — » est retirée (une nouvelle ligne part sur la première unité d'échange encore libre).
+- Mon compte → Modifier une annonce : la case « Notifier les membres par mail de cette modification » est déplacée en bas du formulaire, juste au-dessus du bouton « Mettre à jour ».
+
 ### 1.3.3
 - Deux filtres ajoutés pour les extensions tierces (ex. SeliwebMedia) : `seliweb_get_groupes` et `seliweb_get_membres_groupe`, pour récupérer les groupes et leurs membres sans dépendre de la structure interne des tables.
 
