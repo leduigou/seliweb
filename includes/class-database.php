@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Seliweb_Database {
 
-    const DB_VERSION     = '4.2';
+    const DB_VERSION     = '4.4';
     const DB_VERSION_KEY = 'seliweb_db_version';
 
     public static function install() {
@@ -384,6 +384,57 @@ class Seliweb_Database {
             date_creation DATETIME     NOT NULL,
             PRIMARY KEY (id),
             KEY date_creation (date_creation)
+        ) $charset;";
+
+        // Migration v4.3 : demandes d'adhésion déposées depuis le site
+        // (page « Demande d'adhésion »), en attente de validation par un
+        // administrateur. Le compte WordPress n'est créé qu'à l'acceptation.
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_demandes_adhesion (
+            id                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            statut             VARCHAR(10)  NOT NULL DEFAULT 'attente',
+            civilite           VARCHAR(5)   DEFAULT NULL,
+            identifiant        VARCHAR(60)  NOT NULL,
+            nom                VARCHAR(100) NOT NULL,
+            prenom             VARCHAR(100) NOT NULL,
+            organisme          VARCHAR(200) DEFAULT NULL,
+            date_naissance     DATE         DEFAULT NULL,
+            tel_portable       VARCHAR(30)  DEFAULT NULL,
+            tel_fixe           VARCHAR(30)  DEFAULT NULL,
+            email              VARCHAR(100) NOT NULL,
+            adresse1           VARCHAR(255) DEFAULT NULL,
+            adresse2           VARCHAR(255) DEFAULT NULL,
+            ville              VARCHAR(100) DEFAULT NULL,
+            code_postal        VARCHAR(10)  DEFAULT NULL,
+            groupe_id          INT UNSIGNED DEFAULT NULL,
+            show_email         TINYINT(1)   NOT NULL DEFAULT 1,
+            show_tel_portable  TINYINT(1)   NOT NULL DEFAULT 1,
+            show_tel_fixe      TINYINT(1)   NOT NULL DEFAULT 1,
+            show_adresse       TINYINT(1)   NOT NULL DEFAULT 1,
+            consentement_texte TEXT         DEFAULT NULL,
+            ip                 VARCHAR(45)  DEFAULT NULL,
+            date_demande       DATETIME     NOT NULL,
+            date_traitement    DATETIME     DEFAULT NULL,
+            membre_id          INT UNSIGNED DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY statut (statut)
+        ) $charset;";
+
+        // Ordres du jour du C.A. (C.A./Événements → Ordres du jour).
+        $sql[] = "CREATE TABLE {$wpdb->prefix}seliweb_ordres_du_jour (
+            id             INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+            date_odj       DATE            NOT NULL,
+            titre          VARCHAR(255)    NOT NULL,
+            auteur_id      BIGINT UNSIGNED DEFAULT NULL,
+            auteur_nom     VARCHAR(200)    NOT NULL DEFAULT '',
+            note           TEXT            DEFAULT NULL,
+            fichier_chemin VARCHAR(255)    DEFAULT NULL,
+            fichier_nom    VARCHAR(255)    DEFAULT NULL,
+            statut         VARCHAR(10)     NOT NULL DEFAULT 'a_traiter',
+            date_ca        DATE            DEFAULT NULL,
+            date_creation  DATETIME        NOT NULL,
+            date_modif     DATETIME        DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY statut (statut)
         ) $charset;";
 
         foreach ( $sql as $query ) {
@@ -770,19 +821,18 @@ class Seliweb_Database {
             }
         }
 
-        // Monnaies — vérification explicite par nom pour éviter les doublons
-        // (UNIQUE KEY nom ajouté en v1.2, migration des index via maybe_add_unique)
-        $monnaies = array(
-            array( 'nom' => 'Euro', 'symbole' => '€',   'est_defaut' => 1 ),
-            array( 'nom' => 'Sel',  'symbole' => 'SEL', 'est_defaut' => 0 ),
-            array( 'nom' => 'June', 'symbole' => 'Ğ',   'est_defaut' => 0 ),
-        );
-        foreach ( $monnaies as $mon ) {
-            $existe = $wpdb->get_var( $wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}seliweb_monnaies WHERE nom=%s LIMIT 1",
-                $mon['nom']
-            ) );
-            if ( ! $existe ) {
+        // Monnaies par défaut : uniquement à la première installation (table
+        // vide). create_tables() est rejouée à chaque montée de DB_VERSION :
+        // une vérification par nom recréait les monnaies qu'un SEL avait
+        // renommées ou supprimées (et un second « Euro » par défaut).
+        $nb_monnaies = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}seliweb_monnaies" );
+        if ( $nb_monnaies === 0 ) {
+            $monnaies = array(
+                array( 'nom' => 'Euro', 'symbole' => '€',   'est_defaut' => 1 ),
+                array( 'nom' => 'Sel',  'symbole' => 'SEL', 'est_defaut' => 0 ),
+                array( 'nom' => 'June', 'symbole' => 'Ğ',   'est_defaut' => 0 ),
+            );
+            foreach ( $monnaies as $mon ) {
                 $wpdb->insert( "{$wpdb->prefix}seliweb_monnaies", array(
                     'nom'        => $mon['nom'],
                     'symbole'    => $mon['symbole'],
@@ -809,6 +859,9 @@ class Seliweb_Database {
             'seliweb_mon_compte'  => array( 'title' => __( 'Mon compte', 'seliweb' ), 'slug' => 'mon-compte-sel',  'content' => '[seliweb_mon_compte]',  'template' => '' ),
             'seliweb_contact'     => array( 'title' => __( 'Contact', 'seliweb' ),    'slug' => 'contact-sel',     'content' => '[seliweb_contact]',     'template' => '' ),
             'seliweb_evenements'  => array( 'title' => __( 'Événements', 'seliweb' ), 'slug' => 'evenements-sel',  'content' => '[seliweb_evenements]',  'template' => '' ),
+            // Pas ajoutée au menu automatiquement : l'administrateur la place
+            // où il veut (SEL ouvert ou fermé).
+            'seliweb_demande_adhesion' => array( 'title' => __( "Demande d'adhésion", 'seliweb' ), 'slug' => 'demande-adhesion-sel', 'content' => '[seliweb_demande_adhesion]', 'template' => '' ),
         );
 
         // Page "/sel/" (annonces du groupe SEL) : seulement si le module SEL est actif.

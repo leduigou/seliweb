@@ -71,7 +71,7 @@ class Seliweb_Permissions {
             'membres'      => __( 'Membres',          'seliweb' ),
             'transactions' => __( 'Transactions',     'seliweb' ),
             'cotisations'  => __( 'Cotis. Abo.',      'seliweb' ),
-            'evenements'   => __( 'Événements',       'seliweb' ),
+            'evenements'   => __( 'C.A./Événements',  'seliweb' ),
         );
     }
 

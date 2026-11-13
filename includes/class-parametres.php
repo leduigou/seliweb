@@ -60,12 +60,27 @@ class Seliweb_Parametres {
     }
 
     public static function filter_inscription_email( $email, $user, $blogname ) {
-        $cfg        = self::mail_cfg();
-        $from_email = trim( $cfg['mail_inscription_from_email'] ?? '' );
-        $from_name  = trim( $cfg['mail_inscription_from_name']  ?? '' );
-        $subject    = $cfg['mail_inscription_subject']           ?? '';
-        $intro      = trim( $cfg['mail_inscription_intro']       ?? '' );
-        $sig        = trim( $cfg['mail_inscription_signature']   ?? '' );
+        $cfg = self::mail_cfg();
+        // Même mail WordPress (identifiant + lien pour définir le mot de
+        // passe), mais réglages propres quand il part après l'acceptation
+        // d'une demande d'adhésion (Paramètres → Mails → Adhésion acceptée).
+        $p = 'mail_inscription_';
+        if ( class_exists( 'Seliweb_Adhesions' ) && Seliweb_Adhesions::$envoi_acceptation ) {
+            $p = 'mail_adhacc_';
+            $email['subject'] = sprintf( '[%s] %s', get_bloginfo( 'name' ), __( "Votre demande d'adhésion est acceptée", 'seliweb' ) );
+            $email['message'] = __( "Votre demande d'adhésion a été acceptée.", 'seliweb' ) . "\r\n\r\n"
+                . sprintf( __( 'Identifiant : %s', 'seliweb' ), $user->user_login ) . "\r\n\r\n"
+                . $email['message'];
+        }
+        // Les préférences d'affichage ne sont pas demandées au formulaire
+        // (tout est visible par défaut) : on rappelle où les régler.
+        $email['message'] = rtrim( $email['message'] ) . "\r\n\r\n"
+            . __( 'Une fois connecté, pensez à choisir vos préférences d’affichage de coordonnées dans Mon compte, Préférences.', 'seliweb' ) . "\r\n";
+        $from_email = trim( $cfg[ $p . 'from_email' ] ?? '' );
+        $from_name  = trim( $cfg[ $p . 'from_name' ]  ?? '' );
+        $subject    = trim( $cfg[ $p . 'subject' ]    ?? '' );
+        $intro      = trim( $cfg[ $p . 'intro' ]      ?? '' );
+        $sig        = trim( $cfg[ $p . 'signature' ]  ?? '' );
         if ( $from_email && is_email( $from_email ) ) {
             if ( ! is_array( $email['headers'] ) ) {
                 $email['headers'] = $email['headers'] ? array( $email['headers'] ) : array();
@@ -1607,6 +1622,12 @@ class Seliweb_Parametres {
                 'label' => __( 'Email destinataire', 'seliweb' ),
                 'desc'  => __( 'Adresse qui recevra les messages du formulaire de contact.', 'seliweb' ),
             ),
+            'demande_adhesion' => array(
+                'key'   => 'mail_demadh_to_email',
+                'field' => 'mail_demadh_to',
+                'label' => __( 'Email destinataire', 'seliweb' ),
+                'desc'  => __( "Adresse qui sera prévenue de chaque nouvelle demande d'adhésion.", 'seliweb' ),
+            ),
             'inscription_evenement' => array(
                 'key'   => 'mail_inscrevt_to_email',
                 'field' => 'mail_inscrevt_to',
@@ -1630,11 +1651,19 @@ class Seliweb_Parametres {
             ),
             'code_verification' => array(
                 'label' => __( 'Code de vérification', 'seliweb' ),
-                'desc'  => __( 'Envoyé lors de l\'inscription, avant la création du compte, avec le code à saisir pour confirmer l\'adresse email.', 'seliweb' ),
+                'desc'  => __( 'Envoyé lors de l\'inscription ou d\'une demande d\'adhésion, avec le code à saisir pour confirmer l\'adresse email.', 'seliweb' ),
             ),
             'inscription' => array(
                 'label' => __( 'Détails de connexion', 'seliweb' ),
                 'desc'  => __( 'Envoyé au nouveau membre une fois le code de vérification validé et son compte créé (identifiant + lien pour définir son mot de passe).', 'seliweb' ),
+            ),
+            'demande_adhesion' => array(
+                'label' => __( "Demande d'adhésion reçue", 'seliweb' ),
+                'desc'  => __( "Envoyé à l'administrateur lorsqu'une demande d'adhésion est déposée depuis la page « Demande d'adhésion ».", 'seliweb' ),
+            ),
+            'adhesion_acceptee' => array(
+                'label' => __( 'Adhésion acceptée', 'seliweb' ),
+                'desc'  => __( "Envoyé au demandeur lorsqu'un administrateur accepte sa demande d'adhésion (identifiant + lien pour définir son mot de passe).", 'seliweb' ),
             ),
             'mot_de_passe_change' => array(
                 'label' => __( 'Mot de passe changé', 'seliweb' ),
@@ -1663,20 +1692,18 @@ class Seliweb_Parametres {
     // ================================================================
     // INSCRIPTION — ouverture des inscriptions (option WP native
     // `users_can_register`, centralisée ici plutôt que dans l'écran
-    // Réglages → Général de WordPress) + texte de consentement affiché au
-    // formulaire d'inscription (vide = pas de case de consentement).
+    // Réglages → Général de WordPress), groupe par défaut et consentement,
+    // en deux sous-onglets : Inscription / Demande d'adhésion (même
+    // formulaire public, voir Seliweb_Inscription).
     // ================================================================
     private static function tab_inscription() {
         global $wpdb;
-        $tp = $wpdb->prefix . 'seliweb_parametres';
+        $sous = ( ( $_GET['sous'] ?? '' ) === 'adhesion' ) ? 'adhesion' : 'inscription';
+        $base = admin_url( 'admin.php?page=seliweb_parametres&tab=inscription' );
 
-        $users_can_register  = (bool) get_option( 'users_can_register' );
-        $consentement_titre  = (string) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='inscription_consentement_titre' LIMIT 1" );
-        $consentement_texte  = (string) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='inscription_consentement_texte' LIMIT 1" );
-
-        $tg             = $wpdb->prefix . 'seliweb_groupes';
-        $groupes        = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
-        $groupe_defaut  = (int) $wpdb->get_var( "SELECT id FROM $tg WHERE est_defaut=1 LIMIT 1" );
+        $tg      = $wpdb->prefix . 'seliweb_groupes';
+        $groupes = $wpdb->get_results( "SELECT id, nom FROM $tg ORDER BY nom ASC" );
+        $r       = Seliweb_Inscription::reglages( $sous );
 
         if ( isset( $_GET['updated'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Paramètres enregistrés.', 'seliweb' ) . '</p></div>';
@@ -1684,19 +1711,31 @@ class Seliweb_Parametres {
         if ( isset( $_GET['error'] ) && $_GET['error'] === 'groupe_defaut_requis' ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( "Impossible d'activer l'ouverture des inscriptions sans groupe par défaut : choisissez-en un ci-dessous.", 'seliweb' ) . '</p></div>';
         }
+
+        echo '<nav class="nav-tab-wrapper" style="margin-bottom:16px;">';
+        foreach ( array( 'inscription' => __( 'Inscription', 'seliweb' ), 'adhesion' => __( "Demande d'adhésion", 'seliweb' ) ) as $cle => $label ) {
+            $url = $cle === 'inscription' ? $base : add_query_arg( 'sous', $cle, $base );
+            echo '<a href="' . esc_url( $url ) . '" class="nav-tab' . ( $sous === $cle ? ' nav-tab-active' : '' ) . '">' . esc_html( $label ) . '</a>';
+        }
+        echo '</nav>';
         ?>
-        <h2><?php esc_html_e( 'Inscription', 'seliweb' ); ?></h2>
+        <p class="description" style="max-width:780px;">
+            <?php echo esc_html( $sous === 'adhesion'
+                ? __( "Page « Demande d'adhésion » : le futur membre remplit le formulaire et confirme son adresse email avec un code reçu par mail. La demande attend ensuite la validation d'un administrateur (Membres → Demandes d'adhésion), qui crée le compte en l'acceptant.", 'seliweb' )
+                : __( "Page « S'inscrire » : le futur membre remplit le formulaire et confirme son adresse email avec un code reçu par mail. Son compte est alors créé automatiquement.", 'seliweb' ) ); ?>
+        </p>
 
         <form method="post">
             <?php wp_nonce_field( 'seliweb_parametres', 'seliweb_nonce' ); ?>
-            <input type="hidden" name="seliweb_action" value="save_inscription">
+            <input type="hidden" name="seliweb_action" value="<?php echo $sous === 'adhesion' ? 'save_adhesion' : 'save_inscription'; ?>">
 
             <table class="form-table">
+                <?php if ( $sous === 'inscription' ) : ?>
                 <tr>
                     <th><?php esc_html_e( 'Ouverture des inscriptions', 'seliweb' ); ?></th>
                     <td>
                         <label>
-                            <input type="checkbox" name="users_can_register" value="1" <?php checked( $users_can_register ); ?>>
+                            <input type="checkbox" name="users_can_register" value="1" <?php checked( (bool) get_option( 'users_can_register' ) ); ?>>
                             <?php esc_html_e( 'Autoriser les nouvelles inscriptions', 'seliweb' ); ?>
                         </label>
                         <p class="description">
@@ -1704,25 +1743,41 @@ class Seliweb_Parametres {
                         </p>
                     </td>
                 </tr>
+                <?php else : ?>
+                <tr>
+                    <th><?php esc_html_e( 'Ouverture des demandes', 'seliweb' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="adhesion_ouverte" value="1" <?php checked( $r['ouverte'] ); ?>>
+                            <?php esc_html_e( "Accepter les demandes d'adhésion", 'seliweb' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( "Décoché, la page « Demande d'adhésion » indique que les demandes sont fermées. Quand les inscriptions sont fermées et les demandes ouvertes, la page « S'inscrire » et le lien sous le formulaire de connexion orientent le visiteur vers la demande d'adhésion.", 'seliweb' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <?php endif; ?>
                 <tr>
                     <th><label for="groupe_defaut_id"><?php esc_html_e( 'Groupe par défaut', 'seliweb' ); ?></label></th>
                     <td>
                         <select id="groupe_defaut_id" name="groupe_defaut_id">
                             <option value="0"><?php esc_html_e( '— Aucun —', 'seliweb' ); ?></option>
                             <?php foreach ( $groupes as $g ) : ?>
-                                <option value="<?php echo (int) $g->id; ?>" <?php selected( $groupe_defaut, $g->id ); ?>><?php echo esc_html( $g->nom ); ?></option>
+                                <option value="<?php echo (int) $g->id; ?>" <?php selected( $r['groupe_id'], (int) $g->id ); ?>><?php echo esc_html( $g->nom ); ?></option>
                             <?php endforeach; ?>
                         </select>
                         <p class="description">
-                            <?php esc_html_e( "Groupe auquel est rattaché automatiquement tout nouvel inscrit. Obligatoire pour pouvoir activer l'ouverture des inscriptions ci-dessus.", 'seliweb' ); ?>
+                            <?php echo esc_html( $sous === 'adhesion'
+                                ? __( "Groupe proposé sur chaque nouvelle demande. Il reste modifiable dans la liste des demandes avant l'acceptation. Avec « Aucun », l'administrateur doit choisir un groupe pour accepter la demande.", 'seliweb' )
+                                : __( "Groupe auquel est rattaché automatiquement tout nouvel inscrit. Obligatoire pour pouvoir activer l'ouverture des inscriptions ci-dessus.", 'seliweb' ) ); ?>
                         </p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="inscription_consentement_titre"><?php esc_html_e( 'Titre du consentement', 'seliweb' ); ?></label></th>
+                    <th><label for="consentement_titre"><?php esc_html_e( 'Titre du consentement', 'seliweb' ); ?></label></th>
                     <td>
-                        <input type="text" id="inscription_consentement_titre" name="inscription_consentement_titre" class="regular-text"
-                               value="<?php echo esc_attr( $consentement_titre ); ?>"
+                        <input type="text" id="consentement_titre" name="consentement_titre" class="regular-text"
+                               value="<?php echo esc_attr( $r['consentement_titre'] ); ?>"
                                placeholder="<?php esc_attr_e( "les conditions générales d'utilisation", 'seliweb' ); ?>">
                         <p class="description">
                             <?php esc_html_e( 'Pensez à mettre le ou les au début du titre — il est repris tel quel dans deux phrases : « Acceptez-vous [titre] ? » et « J\'ai lu et j\'accepte [titre]. ».', 'seliweb' ); ?>
@@ -1730,11 +1785,13 @@ class Seliweb_Parametres {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="inscription_consentement_texte"><?php esc_html_e( 'Texte de consentement', 'seliweb' ); ?></label></th>
+                    <th><label for="consentement_texte"><?php esc_html_e( 'Texte de consentement', 'seliweb' ); ?></label></th>
                     <td>
-                        <textarea id="inscription_consentement_texte" name="inscription_consentement_texte" class="large-text" rows="4"><?php echo esc_textarea( $consentement_texte ); ?></textarea>
+                        <textarea id="consentement_texte" name="consentement_texte" class="large-text" rows="4"><?php echo esc_textarea( $r['consentement_texte'] ); ?></textarea>
                         <p class="description">
-                            <?php esc_html_e( "Affiché dans une fenêtre à défilement sur le formulaire d'inscription, avec une case à cocher obligatoire en dessous (ex. texte des CGU / de la politique de confidentialité). Laisser vide pour n'afficher aucune case de consentement. La date et le texte exact accepté sont conservés pour chaque nouvel inscrit (visibles sur sa fiche membre).", 'seliweb' ); ?>
+                            <?php echo esc_html( $sous === 'adhesion'
+                                ? __( "Affiché dans une fenêtre à défilement sur le formulaire de demande d'adhésion, avec une case à cocher obligatoire en dessous. Laisser vide pour n'afficher aucune case de consentement. Le texte exact accepté est conservé avec la demande, puis sur la fiche du membre à l'acceptation.", 'seliweb' )
+                                : __( "Affiché dans une fenêtre à défilement sur le formulaire d'inscription, avec une case à cocher obligatoire en dessous (ex. texte des CGU / de la politique de confidentialité). Laisser vide pour n'afficher aucune case de consentement. La date et le texte exact accepté sont conservés pour chaque nouvel inscrit (visibles sur sa fiche membre).", 'seliweb' ) ); ?>
                         </p>
                     </td>
                 </tr>
@@ -1746,33 +1803,39 @@ class Seliweb_Parametres {
     }
 
     private static function handle_inscription( $action ) {
-        if ( $action !== 'save_inscription' ) return;
+        if ( $action !== 'save_inscription' && $action !== 'save_adhesion' ) return;
         global $wpdb;
-        $tp = $wpdb->prefix . 'seliweb_parametres';
-        $tg = $wpdb->prefix . 'seliweb_groupes';
+        $tp       = $wpdb->prefix . 'seliweb_parametres';
+        $tg       = $wpdb->prefix . 'seliweb_groupes';
+        $adhesion = ( $action === 'save_adhesion' );
+        $retour   = admin_url( 'admin.php?page=seliweb_parametres&tab=inscription' . ( $adhesion ? '&sous=adhesion' : '' ) );
 
-        $users_can_register = isset( $_POST['users_can_register'] );
-        $groupe_defaut_id    = intval( $_POST['groupe_defaut_id'] ?? 0 );
-
-        // Un nouvel inscrit sans groupe n'a aucun droit (voir
-        // Seliweb_Permissions/handle_mon_compte_post()) : plutôt que de
-        // laisser ouvrir les inscriptions sans destination, on bloque.
-        if ( $users_can_register && ! $groupe_defaut_id ) {
-            wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=inscription&error=groupe_defaut_requis' ) );
-            exit;
-        }
-
-        update_option( 'users_can_register', $users_can_register ? 1 : 0 );
-
-        $wpdb->update( $tg, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
-        if ( $groupe_defaut_id ) {
-            $wpdb->update( $tg, array( 'est_defaut' => 1 ), array( 'id' => $groupe_defaut_id ) );
-        }
-
-        $params = array(
-            'inscription_consentement_titre' => sanitize_text_field( wp_unslash( $_POST['inscription_consentement_titre'] ?? '' ) ),
-            'inscription_consentement_texte' => sanitize_textarea_field( wp_unslash( $_POST['inscription_consentement_texte'] ?? '' ) ),
+        $groupe_defaut_id = intval( $_POST['groupe_defaut_id'] ?? 0 );
+        $prefixe          = $adhesion ? 'adhesion_' : 'inscription_';
+        $params           = array(
+            $prefixe . 'consentement_titre' => sanitize_text_field( wp_unslash( $_POST['consentement_titre'] ?? '' ) ),
+            $prefixe . 'consentement_texte' => sanitize_textarea_field( wp_unslash( $_POST['consentement_texte'] ?? '' ) ),
         );
+
+        if ( $adhesion ) {
+            $params['adhesion_groupe_defaut'] = (string) $groupe_defaut_id;
+            $params['adhesion_ouverte']       = isset( $_POST['adhesion_ouverte'] ) ? '1' : '0';
+        } else {
+            $users_can_register = isset( $_POST['users_can_register'] );
+            // Un nouvel inscrit sans groupe n'a aucun droit (voir
+            // Seliweb_Permissions/handle_mon_compte_post()) : plutôt que de
+            // laisser ouvrir les inscriptions sans destination, on bloque.
+            if ( $users_can_register && ! $groupe_defaut_id ) {
+                wp_safe_redirect( $retour . '&error=groupe_defaut_requis' );
+                exit;
+            }
+            update_option( 'users_can_register', $users_can_register ? 1 : 0 );
+            $wpdb->update( $tg, array( 'est_defaut' => 0 ), array( 'est_defaut' => 1 ) );
+            if ( $groupe_defaut_id ) {
+                $wpdb->update( $tg, array( 'est_defaut' => 1 ), array( 'id' => $groupe_defaut_id ) );
+            }
+        }
+
         foreach ( $params as $cle => $valeur ) {
             $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $tp WHERE cle=%s LIMIT 1", $cle ) );
             if ( $exists ) {
@@ -1782,7 +1845,7 @@ class Seliweb_Parametres {
             }
         }
 
-        wp_safe_redirect( admin_url( 'admin.php?page=seliweb_parametres&tab=inscription&updated=1' ) );
+        wp_safe_redirect( $retour . '&updated=1' );
         exit;
     }
 
@@ -1867,6 +1930,22 @@ class Seliweb_Parametres {
                 $key_intro       = 'mail_inscription_intro';
                 $key_sig         = 'mail_inscription_signature';
                 $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( 'Confirmation d\'inscription', 'seliweb' ) );
+                break;
+            case 'demande_adhesion':
+                $key_from_email  = 'mail_demadh_from_email';
+                $key_from_name   = 'mail_demadh_from_name';
+                $key_subject     = 'mail_demadh_subject';
+                $key_intro       = 'mail_demadh_intro';
+                $key_sig         = 'mail_demadh_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( "Nouvelle demande d'adhésion", 'seliweb' ) );
+                break;
+            case 'adhesion_acceptee':
+                $key_from_email  = 'mail_adhacc_from_email';
+                $key_from_name   = 'mail_adhacc_from_name';
+                $key_subject     = 'mail_adhacc_subject';
+                $key_intro       = 'mail_adhacc_intro';
+                $key_sig         = 'mail_adhacc_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( "Votre demande d'adhésion est acceptée", 'seliweb' ) );
                 break;
             case 'mot_de_passe_change':
                 $key_from_email  = 'mail_pwdchange_from_email';
@@ -2183,6 +2262,20 @@ class Seliweb_Parametres {
                 $key_subject    = 'mail_inscription_subject';
                 $key_intro      = 'mail_inscription_intro';
                 $key_sig        = 'mail_inscription_signature';
+                break;
+            case 'demande_adhesion':
+                $key_from_email = 'mail_demadh_from_email';
+                $key_from_name  = 'mail_demadh_from_name';
+                $key_subject    = 'mail_demadh_subject';
+                $key_intro      = 'mail_demadh_intro';
+                $key_sig        = 'mail_demadh_signature';
+                break;
+            case 'adhesion_acceptee':
+                $key_from_email = 'mail_adhacc_from_email';
+                $key_from_name  = 'mail_adhacc_from_name';
+                $key_subject    = 'mail_adhacc_subject';
+                $key_intro      = 'mail_adhacc_intro';
+                $key_sig        = 'mail_adhacc_signature';
                 break;
             case 'mot_de_passe_change':
                 $key_from_email = 'mail_pwdchange_from_email';

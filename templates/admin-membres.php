@@ -14,6 +14,11 @@ $tp = $wpdb->prefix . 'seliweb_parametres';
 $sel_groupe_id = (int) $wpdb->get_var( "SELECT valeur FROM $tp WHERE cle='sel_groupe_id' LIMIT 1" );
 $sel_info      = Seliweb_Transactions::get_sel_info();
 
+if ( ( $_GET['tab'] ?? '' ) === 'demandes' ) {
+    include SELIWEB_DIR . 'templates/admin-demandes-adhesion.php';
+    return;
+}
+
 $action = isset( $_GET['action'] ) ? sanitize_key( $_GET['action'] ) : 'list';
 $edit_id   = isset( $_GET['id'] )     ? intval( $_GET['id'] )           : 0;
 
@@ -397,6 +402,7 @@ $membres = $wpdb->get_results( $wpdb->prepare( $sql, ...$values_paged ) );
                class="page-title-action seliweb-no-print"><?php esc_html_e('+ Ajouter un membre','seliweb'); ?></a>
         <?php endif; ?>
     </h1>
+    <?php if ( $action === 'list' ) Seliweb_Adhesions::onglets( 'membres' ); ?>
 
     <?php if ($action === 'list') : ?>
     <div class="seliweb-print-header">

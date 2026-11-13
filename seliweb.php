@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.3.4
+ * Version: 1.3.5
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.3.4' );
+define( 'SELIWEB_VERSION', '1.3.5' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -33,10 +33,13 @@ require_once SELIWEB_DIR . 'includes/class-front.php';
 require_once SELIWEB_DIR . 'includes/class-recherche.php';
 require_once SELIWEB_DIR . 'includes/class-contact.php';
 require_once SELIWEB_DIR . 'includes/class-evenements.php';
+require_once SELIWEB_DIR . 'includes/class-ordres-du-jour.php';
 require_once SELIWEB_DIR . 'includes/class-membres.php';
 require_once SELIWEB_DIR . 'includes/class-consentements.php';
 require_once SELIWEB_DIR . 'includes/class-permissions.php';
 require_once SELIWEB_DIR . 'includes/class-mail-queue.php';
+require_once SELIWEB_DIR . 'includes/class-inscription.php';
+require_once SELIWEB_DIR . 'includes/class-adhesions.php';
 
 Seliweb_Groupes::init();
 Seliweb_Paiements::init();
@@ -48,10 +51,12 @@ Seliweb_Updater::init();
 Seliweb_Recherche::init();
 Seliweb_Contact::init();
 Seliweb_Evenements::init();
+Seliweb_Ordres_Du_Jour::init();
 Seliweb_Membres::init();
 Seliweb_Consentements::init();
 Seliweb_Permissions::init();
 Seliweb_Mail_Queue::init();
+Seliweb_Adhesions::init();
 
 class Seliweb {
 
@@ -168,7 +173,7 @@ class Seliweb {
         if ( Seliweb_Cotisations::cotisations_actif() ) {
             add_submenu_page( 'seliweb', __('Trésorerie','seliweb'), __('Cotis. Abo.','seliweb'), $cap, 'seliweb_cotisations', array('Seliweb_Cotisations','display_cotisations') );
         }
-        add_submenu_page( 'seliweb', __('Événements','seliweb'),      __('Événements','seliweb'),      $cap,              'seliweb_evenements', array('Seliweb_Evenements','display') );
+        add_submenu_page( 'seliweb', __('C.A./Événements','seliweb'), __('C.A./Événements','seliweb'),      $cap,              'seliweb_evenements', array('Seliweb_Evenements','display') );
     }
 
     public function display_dashboard() {
@@ -352,7 +357,8 @@ class Seliweb {
             if ( $url ) { wp_safe_redirect( $url ); exit; }
         }
 
-        $inscription_url = $this->get_page_url_par_shortcode( 'seliweb_inscription' );
+        // Lien « S'inscrire » ou « Demander à adhérer » selon ce qui est ouvert (aucun si tout est fermé).
+        $lien_entree = Seliweb_Inscription::lien_entree();
 
         ob_start(); ?>
         <div class="seliweb-wrap">
@@ -421,11 +427,11 @@ class Seliweb {
                     </p>
                 </form>
 
-                <?php if ( $inscription_url ) : ?>
+                <?php if ( $lien_entree ) : ?>
                 <p style="margin-top:16px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:.9rem;color:#555;">
                     <?php esc_html_e( "Pas encore de compte ?", 'seliweb' ); ?>
-                    <a href="<?php echo esc_url( $inscription_url ); ?>" style="font-weight:600;">
-                        <?php esc_html_e( "S'inscrire", 'seliweb' ); ?>
+                    <a href="<?php echo esc_url( $lien_entree['url'] ); ?>" style="font-weight:600;">
+                        <?php echo esc_html( $lien_entree['label'] ); ?>
                     </a>
                 </p>
                 <?php endif; ?>
@@ -441,485 +447,8 @@ class Seliweb {
     // Shortcode [seliweb_inscription]
     // ----------------------------------------------------------------
     public function shortcode_inscription( $atts ) {
-        if ( is_admin() || ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE ) ) {
-            return '<p><em>' . esc_html__( "Formulaire d'inscription Seliweb (prévisualisation désactivée).", 'seliweb' ) . '</em></p>';
-        }
-        if ( is_user_logged_in() && ! is_preview() ) {
-            $url = $this->get_page_url_par_shortcode( 'seliweb_mon_compte' );
-            if ( $url ) { wp_safe_redirect( $url ); exit; }
-        }
-        if ( ! get_option('users_can_register') ) {
-            return '<p>' . esc_html__( "Les inscriptions sont actuellement fermées.", 'seliweb' ) . '</p>';
-        }
-
-        // Texte de consentement (Paramètres > Inscription) — vide = pas de
-        // case de consentement affichée. Le titre est repris dans « Acceptez-
-        // vous {titre} ? » et « J'ai lu et j'accepte {titre}. » ; à défaut de
-        // titre renseigné, on retombe sur une formulation générique.
-        global $wpdb;
-        $consentement_titre = (string) $wpdb->get_var(
-            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='inscription_consentement_titre' LIMIT 1"
-        );
-        $consentement_texte = (string) $wpdb->get_var(
-            "SELECT valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle='inscription_consentement_texte' LIMIT 1"
-        );
-        if ( ! $consentement_titre ) $consentement_titre = __( 'ces conditions', 'seliweb' );
-
-        $erreurs      = array();
-        $succes       = false;
-        $attente_code = false;
-        $token        = '';
-        $email_attente = '';
-
-        // --- Étape 2 : vérification du code reçu par email ---
-        if ( isset( $_POST['seliweb_code_nonce'] )
-             && wp_verify_nonce( $_POST['seliweb_code_nonce'], 'seliweb_inscription_code' ) ) {
-
-            $token      = sanitize_text_field( wp_unslash( $_POST['token'] ?? '' ) );
-            $code_saisi = sanitize_text_field( wp_unslash( $_POST['code']  ?? '' ) );
-            $pending    = $token ? get_transient( 'seliweb_inscr_pending_' . $token ) : false;
-
-            if ( ! $pending ) {
-                $erreurs[] = __( 'Session expirée, veuillez recommencer votre inscription.', 'seliweb' );
-            } elseif ( hash_equals( $pending['code'], $code_saisi ) ) {
-                delete_transient( 'seliweb_inscr_pending_' . $token );
-                $result = $this->creer_membre_inscription( $pending['data'] );
-                if ( is_wp_error( $result ) ) {
-                    $erreurs[] = $result->get_error_message();
-                } else {
-                    $succes = true;
-                }
-            } else {
-                $pending['tentatives'] = ( $pending['tentatives'] ?? 0 ) + 1;
-                if ( $pending['tentatives'] >= 5 ) {
-                    delete_transient( 'seliweb_inscr_pending_' . $token );
-                    $erreurs[] = __( 'Trop de tentatives incorrectes. Veuillez recommencer votre inscription.', 'seliweb' );
-                } else {
-                    set_transient( 'seliweb_inscr_pending_' . $token, $pending, 15 * MINUTE_IN_SECONDS );
-                    $attente_code  = true;
-                    $email_attente = $pending['data']['email'];
-                    $erreurs[]     = sprintf(
-                        __( 'Code incorrect (%d tentative(s) restante(s)).', 'seliweb' ),
-                        5 - $pending['tentatives']
-                    );
-                }
-            }
-
-        // --- Étape 1 : formulaire d'inscription initial ---
-        } elseif ( isset( $_POST['seliweb_inscription_nonce'] )
-             && wp_verify_nonce( $_POST['seliweb_inscription_nonce'], 'seliweb_inscription' ) ) {
-
-            $civilite   = in_array( $_POST['civilite'] ?? '', array('Mr','Mme') ) ? $_POST['civilite'] : '';
-            $identifiant = sanitize_user( wp_unslash( $_POST['identifiant'] ?? '' ), true );
-            $nom        = sanitize_text_field( wp_unslash( $_POST['nom']        ?? '' ) );
-            $prenom     = sanitize_text_field( wp_unslash( $_POST['prenom']     ?? '' ) );
-            $organisme  = sanitize_text_field( wp_unslash( $_POST['organisme']  ?? '' ) );
-            $tel_port   = sanitize_text_field( wp_unslash( $_POST['tel_portable'] ?? '' ) );
-            $tel_fixe   = sanitize_text_field( wp_unslash( $_POST['tel_fixe']   ?? '' ) );
-            $email      = sanitize_email( wp_unslash( $_POST['user_email']      ?? '' ) );
-            $adresse1   = sanitize_text_field( wp_unslash( $_POST['adresse1']   ?? '' ) );
-            $adresse2   = sanitize_text_field( wp_unslash( $_POST['adresse2']   ?? '' ) );
-            $ville      = sanitize_text_field( wp_unslash( $_POST['ville']      ?? '' ) );
-            $cp         = sanitize_text_field( wp_unslash( $_POST['code_postal'] ?? '' ) );
-
-            // Validation
-            if ( ! $civilite )  $erreurs[] = __( 'La civilité est obligatoire.', 'seliweb' );
-            if ( ! $identifiant )                      $erreurs[] = __( "L'identifiant est obligatoire.", 'seliweb' );
-            elseif ( username_exists( $identifiant ) ) $erreurs[] = __( 'Cet identifiant est déjà utilisé.', 'seliweb' );
-            if ( ! $nom )       $erreurs[] = __( 'Le nom est obligatoire.', 'seliweb' );
-            if ( ! $prenom )    $erreurs[] = __( 'Le prénom est obligatoire.', 'seliweb' );
-            if ( ! $email || ! is_email( $email ) ) $erreurs[] = __( "L'email est invalide.", 'seliweb' );
-            if ( ! $adresse1 )  $erreurs[] = __( "L'adresse est obligatoire.", 'seliweb' );
-            if ( ! $ville )     $erreurs[] = __( 'La ville est obligatoire.', 'seliweb' );
-            if ( ! $cp )        $erreurs[] = __( 'Le code postal est obligatoire.', 'seliweb' );
-
-            if ( email_exists( $email ) ) {
-                $erreurs[] = __( 'Cette adresse email est déjà utilisée.', 'seliweb' );
-            }
-
-            if ( $consentement_texte && empty( $_POST['consentement'] ) ) {
-                $erreurs[] = __( 'Vous devez accepter les conditions pour vous inscrire.', 'seliweb' );
-            }
-
-            if ( empty( $erreurs ) ) {
-                $token = wp_generate_password( 24, false, false );
-                $code  = str_pad( (string) random_int( 0, 9999 ), 4, '0', STR_PAD_LEFT );
-
-                set_transient( 'seliweb_inscr_pending_' . $token, array(
-                    'code'       => $code,
-                    'tentatives' => 0,
-                    'data'       => array(
-                        'civilite'          => $civilite,
-                        'identifiant'       => $identifiant,
-                        'nom'               => $nom,
-                        'prenom'            => $prenom,
-                        'organisme'         => $organisme,
-                        'tel_portable'      => $tel_port,
-                        'tel_fixe'          => $tel_fixe,
-                        'email'             => $email,
-                        'adresse1'          => $adresse1,
-                        'adresse2'          => $adresse2,
-                        'ville'             => $ville,
-                        'code_postal'       => $cp,
-                        'show_email'        => isset( $_POST['show_email'] )        ? 1 : 0,
-                        'show_tel_portable' => isset( $_POST['show_tel_portable'] ) ? 1 : 0,
-                        'show_tel_fixe'     => isset( $_POST['show_tel_fixe'] )     ? 1 : 0,
-                        'show_adresse'      => isset( $_POST['show_adresse'] )      ? 1 : 0,
-                        // Copie exacte du texte accepté, pour la traçabilité du
-                        // consentement (voir creer_membre_inscription()).
-                        'consentement_texte' => $consentement_texte,
-                    ),
-                ), 15 * MINUTE_IN_SECONDS );
-
-                // Réglages configurables depuis Paramètres > Mails > Code de vérification
-                global $wpdb;
-                $cfg_rows = $wpdb->get_results( "SELECT cle, valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle LIKE 'mail\_verif\_%'" );
-                $cfg_verif = array();
-                foreach ( $cfg_rows as $r ) $cfg_verif[ $r->cle ] = $r->valeur;
-
-                $verif_from_email = trim( $cfg_verif['mail_verif_from_email'] ?? '' );
-                $verif_from_name  = trim( $cfg_verif['mail_verif_from_name']  ?? '' );
-                $verif_subject    = trim( $cfg_verif['mail_verif_subject']    ?? '' )
-                    ?: sprintf( '[%s] %s', get_bloginfo( 'name' ), __( 'Code de vérification', 'seliweb' ) );
-                $verif_intro      = trim( $cfg_verif['mail_verif_intro']      ?? '' );
-                $verif_sig        = trim( $cfg_verif['mail_verif_signature']  ?? '' );
-
-                $verif_corps = sprintf(
-                    __( "Bonjour,\n\nVoici votre code de vérification pour finaliser votre inscription : %s\n\nCe code est valable 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.", 'seliweb' ),
-                    $code
-                );
-                $verif_corps = trim( ( $verif_intro ? $verif_intro . "\n\n" : '' ) . $verif_corps . ( $verif_sig ? "\n\n" . $verif_sig : '' ) );
-
-                $verif_headers = array();
-                if ( $verif_from_email && is_email( $verif_from_email ) ) {
-                    $verif_headers[] = 'From: ' . ( $verif_from_name ? $verif_from_name . ' <' . $verif_from_email . '>' : $verif_from_email );
-                }
-
-                wp_mail( $email, $verif_subject, $verif_corps, $verif_headers );
-
-                $attente_code  = true;
-                $email_attente = $email;
-            }
-        }
-
-        $login_url = $this->get_page_url_par_shortcode( 'seliweb_login' );
-
-        ob_start(); ?>
-        <div class="seliweb-wrap">
-
-            <?php if ( $succes ) : ?>
-                <div class="seliweb-notice seliweb-notice-ok">
-                    <?php esc_html_e( "Inscription réussie ! Un mot de passe vous a été envoyé par email. Vous pouvez maintenant vous connecter.", 'seliweb' ); ?>
-                    <?php if ( $login_url ) : ?>
-                        <br><a href="<?php echo esc_url($login_url); ?>" style="font-weight:600;">
-                            <?php esc_html_e( 'Se connecter', 'seliweb' ); ?>
-                        </a>
-                    <?php endif; ?>
-                </div>
-
-            <?php elseif ( $attente_code ) : ?>
-
-                <?php if ( ! empty( $erreurs ) ) : ?>
-                    <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:12px 16px;border-radius:4px;margin-bottom:20px;">
-                        <ul style="margin:0;padding-left:18px;">
-                            <?php foreach ( $erreurs as $e ) : ?>
-                                <li style="color:#b32d2e;"><?php echo esc_html($e); ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                <?php endif; ?>
-
-                <div class="seliweb-login-box" style="max-width:420px;background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:28px;">
-                    <h2 style="font-size:1.15rem;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #e0e0e0;color:var(--color-primary,#1d6a4a);">
-                        <?php esc_html_e( 'Vérification de votre email', 'seliweb' ); ?>
-                    </h2>
-                    <p style="font-size:.9rem;color:#555;margin-bottom:16px;">
-                        <?php printf(
-                            esc_html__( 'Un code à 4 chiffres a été envoyé à %s. Saisissez-le ci-dessous pour finaliser votre inscription.', 'seliweb' ),
-                            '<strong>' . esc_html( $email_attente ) . '</strong>'
-                        ); ?>
-                    </p>
-                    <form method="post">
-                        <?php wp_nonce_field( 'seliweb_inscription_code', 'seliweb_code_nonce' ); ?>
-                        <input type="hidden" name="token" value="<?php echo esc_attr( $token ); ?>">
-                        <input type="text" name="code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
-                               autocomplete="one-time-code" required autofocus
-                               style="width:100%;font-size:1.4rem;letter-spacing:.3em;text-align:center;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:14px;box-sizing:border-box;">
-                        <button type="submit" class="seliweb-btn" style="width:100%;"><?php esc_html_e( 'Valider', 'seliweb' ); ?></button>
-                    </form>
-                </div>
-
-            <?php else : ?>
-
-                <?php if ( ! empty( $erreurs ) ) : ?>
-                    <div class="seliweb-notice" style="background:#fff5f5;border-left:4px solid #b32d2e;padding:12px 16px;border-radius:4px;margin-bottom:20px;">
-                        <ul style="margin:0;padding-left:18px;">
-                            <?php foreach ( $erreurs as $e ) : ?>
-                                <li style="color:#b32d2e;"><?php echo esc_html($e); ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                <?php endif; ?>
-
-                <div class="seliweb-login-box" style="max-width:520px;background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:28px;">
-                    <h2 style="font-size:1.15rem;margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid #e0e0e0;color:var(--color-primary,#1d6a4a);">
-                        <?php esc_html_e( 'Créer un compte', 'seliweb' ); ?>
-                    </h2>
-
-                    <form method="post" style="max-width:560px;">
-                        <?php wp_nonce_field( 'seliweb_inscription', 'seliweb_inscription_nonce' ); ?>
-                        <style>
-                        .sel-ins-table { width:100%; border-collapse:collapse; }
-                        .sel-ins-table tr { margin-bottom:12px; }
-                        .sel-ins-table td { padding:5px 8px 5px 0; vertical-align:middle; }
-                        .sel-ins-table td:first-child { width:175px; text-align:right; padding-right:14px; font-size:14px; font-weight:500; color:#333; white-space:nowrap; }
-                        .sel-ins-table input[type="text"],
-                        .sel-ins-table input[type="email"],
-                        .sel-ins-table input[type="tel"] { width:100%; padding:7px 10px; border:1px solid #ccc; border-radius:4px; font-size:14px; box-sizing:border-box; }
-                        .sel-ins-table input[type="text"]:focus,
-                        .sel-ins-table input[type="email"]:focus,
-                        .sel-ins-table input[type="tel"]:focus { outline:none; border-color:#1d6a4a; }
-                        .sel-ins-radio { display:flex; gap:20px; align-items:center; padding-top:2px; }
-                        .sel-ins-radio label { display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer; }
-                        .sel-ins-hint { display:block; font-style:italic; font-size:12px; color:#888; margin-top:3px; }
-                        .sel-ins-req { color:#b32d2e; }
-                        @media(max-width:520px){
-                            .sel-ins-table td:first-child { width:auto; text-align:left; display:block; padding-bottom:2px; }
-                            .sel-ins-table td:last-child { display:block; padding-left:0; }
-                        }
-                        </style>
-
-                        <table class="sel-ins-table">
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Civilité','seliweb'); ?></td>
-                                <td>
-                                    <div class="sel-ins-radio">
-                                        <label><input type="radio" name="civilite" value="Mr" <?php checked($_POST['civilite']??'','Mr'); ?> required> <?php esc_html_e('M.','seliweb'); ?></label>
-                                        <label><input type="radio" name="civilite" value="Mme" <?php checked($_POST['civilite']??'','Mme'); ?>> <?php esc_html_e('Mme','seliweb'); ?></label>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Identifiant','seliweb'); ?></td>
-                                <td>
-                                    <input type="text" name="identifiant" value="<?php echo esc_attr($_POST['identifiant']??''); ?>" required>
-                                    <span class="sel-ins-hint"><?php esc_html_e('Ne pourra plus être modifié ensuite.','seliweb'); ?></span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Nom','seliweb'); ?></td>
-                                <td><input type="text" name="nom" value="<?php echo esc_attr($_POST['nom']??''); ?>" required></td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Prénom','seliweb'); ?></td>
-                                <td><input type="text" name="prenom" value="<?php echo esc_attr($_POST['prenom']??''); ?>" required></td>
-                            </tr>
-                            <tr>
-                                <td><?php esc_html_e("Nom de l'organisme",'seliweb'); ?></td>
-                                <td>
-                                    <input type="text" name="organisme" value="<?php echo esc_attr($_POST['organisme']??''); ?>">
-                                    <span class="sel-ins-hint"><?php esc_html_e("Ne renseigner que si vous agissez au nom d'une personne morale",'seliweb'); ?></span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><?php esc_html_e('Tél. portable','seliweb'); ?></td>
-                                <td><input type="tel" name="tel_portable" value="<?php echo esc_attr($_POST['tel_portable']??''); ?>"></td>
-                            </tr>
-                            <tr>
-                                <td><?php esc_html_e('Tél. fixe','seliweb'); ?></td>
-                                <td><input type="tel" name="tel_fixe" value="<?php echo esc_attr($_POST['tel_fixe']??''); ?>"></td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('E-mail','seliweb'); ?></td>
-                                <td><input type="email" name="user_email" value="<?php echo esc_attr($_POST['user_email']??''); ?>" required autocomplete="email"></td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Adresse 1','seliweb'); ?></td>
-                                <td><input type="text" name="adresse1" value="<?php echo esc_attr($_POST['adresse1']??''); ?>" required></td>
-                            </tr>
-                            <tr>
-                                <td><?php esc_html_e('Adresse 2','seliweb'); ?></td>
-                                <td><input type="text" name="adresse2" value="<?php echo esc_attr($_POST['adresse2']??''); ?>"></td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Ville','seliweb'); ?></td>
-                                <td><input type="text" name="ville" value="<?php echo esc_attr($_POST['ville']??''); ?>" required></td>
-                            </tr>
-                            <tr>
-                                <td><span class="sel-ins-req">*</span> <?php esc_html_e('Code postal','seliweb'); ?></td>
-                                <td><input type="text" name="code_postal" maxlength="10" value="<?php echo esc_attr($_POST['code_postal']??''); ?>" required></td>
-                            </tr>
-                            <tr>
-                                <td colspan="2" style="padding-top:14px;border-top:1px solid #e0e0e0;font-weight:600;color:#1d6a4a;font-size:13px;text-transform:uppercase;letter-spacing:.04em;text-align:left;white-space:normal;width:auto;">
-                                    <?php esc_html_e('Confidentialité','seliweb'); ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td colspan="2" style="padding:4px 0;text-align:left;white-space:normal;width:auto;">
-                                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
-                                        <input type="checkbox" name="show_email" value="1" <?php checked(true); ?> style="margin-top:2px;">
-                                        <span><?php esc_html_e('Autoriser à montrer mon e-mail','seliweb'); ?>
-                                            <span class="sel-ins-hint"><?php esc_html_e('Si la case est décochée, vous recevrez quand même les mails qui vous sont destinés.','seliweb'); ?></span>
-                                        </span>
-                                    </label>
-                                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
-                                        <input type="checkbox" name="show_tel_portable" value="1" <?php checked(true); ?>>
-                                        <?php esc_html_e('Autoriser à montrer mon tél. portable','seliweb'); ?>
-                                    </label>
-                                    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
-                                        <input type="checkbox" name="show_tel_fixe" value="1" <?php checked(true); ?>>
-                                        <?php esc_html_e('Autoriser à montrer mon tél. fixe','seliweb'); ?>
-                                    </label>
-                                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
-                                        <input type="checkbox" name="show_adresse" value="1" <?php checked(true); ?> style="margin-top:2px;">
-                                        <span><?php esc_html_e('Autoriser à montrer mon organisme','seliweb'); ?>
-                                            <span class="sel-ins-hint"><?php esc_html_e('Si la case est décochée, l\'organisme ne sera pas affiché.','seliweb'); ?></span>
-                                        </span>
-                                    </label>
-                                </td>
-                            </tr>
-                            <?php if ( $consentement_texte ) : ?>
-                            <tr>
-                                <td colspan="2" style="padding:8px 0 0;text-align:left;white-space:normal;width:auto;">
-                                    <p style="font-weight:600;margin:0 0 8px;">
-                                        <?php
-                                        /* translators: %s: titre du consentement, ex. « les conditions générales d'utilisation » */
-                                        printf( esc_html__( 'Acceptez-vous %s ?', 'seliweb' ), esc_html( $consentement_titre ) );
-                                        ?>
-                                    </p>
-                                    <div style="max-height:160px;overflow-y:auto;border:1px solid #ccc;border-radius:4px;padding:10px 12px;background:#fafafa;font-size:13px;line-height:1.5;color:#333;margin-bottom:10px;">
-                                        <?php echo nl2br( esc_html( $consentement_texte ) ); ?>
-                                    </div>
-                                    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px;">
-                                        <input type="checkbox" name="consentement" value="1" required style="margin-top:2px;">
-                                        <span>
-                                            <?php
-                                            /* translators: %s: titre du consentement */
-                                            printf( esc_html__( "J'ai lu et j'accepte %s.", 'seliweb' ), esc_html( $consentement_titre ) );
-                                            ?>
-                                        </span>
-                                    </label>
-                                </td>
-                            </tr>
-                            <?php endif; ?>
-                            <tr>
-                                <td></td>
-                                <td>
-                                    <p style="font-size:.82rem;color:#888;margin:8px 0 14px;">
-                                        <span class="sel-ins-req">*</span> <?php esc_html_e('Champs obligatoires','seliweb'); ?>
-                                    </p>
-                                    <button type="submit" class="seliweb-btn"><?php esc_html_e("S'inscrire",'seliweb'); ?></button>
-                                </td>
-                            </tr>
-                        </table>
-                    </form>
-
-                    <?php if ( $login_url ) : ?>
-                    <p style="margin-top:16px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:.9rem;color:#555;">
-                        <?php esc_html_e( 'Déjà un compte ?', 'seliweb' ); ?>
-                        <a href="<?php echo esc_url($login_url); ?>" style="font-weight:600;">
-                            <?php esc_html_e( 'Se connecter', 'seliweb' ); ?>
-                        </a>
-                    </p>
-                    <?php endif; ?>
-                </div>
-
-            <?php endif; ?>
-
-        </div>
-        <?php
-        return ob_get_clean();
-    }
-
-    // ----------------------------------------------------------------
-    // Création effective du compte membre, une fois le code email
-    // vérifié — $data contient les champs déjà validés/sanitizés à
-    // l'étape 1 de shortcode_inscription(). Retourne le user_id créé,
-    // ou un WP_Error.
-    // ----------------------------------------------------------------
-    private function creer_membre_inscription( $data ) {
-        $user_id = wp_create_user( $data['identifiant'], wp_generate_password(), $data['email'] );
-        if ( is_wp_error( $user_id ) ) {
-            return $user_id;
-        }
-
-        // Masquer la barre d'outils WP sur le front-end
-        update_user_meta( $user_id, 'show_admin_bar_front', 'false' );
-
-        // Mettre à jour le profil WP
-        wp_update_user( array(
-            'ID'           => $user_id,
-            'first_name'   => $data['prenom'],
-            'last_name'    => $data['nom'],
-            'display_name' => $data['prenom'] . ' ' . $data['nom'],
-        ) );
-
-        // Envoyer le mail avec le mot de passe
-        wp_new_user_notification( $user_id, null, 'user' );
-
-        // Sauvegarder les données étendues
-        global $wpdb;
-        $wpdb->insert(
-            $wpdb->prefix . 'seliweb_inscriptions',
-            array(
-                'wp_user_id'   => $user_id,
-                'civilite'     => $data['civilite'],
-                'nom'          => $data['nom'],
-                'prenom'       => $data['prenom'],
-                'organisme'    => $data['organisme'],
-                'tel_portable' => $data['tel_portable'],
-                'tel_fixe'     => $data['tel_fixe'],
-                'adresse1'     => $data['adresse1'],
-                'adresse2'     => $data['adresse2'],
-                'ville'        => $data['ville'],
-                'code_postal'  => $data['code_postal'],
-            )
-        );
-
-        // Données complémentaires dans wp_usermeta
-        update_user_meta( $user_id, 'seliweb_organisme', $data['organisme'] );
-
-        // Créer/rattacher le membre (crée la ligne dans seliweb_membres)
-        $this->rattacher_groupe_defaut( $user_id );
-
-        // Notifications : abonné par défaut aux annonces de son groupe d'inscription
-        $groupe_defaut_id = Seliweb_Groupes::get_groupe_defaut_id();
-
-        // Mettre à jour les données SEL du membre
-        $tm = $wpdb->prefix . 'seliweb_membres';
-        $membre_data = array(
-            'civilite'          => $data['civilite'],
-            'tel_portable'      => $data['tel_portable'],
-            'tel_fixe'          => $data['tel_fixe'],
-            'adresse1'          => $data['adresse1'],
-            'adresse2'          => $data['adresse2'],
-            'ville'             => $data['ville'],
-            'code_postal'       => $data['code_postal'],
-            'notif_groupes'     => $groupe_defaut_id ? (string) $groupe_defaut_id : null,
-            'show_email'        => $data['show_email'],
-            'show_tel_portable' => $data['show_tel_portable'],
-            'show_tel_fixe'     => $data['show_tel_fixe'],
-            'show_adresse'      => $data['show_adresse'],
-        );
-        $wpdb->update( $tm, $membre_data, array( 'wp_user_id' => $user_id ) );
-
-        // Sécurité : si la ligne n'existait pas encore (pas de groupe par défaut),
-        // on insère directement avec toutes les données
-        if ( $wpdb->rows_affected === 0 ) {
-            $wpdb->insert( $tm, array_merge( $membre_data, array(
-                'wp_user_id' => $user_id,
-                'groupe_id'  => null,
-            ) ) );
-        }
-
-        // Traçabilité du consentement (voir Paramètres > Inscription) — ignoré
-        // silencieusement si aucun texte n'était configuré au moment de
-        // l'inscription (voir Seliweb_Consentements::enregistrer()).
-        if ( class_exists( 'Seliweb_Consentements' ) ) {
-            Seliweb_Consentements::enregistrer( $user_id, 'inscription', null, $data['consentement_texte'] ?? '' );
-        }
-
-        return $user_id;
+        // Formulaire commun avec la demande d'adhésion (voir Seliweb_Inscription).
+        return Seliweb_Inscription::formulaire( 'inscription' );
     }
 
     // ----------------------------------------------------------------

@@ -273,7 +273,23 @@ class Seliweb_Evenements {
         $id     = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
 
         echo '<div class="wrap">';
-        echo '<h1 class="wp-heading-inline">' . esc_html__( 'Événements', 'seliweb' ) . '</h1>';
+        echo '<h1 class="wp-heading-inline">' . esc_html__( 'C.A./Événements', 'seliweb' ) . '</h1>';
+
+        // Onglets : Événements | Ordres du jour (voir Seliweb_Ordres_Du_Jour).
+        $onglet = ( ( $_GET['tab'] ?? '' ) === 'odj' ) ? 'odj' : 'evenements';
+        echo '<nav class="nav-tab-wrapper seliweb-no-print" style="margin:8px 0 12px;">';
+        foreach ( array(
+            'evenements' => array( __( 'Événements', 'seliweb' ), admin_url( 'admin.php?page=seliweb_evenements' ) ),
+            'odj'        => array( __( 'Ordres du jour', 'seliweb' ), admin_url( 'admin.php?page=seliweb_evenements&tab=odj' ) ),
+        ) as $cle => $o ) {
+            echo '<a href="' . esc_url( $o[1] ) . '" class="nav-tab' . ( $onglet === $cle ? ' nav-tab-active' : '' ) . '">' . esc_html( $o[0] ) . '</a>';
+        }
+        echo '</nav>';
+        if ( 'odj' === $onglet ) {
+            Seliweb_Ordres_Du_Jour::display();
+            echo '</div>';
+            return;
+        }
 
         if ( 'new' === $action || 'edit' === $action ) {
             self::form_admin( $id );
@@ -282,8 +298,8 @@ class Seliweb_Evenements {
         } elseif ( 'inscrire' === $action ) {
             self::form_inscrire_admin( $id );
         } else {
-            echo ' <a href="' . esc_url( admin_url( 'admin.php?page=seliweb_evenements&action=new' ) ) . '" class="page-title-action">'
-               . esc_html__( 'Ajouter', 'seliweb' ) . '</a><hr class="wp-header-end">';
+            echo '<a href="' . esc_url( admin_url( 'admin.php?page=seliweb_evenements&action=new' ) ) . '" class="page-title-action" style="margin:0 0 8px;display:inline-block;">'
+               . esc_html__( 'Ajouter un événement', 'seliweb' ) . '</a>';
             self::liste_admin();
         }
         echo '</div>';

@@ -43,6 +43,7 @@ class Seliweb_Consentements {
     public static function type_label( $type ) {
         $labels = array(
             'inscription' => __( 'Inscription', 'seliweb' ),
+            'adhesion'    => __( "Demande d'adhésion", 'seliweb' ),
             'abonnement'  => __( 'Abonnement', 'seliweb' ),
         );
         return $labels[ $type ] ?? $type;
