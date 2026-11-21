@@ -1665,6 +1665,10 @@ class Seliweb_Parametres {
                 'label' => __( 'Adhésion acceptée', 'seliweb' ),
                 'desc'  => __( "Envoyé au demandeur lorsqu'un administrateur accepte sa demande d'adhésion (identifiant + lien pour définir son mot de passe).", 'seliweb' ),
             ),
+            'adhesion_refusee' => array(
+                'label' => __( 'Adhésion refusée', 'seliweb' ),
+                'desc'  => __( "Envoyé au demandeur lorsqu'un administrateur refuse sa demande d'adhésion. L'introduction permet d'ajouter une explication ou les coordonnées de l'association.", 'seliweb' ),
+            ),
             'mot_de_passe_change' => array(
                 'label' => __( 'Mot de passe changé', 'seliweb' ),
                 'desc'  => __( 'Envoyé automatiquement par WordPress lorsqu\'un membre définit ou change son mot de passe (notamment juste après l\'inscription).', 'seliweb' ),
@@ -1946,6 +1950,14 @@ class Seliweb_Parametres {
                 $key_intro       = 'mail_adhacc_intro';
                 $key_sig         = 'mail_adhacc_signature';
                 $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( "Votre demande d'adhésion est acceptée", 'seliweb' ) );
+                break;
+            case 'adhesion_refusee':
+                $key_from_email  = 'mail_adhref_from_email';
+                $key_from_name   = 'mail_adhref_from_name';
+                $key_subject     = 'mail_adhref_subject';
+                $key_intro       = 'mail_adhref_intro';
+                $key_sig         = 'mail_adhref_signature';
+                $default_subject = sprintf( '[%s] %s', get_bloginfo('name'), __( "Votre demande d'adhésion", 'seliweb' ) );
                 break;
             case 'mot_de_passe_change':
                 $key_from_email  = 'mail_pwdchange_from_email';
@@ -2276,6 +2288,13 @@ class Seliweb_Parametres {
                 $key_subject    = 'mail_adhacc_subject';
                 $key_intro      = 'mail_adhacc_intro';
                 $key_sig        = 'mail_adhacc_signature';
+                break;
+            case 'adhesion_refusee':
+                $key_from_email = 'mail_adhref_from_email';
+                $key_from_name  = 'mail_adhref_from_name';
+                $key_subject    = 'mail_adhref_subject';
+                $key_intro      = 'mail_adhref_intro';
+                $key_sig        = 'mail_adhref_signature';
                 break;
             case 'mot_de_passe_change':
                 $key_from_email = 'mail_pwdchange_from_email';

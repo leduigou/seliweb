@@ -36,8 +36,14 @@ if ( isset( $_POST['seliweb_demandes_nonce'] )
                 }
             }
         } elseif ( ! empty( $_POST['refuser'] ) ) {
-            Seliweb_Adhesions::refuser( $demande_id );
-            $notice_ok = __( 'Demande refusée.', 'seliweb' );
+            $prevenir = ! empty( $_POST['prevenir'] );
+            if ( Seliweb_Adhesions::refuser( $demande_id, $prevenir ) ) {
+                $notice_ok = $prevenir
+                    ? __( 'Demande refusée : le demandeur a été prévenu par mail.', 'seliweb' )
+                    : __( "Demande refusée, sans mail au demandeur.", 'seliweb' );
+            } else {
+                $notice_err = __( "Cette demande n'est plus en attente : rien n'a été modifié.", 'seliweb' );
+            }
         }
     }
 }
@@ -174,6 +180,19 @@ $fmt_date = get_option( 'date_format' );
         </tbody>
     </table>
 </div>
+
+<?php // Choix au moment du refus : prévenir ou non le demandeur par mail. ?>
+<div id="adh-refus" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:center;justify-content:center;">
+    <div role="dialog" aria-modal="true" aria-labelledby="adh-refus-titre" style="background:#fff;border-radius:6px;padding:22px 24px;max-width:460px;width:calc(100% - 32px);box-shadow:0 6px 30px rgba(0,0,0,.3);">
+        <h2 id="adh-refus-titre" style="margin-top:0;"><?php esc_html_e( "Refuser cette demande d'adhésion ?", 'seliweb' ); ?></h2>
+        <p><?php esc_html_e( 'Voulez-vous prévenir le demandeur par mail (Paramètres → Mails → Adhésion refusée) ?', 'seliweb' ); ?></p>
+        <p style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:0;">
+            <button type="button" class="button button-primary" onclick="adhRefusValider(true)"><?php esc_html_e( 'Refuser et prévenir par mail', 'seliweb' ); ?></button>
+            <button type="button" class="button" onclick="adhRefusValider(false)"><?php esc_html_e( 'Refuser sans mail', 'seliweb' ); ?></button>
+            <button type="button" class="button-link" style="margin-left:auto;" onclick="adhRefusFermer()"><?php esc_html_e( 'Annuler', 'seliweb' ); ?></button>
+        </p>
+    </div>
+</div>
 <script>
 function adhAccepter(cb, e) {
     if (!cb.checked) return;
@@ -189,9 +208,29 @@ function adhAccepter(cb, e) {
     if (!confirm(msg)) { e.preventDefault(); return; }
     cb.form.submit();
 }
+var adhRefusCase = null;
 function adhRefuser(cb, e) {
     if (!cb.checked) return;
-    if (!confirm(<?php echo wp_json_encode( __( 'Refuser cette demande d\'adhésion ?', 'seliweb' ) ); ?>)) { e.preventDefault(); return; }
+    e.preventDefault(); // la case ne se coche qu'après le choix dans la fenêtre
+    adhRefusCase = cb;
+    var f = document.getElementById('adh-refus');
+    f.style.display = 'flex';
+    f.querySelector('.button-primary').focus();
+}
+function adhRefusFermer() {
+    document.getElementById('adh-refus').style.display = 'none';
+    adhRefusCase = null;
+}
+function adhRefusValider(prevenir) {
+    var cb = adhRefusCase;
+    if (!cb) return;
+    var champ = document.createElement('input');
+    champ.type = 'hidden'; champ.name = 'prevenir'; champ.value = prevenir ? '1' : '';
+    cb.form.appendChild(champ);
+    cb.checked = true;
     cb.form.submit();
 }
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && adhRefusCase) adhRefusFermer();
+});
 </script>

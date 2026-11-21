@@ -44,6 +44,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 Ces verrous valent pour tout compte qui n'est pas administrateur WordPress. Test : `php tests/test-roles.php "/chemin/du/site"`.
 
 ## Changelog
+### 1.3.9
+- Demandes d'adhésion : au moment du refus, l'administrateur choisit de prévenir ou non le demandeur par mail (« Refuser et prévenir par mail » / « Refuser sans mail »). Nouveau mail réglable « Adhésion refusée » dans Paramètres → Mails (expéditeur, sujet, introduction, signature) ; l'introduction permet d'ajouter une explication ou les coordonnées de l'association.
+
 ### 1.3.8
 - Tableau de bord → Mises à jour : bouton et écran ouverts aussi aux Administrateurs Seliweb. Quand une version plus récente existe, un bouton « Mettre à jour » installe l'extension Seliweb et le thème Seliweb View, et eux seuls (même chemin que les mises à jour automatiques de WordPress : l'extension reste active, maintenance de quelques secondes). Il remplace le lien vers l'écran de mise à jour de WordPress.
 - Thème Seliweb-view : le lien « Activer les mises à jour automatiques » (Apparence → Thèmes → Détails du thème) n'apparaissait pas quand le thème était à jour. Seliweb déclare maintenant le thème à WordPress dans tous les cas, comme il le faisait déjà pour l'extension.

@@ -99,12 +99,43 @@ class Seliweb_Adhesions {
         $wpdb->update( self::table(), array( 'groupe_id' => $groupe_id ?: null ), array( 'id' => $id ) );
     }
 
-    public static function refuser( $id ) {
+    // Refuse une demande en attente. Si $prevenir, envoie au demandeur le
+    // mail « Adhésion refusée » (Paramètres → Mails) ; l'administrateur
+    // choisit au moment du refus (doublon, demande farfelue… : pas de mail).
+    // Retourne true si la demande a bien été refusée.
+    public static function refuser( $id, $prevenir = true ) {
         global $wpdb;
-        $wpdb->update( self::table(),
+        $nb = $wpdb->update( self::table(),
             array( 'statut' => 'refusee', 'date_traitement' => current_time( 'mysql' ) ),
             array( 'id' => $id, 'statut' => 'attente' )
         );
+        if ( ! $nb ) return false;
+        $d = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM " . self::table() . " WHERE id=%d", $id ) );
+        if ( $d && $prevenir ) self::prevenir_refus( $d );
+        return true;
+    }
+
+    private static function prevenir_refus( $d ) {
+        if ( ! is_email( $d->email ) ) return;
+        global $wpdb;
+        $cfg = array();
+        foreach ( $wpdb->get_results( "SELECT cle, valeur FROM {$wpdb->prefix}seliweb_parametres WHERE cle LIKE 'mail\_adhref\_%'" ) as $r ) {
+            $cfg[ $r->cle ] = $r->valeur;
+        }
+        $sujet = trim( $cfg['mail_adhref_subject'] ?? '' )
+            ?: sprintf( '[%s] %s', get_bloginfo( 'name' ), __( "Votre demande d'adhésion", 'seliweb' ) );
+        $corps = __( "Votre demande d'adhésion n'a pas été retenue.", 'seliweb' );
+        $intro = trim( $cfg['mail_adhref_intro'] ?? '' );
+        $sig   = trim( $cfg['mail_adhref_signature'] ?? '' );
+        $corps = trim( ( $intro ? $intro . "\n\n" : '' ) . $corps . ( $sig ? "\n\n" . $sig : '' ) );
+
+        $headers    = array();
+        $from_email = trim( $cfg['mail_adhref_from_email'] ?? '' );
+        $from_name  = trim( $cfg['mail_adhref_from_name'] ?? '' );
+        if ( $from_email && is_email( $from_email ) ) {
+            $headers[] = 'From: ' . ( $from_name ? $from_name . ' <' . $from_email . '>' : $from_email );
+        }
+        wp_mail( $d->email, $sujet, $corps, $headers );
     }
 
     // Crée le compte WordPress et le membre Seliweb à partir de la demande.
