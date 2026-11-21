@@ -35,7 +35,21 @@ Les nouvelles versions sont publiées sur ce dépôt GitHub et détectées autom
 
 Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** (onglets Inscription, Monnaies, Groupes, Annonces, Mails, SEL, Cotisations, Abonnements, API). Voir le manuel utilisateur pour le détail de chaque onglet.
 
+## Rôles et droits
+
+- **Administrateur WordPress** : tous les droits.
+- **Administrateur Seliweb** (rôle créé par l'extension) : pour un responsable de l'association. Tous les écrans Seliweb, Paramètres compris ; pages, articles, médias, commentaires, menus ; gestion des comptes WordPress (créer, modifier, attribuer les rôles d'Abonné à Éditeur). Jamais : extensions, thèmes, mises à jour, réglages de WordPress, HTML libre. Il ne peut ni attribuer les rôles Administrateur et Administrateur Seliweb, ni modifier, supprimer ou changer le rôle d'un compte qui les a.
+- **Gestionnaires** (Paramètres → Gestionnaires) : accès au back-office Seliweb module par module, pour des membres qui gardent leur rôle (Abonné…).
+
+Ces verrous valent pour tout compte qui n'est pas administrateur WordPress. Test : `php tests/test-roles.php "/chemin/du/site"`.
+
 ## Changelog
+
+### 1.3.6
+- Nouveau rôle **Administrateur Seliweb** : tous les écrans Seliweb (Paramètres compris) et la gestion des comptes (rôles d'Abonné à Éditeur), sans accès aux extensions, thèmes, mises à jour ni réglages de WordPress. Les comptes Administrateur et Administrateur Seliweb sont protégés (ni modifiés, ni supprimés, ni changés de rôle par un non-administrateur).
+- Les écrans et traitements réservés aux administrateurs vérifient la capacité `seliweb_administrer` (administrateurs WordPress et Administrateur Seliweb) au lieu de `manage_options`. Tableau de bord : boutons Paramètres et Mises à jour affichés seulement à qui peut s'en servir.
+- Suppression de l'ancien rôle « Trésorier » (remplacé par Paramètres → Gestionnaires) : ses titulaires deviennent Abonnés ; leurs droits Seliweb se règlent dans l'onglet Gestionnaires.
+- Script de test `tests/test-roles.php`.
 
 ### 1.3.5
 - Nouvelle page « Demande d'adhésion » (`[seliweb_demande_adhesion]`), utilisable en SEL ouvert comme fermé, à placer où l'on veut dans le menu. Même formulaire que l'inscription, même contrôle de l'adresse e-mail par un code à 4 chiffres ; la demande n'est enregistrée qu'une fois le code validé, puis attend la validation d'un administrateur.

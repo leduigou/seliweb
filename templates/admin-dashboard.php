@@ -152,6 +152,7 @@ if ( $sel_info && $sel_info['actif'] ) {
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_annonces&action=new' ) ); ?>" class="button button-primary">
             <?php esc_html_e( '+ Nouvelle annonce', 'seliweb' ); ?>
         </a>
+        <?php if ( Seliweb_Permissions::est_admin() ) : // Paramètres : administrateurs Seliweb seulement. ?>
         &nbsp;
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres&tab=groupes&action=new' ) ); ?>" class="button">
             <?php esc_html_e( '+ Nouveau groupe', 'seliweb' ); ?>
@@ -160,6 +161,7 @@ if ( $sel_info && $sel_info['actif'] ) {
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=seliweb_parametres' ) ); ?>" class="button">
             <?php esc_html_e( 'Paramètres', 'seliweb' ); ?>
         </a>
+        <?php endif; ?>
         <?php
         $doc_file = SELIWEB_DIR . 'docs/Manuel-Utilisateur-Seliweb-WP.pdf';
         if ( file_exists( $doc_file ) ) :
@@ -169,10 +171,12 @@ if ( $sel_info && $sel_info['actif'] ) {
             <?php esc_html_e( 'Télécharger la doc', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
+        <?php if ( current_user_can( 'manage_options' ) ) : // Page des mises à jour : administrateurs WordPress seulement. ?>
         &nbsp;
         <a href="<?php echo esc_url( Seliweb_Updater::updates_page_url() ); ?>" class="button">
             <?php esc_html_e( 'Mises à jour', 'seliweb' ); ?>
         </a>
+        <?php endif; ?>
     </p>
 
     <h2><?php esc_html_e( 'Informations système', 'seliweb' ); ?></h2>

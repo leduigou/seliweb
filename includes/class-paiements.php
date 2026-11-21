@@ -37,7 +37,7 @@ class Seliweb_Paiements {
         if ( ! isset( $_POST['seliweb_nonce'] ) ) return;
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
         if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_paiements' ) ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::est_admin() ) return;
 
         global $wpdb;
         $tp = $wpdb->prefix . 'seliweb_paiements_offres';

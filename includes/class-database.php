@@ -886,7 +886,7 @@ class Seliweb_Database {
     public static function heal_pages( $force = false ) {
         // Sur admin_init : ne rien faire pour les utilisateurs non-admin.
         // $force = true à l'activation (aucun utilisateur courant en WP-CLI).
-        if ( ! $force && ! current_user_can( 'manage_options' ) ) {
+        if ( ! $force && ! Seliweb_Permissions::est_admin() ) {
             return;
         }
 

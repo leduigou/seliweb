@@ -136,7 +136,7 @@ class Seliweb_Parametres {
     public static function handle_get_actions() {
         if ( ! is_admin() ) return;
         if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'seliweb_parametres' ) return;
-        if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( ! Seliweb_Permissions::est_admin() ) return;
 
         $tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
 
@@ -304,7 +304,7 @@ class Seliweb_Parametres {
         if ( ! wp_verify_nonce( $_POST['seliweb_nonce'], 'seliweb_parametres' ) ) {
             wp_die( __( 'Sécurité : nonce invalide.', 'seliweb' ) );
         }
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::est_admin() ) {
             wp_die( __( 'Accès refusé.', 'seliweb' ) );
         }
         $action = isset( $_POST['seliweb_action'] ) ? sanitize_key( $_POST['seliweb_action'] ) : '';

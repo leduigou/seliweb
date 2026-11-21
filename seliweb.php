@@ -2,7 +2,7 @@
 /*
  * Plugin Name: Seliweb-WP
  * Description: Gestion d'un S.E.L. Système d'Echange Local
- * Version: 1.3.5
+ * Version: 1.3.6
  * Author: Philippe Le Duigou
  * Text Domain: seliweb
  * Domain Path: /languages
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SELIWEB_VERSION', '1.3.5' );
+define( 'SELIWEB_VERSION', '1.3.6' );
 define( 'SELIWEB_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'SELIWEB_URL',     plugin_dir_url( __FILE__ ) );
 // Chemin réel tel que WordPress l'a chargé (dossier/fichier.php) — ne pas
@@ -37,6 +37,7 @@ require_once SELIWEB_DIR . 'includes/class-ordres-du-jour.php';
 require_once SELIWEB_DIR . 'includes/class-membres.php';
 require_once SELIWEB_DIR . 'includes/class-consentements.php';
 require_once SELIWEB_DIR . 'includes/class-permissions.php';
+require_once SELIWEB_DIR . 'includes/class-roles.php';
 require_once SELIWEB_DIR . 'includes/class-mail-queue.php';
 require_once SELIWEB_DIR . 'includes/class-inscription.php';
 require_once SELIWEB_DIR . 'includes/class-adhesions.php';
@@ -55,6 +56,7 @@ Seliweb_Ordres_Du_Jour::init();
 Seliweb_Membres::init();
 Seliweb_Consentements::init();
 Seliweb_Permissions::init();
+Seliweb_Roles::init();
 Seliweb_Mail_Queue::init();
 Seliweb_Adhesions::init();
 
@@ -160,11 +162,12 @@ class Seliweb {
         // droit configuré dans Paramètres → Gestionnaires) : le menu reste
         // visible même sans droit sur un module précis, l'écran lui-même
         // affiche un refus poli (voir Seliweb_Permissions). Paramètres
-        // reste réservé aux administrateurs WP, y compris sa visibilité.
+        // reste réservé aux administrateurs Seliweb (administrateurs WP et
+        // rôle « Administrateur Seliweb »), y compris sa visibilité.
         $cap = Seliweb_Permissions::CAP;
         add_menu_page( __('Seliweb','seliweb'), __('Seliweb','seliweb'), $cap, 'seliweb', array($this,'display_dashboard'), 'dashicons-networking', 2 );
         add_submenu_page( 'seliweb', __('Tableau de bord','seliweb'), __('Tableau de bord','seliweb'), $cap,              'seliweb',            array($this,'display_dashboard') );
-        add_submenu_page( 'seliweb', __('Paramètres','seliweb'),      __('Paramètres','seliweb'),      'manage_options',  'seliweb_parametres', array('Seliweb_Parametres','display') );
+        add_submenu_page( 'seliweb', __('Paramètres','seliweb'),      __('Paramètres','seliweb'),      Seliweb_Permissions::CAP_ADMIN, 'seliweb_parametres', array('Seliweb_Parametres','display') );
         add_submenu_page( 'seliweb', __('Annonces','seliweb'),        __('Annonces','seliweb'),        $cap,              'seliweb_annonces',   array('Seliweb_Annonces','display') );
         add_submenu_page( 'seliweb', __('Membres','seliweb'),         __('Membres','seliweb'),         $cap,              'seliweb_membres',    array($this,'display_membres') );
         if ( Seliweb_Transactions::sel_actif() ) {
@@ -263,8 +266,8 @@ class Seliweb {
     // Redirection après connexion → page Mon compte front-end
     // ----------------------------------------------------------------
     public function redirect_apres_connexion( $redirect_to, $request, $user ) {
-        // Ne pas rediriger les admins
-        if ( is_wp_error( $user ) || user_can( $user, 'manage_options' ) ) {
+        // Ne pas rediriger les administrateurs (WordPress et Seliweb) : ils vont à l'administration.
+        if ( is_wp_error( $user ) || Seliweb_Permissions::est_admin( $user ) ) {
             return $redirect_to;
         }
         $url = $this->get_page_url_par_shortcode( 'seliweb_mon_compte' );

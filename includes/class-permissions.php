@@ -6,11 +6,13 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * administrateurs WordPress (voir Paramètres → Gestionnaires, réservé aux
  * administrateurs). Un seul niveau par module, hiérarchique :
  * lecture < modification < création — la création emporte la suppression
- * (même droit, décision produit). Les administrateurs WP (manage_options)
- * ont toujours tous les droits sur tous les modules, sans configuration.
+ * (même droit, décision produit). Les administrateurs Seliweb (CAP_ADMIN :
+ * administrateurs WordPress et rôle « Administrateur Seliweb », voir
+ * Seliweb_Roles) ont toujours tous les droits sur tous les modules, sans
+ * configuration.
  *
  * Les réglages (Paramètres, tous onglets) restent réservés aux
- * administrateurs WP dans tous les cas — ce système ne les concerne pas.
+ * administrateurs Seliweb dans tous les cas — ce système ne les concerne pas.
  */
 class Seliweb_Permissions {
 
@@ -19,6 +21,12 @@ class Seliweb_Permissions {
     // c'est elle qui conditionne l'affichage des menus Seliweb dans
     // l'admin, jamais manage_options.
     const CAP = 'seliweb_backend';
+
+    // Administration de Seliweb (tous les modules, Paramètres) : stockée dans le
+    // rôle « Administrateur Seliweb », donnée dynamiquement aux administrateurs
+    // WordPress (manage_options). À utiliser à la place de manage_options pour
+    // tout ce qui relève de Seliweb.
+    const CAP_ADMIN = 'seliweb_administrer';
 
     const NIVEAUX = array( 'lecture' => 1, 'modification' => 2, 'creation' => 3 );
 
@@ -47,7 +55,7 @@ class Seliweb_Permissions {
     // (tous les droits, comme un administrateur) ni pour « aucun droit »
     // (l'écran affiche déjà son propre refus via verifier_acces()).
     public static function afficher_bandeau_niveau() {
-        if ( current_user_can( 'manage_options' ) ) return;
+        if ( self::est_admin() ) return;
         $module = self::module_de_la_page();
         if ( ! $module ) return;
 
@@ -75,9 +83,18 @@ class Seliweb_Permissions {
         );
     }
 
+    /** Administrateur Seliweb (administrateur WordPress ou rôle « Administrateur Seliweb ») ? */
+    public static function est_admin( $user = null ) {
+        return $user ? user_can( $user, self::CAP_ADMIN ) : current_user_can( self::CAP_ADMIN );
+    }
+
     public static function filtrer_cap( $allcaps, $caps, $args, $user ) {
-        if ( ! in_array( self::CAP, (array) $caps, true ) ) return $allcaps;
+        $caps = (array) $caps;
         if ( ! empty( $allcaps['manage_options'] ) ) {
+            $allcaps[ self::CAP_ADMIN ] = true;
+        }
+        if ( ! in_array( self::CAP, $caps, true ) ) return $allcaps;
+        if ( ! empty( $allcaps[ self::CAP_ADMIN ] ) ) {
             $allcaps[ self::CAP ] = true;
             return $allcaps;
         }
@@ -116,9 +133,9 @@ class Seliweb_Permissions {
 
     // $action : lire | modifier | creer | supprimer (creer et supprimer
     // exigent le même niveau, « création/suppression » étant un seul droit).
-    // Les administrateurs WP ont toujours accès, quel que soit le module.
+    // Les administrateurs Seliweb ont toujours accès, quel que soit le module.
     public static function peut( $module, $action = 'lire' ) {
-        if ( current_user_can( 'manage_options' ) ) return true;
+        if ( self::est_admin() ) return true;
         $membre_id = self::membre_id_pour( get_current_user_id() );
         $niveau    = self::niveau( $membre_id, $module );
         $seuils    = array( 'lire' => 1, 'modifier' => 2, 'creer' => 3, 'supprimer' => 3 );
