@@ -171,7 +171,7 @@ if ( $sel_info && $sel_info['actif'] ) {
             <?php esc_html_e( 'Télécharger la doc', 'seliweb' ); ?>
         </a>
         <?php endif; ?>
-        <?php if ( current_user_can( 'manage_options' ) ) : // Page des mises à jour : administrateurs WordPress seulement. ?>
+        <?php if ( Seliweb_Permissions::est_admin() ) : // Mises à jour de Seliweb et Seliweb-view : administrateurs WordPress et Administrateurs Seliweb. ?>
         &nbsp;
         <a href="<?php echo esc_url( Seliweb_Updater::updates_page_url() ); ?>" class="button">
             <?php esc_html_e( 'Mises à jour', 'seliweb' ); ?>

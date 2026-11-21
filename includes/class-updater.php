@@ -40,6 +40,7 @@ class Seliweb_Updater {
         // Tableau de bord) + le traitement de son bouton "vérifier maintenant".
         add_action( 'admin_menu', array( __CLASS__, 'register_updates_page' ), 20 );
         add_action( 'admin_post_seliweb_force_update_check', array( __CLASS__, 'handle_force_check' ) );
+        add_action( 'admin_post_seliweb_run_update', array( __CLASS__, 'handle_run_update' ) );
     }
 
     public static function clear_plugin_release_cache() {
@@ -161,6 +162,17 @@ class Seliweb_Updater {
                 'url'         => $release['page_url'],
                 'package'     => $release['zip_url'],
             );
+        } else {
+            // Thème à jour : le déclarer quand même dans no_update. Sans cela
+            // WordPress ignore le thème et n'affiche pas le lien « Activer les
+            // mises à jour automatiques » (Apparence → Thèmes → Détails du
+            // thème), comme pour l'extension ci-dessus.
+            $transient->no_update[ self::THEME_SLUG ] = array(
+                'theme'       => self::THEME_SLUG,
+                'new_version' => $release['version'],
+                'url'         => $release['page_url'],
+                'package'     => '',
+            );
         }
 
         return $transient;
@@ -268,14 +280,14 @@ class Seliweb_Updater {
             '', // pas de parent -> page routable mais absente du menu
             __( 'Mises à jour Seliweb', 'seliweb' ),
             __( 'Mises à jour Seliweb', 'seliweb' ),
-            'manage_options',
+            Seliweb_Permissions::CAP_ADMIN, // administrateurs WordPress et Administrateurs Seliweb
             'seliweb_updates',
             array( __CLASS__, 'render_updates_page' )
         );
     }
 
     public static function handle_force_check() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::est_admin() ) {
             wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
         }
         check_admin_referer( 'seliweb_force_update_check' );
@@ -291,14 +303,110 @@ class Seliweb_Updater {
         exit;
     }
 
+    // ----------------------------------------------------------------
+    // Bouton « Mettre à jour » : installe la dernière version de Seliweb
+    // et/ou de Seliweb-view, et rien d'autre. Ouvert aux Administrateurs
+    // Seliweb, qui n'ont pas les droits de mise à jour de WordPress (ils
+    // vaudraient pour toutes les extensions et tous les thèmes).
+    //
+    // Même chemin que les mises à jour automatiques de WordPress : pendant
+    // l'opération, wp_doing_cron() est forcé à vrai, si bien que
+    // l'extension active n'est pas désactivée (hors cron, WordPress la
+    // désactive et compte sur le navigateur pour la réactiver) et que le
+    // site passe quelques secondes en maintenance.
+    // ----------------------------------------------------------------
+    public static function handle_run_update() {
+        if ( ! Seliweb_Permissions::est_admin() ) {
+            wp_die( esc_html__( 'Accès refusé.', 'seliweb' ) );
+        }
+        check_admin_referer( 'seliweb_run_update' );
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/misc.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        require_once ABSPATH . 'wp-admin/includes/theme.php';
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+        $retour = self::updates_page_url();
+
+        // Écriture directe sur le disque obligatoire : pas de formulaire FTP ici.
+        if ( 'direct' !== get_filesystem_method() || ! WP_Filesystem() ) {
+            wp_safe_redirect( add_query_arg( 'maj', 'fs', $retour ) );
+            exit;
+        }
+
+        // Données fraîches : on ne met à jour que ce qui l'est vraiment.
+        delete_site_transient( 'update_plugins' );
+        delete_site_transient( 'update_themes' );
+        wp_update_plugins();
+        wp_update_themes();
+        $plugins = get_site_transient( 'update_plugins' );
+        $themes  = get_site_transient( 'update_themes' );
+        $plugin_file = self::plugin_file();
+
+        $resultats = array();
+        add_filter( 'wp_doing_cron', '__return_true' );
+        if ( isset( $themes->response[ self::THEME_SLUG ] ) ) {
+            $up = new Theme_Upgrader( new Automatic_Upgrader_Skin() );
+            $ok = $up->upgrade( self::THEME_SLUG );
+            $resultats['theme'] = ( true === $ok ) ? 'ok' : 'erreur';
+        }
+        if ( isset( $plugins->response[ $plugin_file ] ) ) {
+            $up = new Plugin_Upgrader( new Automatic_Upgrader_Skin() );
+            $ok = $up->upgrade( $plugin_file );
+            $resultats['extension'] = ( true === $ok ) ? 'ok' : 'erreur';
+        }
+        remove_filter( 'wp_doing_cron', '__return_true' );
+
+        // Sécurité : si l'extension n'est plus active pour une raison
+        // quelconque, on la remet dans la liste sans exécuter son code (la
+        // nouvelle version sera chargée à la requête suivante).
+        $actives = (array) get_option( 'active_plugins', array() );
+        if ( ! in_array( $plugin_file, $actives, true ) ) {
+            $actives[] = $plugin_file;
+            sort( $actives );
+            update_option( 'active_plugins', $actives );
+        }
+
+        wp_clean_plugins_cache();
+        wp_clean_themes_cache();
+        delete_site_transient( 'update_plugins' );
+        delete_site_transient( 'update_themes' );
+
+        $args = array( 'maj' => $resultats ? 'fait' : 'rien' );
+        foreach ( $resultats as $quoi => $etat ) {
+            $args[ $quoi ] = $etat;
+        }
+        wp_safe_redirect( add_query_arg( $args, $retour ) );
+        exit;
+    }
+
     public static function render_updates_page() {
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! Seliweb_Permissions::est_admin() ) {
             return;
         }
 
         if ( isset( $_GET['checked'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>'
                 . esc_html__( 'Vérification effectuée.', 'seliweb' ) . '</p></div>';
+        }
+        $maj = sanitize_key( $_GET['maj'] ?? '' );
+        if ( 'fs' === $maj ) {
+            echo '<div class="notice notice-error"><p>'
+                . esc_html__( "La mise à jour ne peut pas se faire depuis cet écran sur ce serveur (accès FTP demandé). Demandez à l'administrateur du site de la lancer depuis l'écran Mises à jour de WordPress.", 'seliweb' ) . '</p></div>';
+        } elseif ( 'rien' === $maj ) {
+            echo '<div class="notice notice-info is-dismissible"><p>'
+                . esc_html__( 'Aucune mise à jour à installer : tout est déjà à jour.', 'seliweb' ) . '</p></div>';
+        } elseif ( 'fait' === $maj ) {
+            $noms = array( 'extension' => __( "L'extension Seliweb", 'seliweb' ), 'theme' => __( 'Le thème Seliweb View', 'seliweb' ) );
+            foreach ( $noms as $cle => $nom ) {
+                $etat = sanitize_key( $_GET[ $cle ] ?? '' );
+                if ( 'ok' === $etat ) {
+                    echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( sprintf( __( '%s a été mis à jour.', 'seliweb' ), $nom ) ) . '</p></div>';
+                } elseif ( 'erreur' === $etat ) {
+                    echo '<div class="notice notice-error"><p>' . esc_html( sprintf( __( "%s n'a pas pu être mis à jour. Réessayez plus tard, ou demandez à l'administrateur du site de passer par l'écran Mises à jour de WordPress.", 'seliweb' ), $nom ) ) . '</p></div>';
+                }
+            }
         }
 
         $plugin_release = self::get_release( self::GH_REPO_PLUGIN );
@@ -384,8 +492,12 @@ class Seliweb_Updater {
                     <?php esc_html_e( 'Rechercher les mises à jour maintenant', 'seliweb' ); ?>
                 </a>
                 <?php if ( $maj_dispo ) : ?>
-                    <a href="<?php echo esc_url( admin_url( 'update-core.php' ) ); ?>" class="button">
-                        <?php esc_html_e( 'Aller à l\'écran de mise à jour de WordPress', 'seliweb' ); ?>
+                    <a href="<?php echo esc_url( wp_nonce_url(
+                            admin_url( 'admin-post.php?action=seliweb_run_update' ),
+                            'seliweb_run_update'
+                        ) ); ?>" class="button button-primary"
+                       onclick="this.style.pointerEvents='none';this.textContent=<?php echo esc_attr( wp_json_encode( __( 'Mise à jour en cours…', 'seliweb' ) ) ); ?>;">
+                        <?php esc_html_e( 'Mettre à jour', 'seliweb' ); ?>
                     </a>
                 <?php endif; ?>
             </p>
@@ -397,7 +509,7 @@ class Seliweb_Updater {
             <?php endif; ?>
 
             <p class="description" style="margin-top:12px;max-width:760px;">
-                <?php esc_html_e( "La détection des mises à jour est mise en cache 6 h ; ce bouton force un contrôle immédiat. Quand une mise à jour est disponible, elle s'applique depuis l'écran Mises à jour de WordPress.", 'seliweb' ); ?>
+                <?php esc_html_e( "La détection des mises à jour est mise en cache 6 h ; le bouton « Rechercher » force un contrôle immédiat. Quand une version plus récente existe, le bouton « Mettre à jour » installe l'extension Seliweb et le thème Seliweb View (et eux seuls) ; le site est en maintenance pendant quelques secondes. Pensez à vérifier que la sauvegarde du site est récente.", 'seliweb' ); ?>
             </p>
         </div>
         <?php
