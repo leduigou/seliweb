@@ -38,7 +38,7 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 ## Rôles et droits
 
 - **Administrateur WordPress** : tous les droits.
-- **Administrateur Seliweb** (rôle créé par l'extension) : pour un responsable de l'association. Tous les écrans Seliweb, Paramètres compris ; pages, articles, médias, commentaires, menus ; gestion des comptes WordPress (créer, modifier, attribuer les rôles d'Abonné à Éditeur). Jamais : extensions, thèmes, mises à jour, réglages de WordPress, HTML libre. Il ne peut ni attribuer les rôles Administrateur et Administrateur Seliweb, ni modifier, supprimer ou changer le rôle d'un compte qui les a.
+- **Administrateur Seliweb** (rôle créé par l'extension) : pour un responsable de l'association. Tous les écrans Seliweb, Paramètres compris ; pages, articles, médias, commentaires ; Apparence → Personnaliser (couleurs du thème, menus, widgets, logo, et aussi titre, slogan, icône et page d'accueil du site) ; gestion des comptes WordPress (créer, modifier, attribuer les rôles d'Abonné à Éditeur, et Administrateur Seliweb : les responsables se cooptent). Jamais : extensions, thèmes, mises à jour, Réglages de WordPress (adresse du site, e-mail d'administration…), HTML libre. Il ne peut ni attribuer le rôle Administrateur, ni modifier, supprimer ou changer le rôle d'un compte Administrateur ou Administrateur Seliweb : retirer ce rôle passe par un administrateur WordPress.
 - **Gestionnaires** (Paramètres → Gestionnaires) : accès au back-office Seliweb module par module, pour des membres qui gardent leur rôle (Abonné…).
 
 Ces verrous valent pour tout compte qui n'est pas administrateur WordPress. Test : `php tests/test-roles.php "/chemin/du/site"`.
@@ -46,7 +46,7 @@ Ces verrous valent pour tout compte qui n'est pas administrateur WordPress. Test
 ## Changelog
 
 ### 1.3.6
-- Nouveau rôle **Administrateur Seliweb** : tous les écrans Seliweb (Paramètres compris) et la gestion des comptes (rôles d'Abonné à Éditeur), sans accès aux extensions, thèmes, mises à jour ni réglages de WordPress. Les comptes Administrateur et Administrateur Seliweb sont protégés (ni modifiés, ni supprimés, ni changés de rôle par un non-administrateur).
+- Nouveau rôle **Administrateur Seliweb** : tous les écrans Seliweb (Paramètres compris), Personnaliser (titre, slogan, icône et page d'accueil compris) et la gestion des comptes (rôles d'Abonné à Éditeur, cooptation d'autres Administrateurs Seliweb), sans accès aux extensions, thèmes, mises à jour ni Réglages de WordPress. Les comptes Administrateur et Administrateur Seliweb sont protégés (ni modifiés, ni supprimés, ni changés de rôle par un non-administrateur WordPress).
 - Les écrans et traitements réservés aux administrateurs vérifient la capacité `seliweb_administrer` (administrateurs WordPress et Administrateur Seliweb) au lieu de `manage_options`. Tableau de bord : boutons Paramètres et Mises à jour affichés seulement à qui peut s'en servir.
 - Suppression de l'ancien rôle « Trésorier » (remplacé par Paramètres → Gestionnaires) : ses titulaires deviennent Abonnés ; leurs droits Seliweb se règlent dans l'onglet Gestionnaires.
 - Script de test `tests/test-roles.php`.

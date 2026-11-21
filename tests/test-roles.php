@@ -111,7 +111,11 @@ foreach ( array( 'subscriber', 'contributor', 'author', 'editor' ) as $r ) {
 	verifier( "Administrateur Seliweb peut attribuer : $r", isset( $roles[ $r ] ) );
 }
 verifier( 'Administrateur Seliweb ne peut pas attribuer : Administrateur', ! isset( $roles['administrator'] ) );
-verifier( 'Administrateur Seliweb ne peut pas attribuer : Administrateur Seliweb', ! isset( $roles[ Seliweb_Roles::ROLE ] ) );
+verifier( 'Administrateur Seliweb peut attribuer : Administrateur Seliweb (cooptation)', isset( $roles[ Seliweb_Roles::ROLE ] ) );
+wp_set_current_user( $editeur );
+verifier( 'Éditeur : aucun rôle attribuable (pas de gestion des comptes)', ! current_user_can( 'promote_users' ) );
+$roles = get_editable_roles();
+verifier( 'Éditeur ne peut pas attribuer : Administrateur Seliweb', ! isset( $roles[ Seliweb_Roles::ROLE ] ) );
 wp_set_current_user( $admin_wp );
 $roles = get_editable_roles();
 verifier( 'Administrateur WordPress peut attribuer : Administrateur Seliweb', isset( $roles[ Seliweb_Roles::ROLE ] ) );
@@ -126,6 +130,22 @@ verifier( 'Administrateur Seliweb peut modifier un Éditeur', user_can( $admin_s
 verifier( 'Administrateur Seliweb peut changer le rôle d’un Abonné', user_can( $admin_sw, 'promote_user', $abonne ) );
 verifier( 'Administrateur Seliweb peut modifier son propre compte', user_can( $admin_sw, 'edit_user', $admin_sw ) );
 verifier( 'Administrateur WordPress peut modifier un Administrateur Seliweb', user_can( $admin_wp, 'edit_user', $admin_sw ) );
+
+echo "\n6. Personnaliser : titre, slogan, icône, page d’accueil\n";
+require_once ABSPATH . WPINC . '/class-wp-customize-manager.php';
+$personnaliser = new WP_Customize_Manager();
+do_action( 'customize_register', $personnaliser );
+foreach ( Seliweb_Roles::REGLAGES_SITE as $id ) {
+	$r = $personnaliser->get_setting( $id );
+	wp_set_current_user( $admin_sw );
+	verifier( "Administrateur Seliweb peut modifier : $id", $r && $r->check_capabilities() );
+	wp_set_current_user( $admin_wp );
+	verifier( "Administrateur WordPress peut modifier : $id", $r && $r->check_capabilities() );
+	wp_set_current_user( $editeur );
+	verifier( "Éditeur ne peut pas modifier : $id", $r && ! $r->check_capabilities() );
+}
+wp_set_current_user( $admin_sw );
+verifier( 'Administrateur Seliweb : Réglages de WordPress toujours fermés (adresse du site, e-mail d’administration, inscriptions…)', ! current_user_can( 'manage_options' ) );
 
 nettoyer();
 echo "\n" . ( $echecs ? "$echecs ÉCHEC(S)\n" : "Tout est OK.\n" );
