@@ -45,6 +45,8 @@ class Seliweb_Roles {
         add_action( 'customize_register', array( __CLASS__, 'personnaliser' ), 1000 ); // Après les réglages de WordPress (priorité 10).
         add_filter( 'editable_roles', array( __CLASS__, 'roles_attribuables' ) );
         add_filter( 'map_meta_cap', array( __CLASS__, 'proteger_comptes' ), 10, 4 );
+        add_action( 'admin_notices', array( __CLASS__, 'masquer_avis_tiers' ), 0 );
+        add_action( 'network_admin_notices', array( __CLASS__, 'masquer_avis_tiers' ), 0 );
     }
 
     /** Droits du rôle : ceux d'un Éditeur WordPress (sans HTML libre), plus les menus, Seliweb et les comptes. */
@@ -128,6 +130,39 @@ class Seliweb_Roles {
     }
 
     /** Compte avec un droit sensible : ni modifié, ni supprimé, ni changé de rôle par un non-administrateur. */
+    // Avertissements d'autres extensions qui prennent l'Administrateur
+    // Seliweb pour un administrateur WordPress et lui réclament des droits
+    // qu'il n'a volontairement pas. Retirés pour lui seul (un administrateur
+    // WordPress continue de les voir). Liste à compléter au cas par cas,
+    // jamais de filtre global : les autres avis peuvent être utiles.
+    const AVIS_TIERS_MASQUES = array(
+        // All-in-One WP Migration : « Your current profile role does not
+        // have Export/Import capabilities enabled » (is_super_admin() est
+        // vrai dès qu'on peut supprimer des comptes). Les droits
+        // d'export/import ne doivent pas lui être donnés : une sauvegarde
+        // contient toute la base, une importation remplace le site.
+        array( 'Ai1wm_Main_Controller', 'missing_role_capability_notice' ),
+    );
+
+    public static function masquer_avis_tiers() {
+        if ( current_user_can( 'manage_options' ) || ! current_user_can( Seliweb_Permissions::CAP_ADMIN ) ) return;
+        global $wp_filter;
+        $hook = current_filter();
+        if ( empty( $wp_filter[ $hook ] ) ) return;
+        foreach ( $wp_filter[ $hook ]->callbacks as $priorite => $callbacks ) {
+            foreach ( $callbacks as $cb ) {
+                $f = $cb['function'];
+                if ( ! is_array( $f ) || count( $f ) !== 2 ) continue;
+                $classe = is_object( $f[0] ) ? get_class( $f[0] ) : (string) $f[0];
+                foreach ( self::AVIS_TIERS_MASQUES as $cible ) {
+                    if ( $classe === $cible[0] && $f[1] === $cible[1] ) {
+                        remove_action( $hook, $f, $priorite );
+                    }
+                }
+            }
+        }
+    }
+
     public static function proteger_comptes( $caps, $cap, $user_id, $args ) {
         if ( ! in_array( $cap, array( 'edit_user', 'delete_user', 'promote_user', 'remove_user' ), true ) || empty( $args[0] ) || (int) $args[0] === (int) $user_id ) {
             return $caps;

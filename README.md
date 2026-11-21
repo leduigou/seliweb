@@ -44,6 +44,9 @@ Une fois activé, retrouvez tous les réglages dans **Seliweb → Paramètres** 
 Ces verrous valent pour tout compte qui n'est pas administrateur WordPress. Test : `php tests/test-roles.php "/chemin/du/site"`.
 
 ## Changelog
+### 1.3.7
+- Administrateur Seliweb : l'avertissement de l'extension All-in-One WP Migration (« Your current profile role does not have Export/Import capabilities enabled ») ne s'affiche plus pour lui. Il n'a volontairement pas les droits de sauvegarde et de restauration du site ; un administrateur WordPress voit toujours ce message.
+
 
 ### 1.3.6
 - Nouveau rôle **Administrateur Seliweb** : tous les écrans Seliweb (Paramètres compris), Personnaliser (titre, slogan, icône et page d'accueil compris) et la gestion des comptes (rôles d'Abonné à Éditeur, cooptation d'autres Administrateurs Seliweb), sans accès aux extensions, thèmes, mises à jour ni Réglages de WordPress. Les comptes Administrateur et Administrateur Seliweb sont protégés (ni modifiés, ni supprimés, ni changés de rôle par un non-administrateur WordPress).
